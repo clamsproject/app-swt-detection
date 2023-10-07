@@ -51,7 +51,8 @@ class FrameOfInterest:
 # ============================================================================|
 class SceneText_Featurizer:
     """Convert an annotated video set into a machine readable format
-    uses <model> as a backbone to 
+    uses <model> as a backbone to featurize the annotated still images 
+    into 512x1 vectors.
     """
     def __init__(self, **params):
         self.model = VGG16(include_top=False, weights="imagenet", pooling="avg")
@@ -64,12 +65,16 @@ class SceneText_Featurizer:
         @param: vid_path = filename of the video
         @param: csv_path = filename of the csv containing timepoints
         @returns: A list of metadata dictionaries and associated feature matrix"""
+        
+        #get image stills
         frames: List[FrameOfInterest] = self.get_stills(vid_path, csv_path)
         
+        #initialize metadata dictionary
         frame_metadata = {"guid": frames[0].guid,
                           "duration": frames[0].total_time,
                           "frames":[]}
         
+        #primary VGG Loop
         frame_matrix = np.zeros((512, len(frames)))
         for i, frame in enumerate(frames):
             frame_matrix[:,i] = self.process_frame(frame.image)
@@ -97,16 +102,18 @@ class SceneText_Featurizer:
         @param: vid_path = the filename of the video
         @param: timepoints = a list of the video's annotated timepoints
         @return: a list of Frame objects"""
-        frame_list = []
 
         with open(csv_path, encoding='utf8') as f:
             reader = csv.reader(f)
             next(reader)
-            for row in reader:
-                frame_list.append(FrameOfInterest(filename=row[0], label=row[2], subtype_label=row[3]))
+            frame_list = [FrameOfInterest(filename=row[0],
+                                          label=row[2],
+                                          subtype_label=row[3]) for row in reader]
 
         cap = cv2.VideoCapture(vid_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+
+        #for each frame, move the VideoCapture and read @ frame
         for frame in frame_list:
             frame_id = get_framenum(frame, fps)
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
@@ -117,7 +124,8 @@ class SceneText_Featurizer:
         return frame_list
 
 def get_framenum(frame: FrameOfInterest, fps: float) -> int:
-    """Returns the frame number of the given frame"""
+    """Returns the frame number of the given FrameOfInterest
+    (converts from ms to frame#)"""
     return int(int(frame.curr_time)/1000 * fps)
 #=============================================================================|
 def serialize_data(metadata:dict, features: np.ndarray) -> None:
