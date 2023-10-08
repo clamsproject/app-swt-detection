@@ -31,7 +31,7 @@ import cv2
 from keras.applications.vgg16 import VGG16, preprocess_input
 
 # ============================================================================|
-class FrameOfInterest:
+class AnnotatedImage:
     """Object representing a single frame and its metadata"""
     def __init__(self, filename: str, label: str, subtype_label: str):
         self.image = None
@@ -49,10 +49,10 @@ class FrameOfInterest:
         return guid, total, curr
     
 # ============================================================================|
-class SceneText_Featurizer:
-    """Convert an annotated video set into a machine readable format
+class FeatureExtractor:
+    """Convert an annotated video set into a machine-readable format
     uses <model> as a backbone to featurize the annotated still images 
-    into 512x1 vectors.
+    into 512-dim vectors.
     """
     def __init__(self, **params):
         self.model = VGG16(include_top=False, weights="imagenet", pooling="avg")
@@ -67,16 +67,16 @@ class SceneText_Featurizer:
         @returns: A list of metadata dictionaries and associated feature matrix"""
         
         #get image stills
-        frames: List[FrameOfInterest] = self.get_stills(vid_path, csv_path)
+        images: List[AnnotatedImage] = self.get_stills(vid_path, csv_path)
         
         #initialize metadata dictionary
-        frame_metadata = {"guid": frames[0].guid,
-                          "duration": frames[0].total_time,
+        frame_metadata = {"guid": images[0].guid,
+                          "duration": images[0].total_time,
                           "frames":[]}
         
         #primary VGG Loop
-        frame_matrix = np.zeros((512, len(frames)))
-        for i, frame in enumerate(frames):
+        frame_matrix = np.zeros((512, len(images)))
+        for i, frame in enumerate(images):
             frame_matrix[:,i] = self.process_frame(frame.image)
             frame_metadata["frames"].append(
                 {k:v for k, v in frame.__dict__.items() 
@@ -96,7 +96,7 @@ class SceneText_Featurizer:
 
     @staticmethod
     def get_stills(vid_path: Union[os.PathLike, str], 
-                   csv_path: Union[os.PathLike, str]) -> List[FrameOfInterest]:
+                   csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
         """Extract stills at given timepoints from a video file
         
         @param: vid_path = the filename of the video
@@ -106,9 +106,9 @@ class SceneText_Featurizer:
         with open(csv_path, encoding='utf8') as f:
             reader = csv.reader(f)
             next(reader)
-            frame_list = [FrameOfInterest(filename=row[0],
-                                          label=row[2],
-                                          subtype_label=row[3]) for row in reader]
+            frame_list = [AnnotatedImage(filename=row[0],
+                                         label=row[2],
+                                         subtype_label=row[3]) for row in reader]
 
         cap = cv2.VideoCapture(vid_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -123,7 +123,7 @@ class SceneText_Featurizer:
 
         return frame_list
 
-def get_framenum(frame: FrameOfInterest, fps: float) -> int:
+def get_framenum(frame: AnnotatedImage, fps: float) -> int:
     """Returns the frame number of the given FrameOfInterest
     (converts from ms to frame#)"""
     return int(int(frame.curr_time)/1000 * fps)
@@ -142,7 +142,7 @@ def serialize_data(metadata:dict, features: np.ndarray) -> None:
 def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
-    featurizer = SceneText_Featurizer()
+    featurizer = FeatureExtractor()
     feat_metadata, feat_matrix = featurizer.process_video(in_file, metadata_file)
     serialize_data(feat_metadata, feat_matrix)
 
