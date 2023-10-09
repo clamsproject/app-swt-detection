@@ -8,7 +8,7 @@ INPUT: a video file location and CSV file containing timepoint information+metad
 for labeled stills
 
 OUTPUT:
- - a numpy matrix, in which each row is a (512,1) vector representing the features of a 
+ - a numpy matrix, in which each row is a (4096,1) vector representing the features of a 
  particularframe of interest.
 
  - a dictionary, serialized into JSON, representing the following metadata of each still:
@@ -27,8 +27,11 @@ import numpy as np
 from typing import List, Union, Tuple
 
 
+import torch
+from torchvision.models import vgg16, VGG16_Weights
 import cv2
-from keras.applications.vgg16 import VGG16, preprocess_input
+from PIL import Image
+
 
 # ============================================================================|
 class AnnotatedImage:
@@ -52,10 +55,17 @@ class AnnotatedImage:
 class FeatureExtractor:
     """Convert an annotated video set into a machine-readable format
     uses <model> as a backbone to featurize the annotated still images 
-    into 512-dim vectors.
+    into 4096-dim vectors.
     """
-    def __init__(self, **params):
-        self.model = VGG16(include_top=False, weights="imagenet", pooling="avg")
+    
+    # model = torch.hub.load('pytorch/vision', 'vgg16', weights=VGG16_Weights.IMAGENET1K_V1)
+    model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+    # remove last layer
+    model.classifier = model.classifier[:-1]
+    preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
+
+    # def __init__(self, **params):
+        # self.model = VGG16(include_top=False, weights="imagenet", pooling="avg")
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
@@ -66,22 +76,23 @@ class FeatureExtractor:
         @param: csv_path = filename of the csv containing timepoints
         @returns: A list of metadata dictionaries and associated feature matrix"""
         
+        frame_metadata = {'frames': []}
+        frame_vecs = []
         #get image stills
-        images: List[AnnotatedImage] = self.get_stills(vid_path, csv_path)
+        for i, frame in enumerate(self.get_stills(vid_path, csv_path)):
+            print(i)
+            if 'guid' not in frame_metadata:
+                frame_metadata['guid'] = frame.guid
+            if 'duration' not in frame_metadata:
+                frame_metadata['duration'] = frame.total_time
         
-        #initialize metadata dictionary
-        frame_metadata = {"guid": images[0].guid,
-                          "duration": images[0].total_time,
-                          "frames":[]}
-        
-        #primary VGG Loop
-        frame_matrix = np.zeros((512, len(images)))
-        for i, frame in enumerate(images):
-            frame_matrix[:,i] = self.process_frame(frame.image)
+            #primary VGG Loop
+            frame_vecs.append(self.process_frame(frame.image))
             frame_metadata["frames"].append(
-                {k:v for k, v in frame.__dict__.items() 
+                {k: v for k, v in frame.__dict__.items() 
                  if k != "image" and k != "guid" and k != "total_time"})
 
+        frame_matrix = np.vstack(frame_vecs)
         return frame_metadata, frame_matrix
 
 
@@ -90,9 +101,15 @@ class FeatureExtractor:
         
         @param: frame = a frame as a numpy array
         @returns: a numpy array representing the frame as <model> features"""
-        x = np.expand_dims(frame_vec, axis=0)
-        x = preprocess_input(x)
-        return self.model.predict(x)
+        frame_vec = self.preprocess(frame_vec)
+        frame_vec = frame_vec.unsqueeze(0)
+        if torch.cuda.is_available():
+            frame_vec = frame_vec.to('cuda')
+            self.model.to('cuda')
+        with torch.no_grad():
+            feature_vec = self.model(frame_vec)
+        print(feature_vec.shape)
+        return feature_vec.cpu().numpy()
 
     @staticmethod
     def get_stills(vid_path: Union[os.PathLike, str], 
@@ -119,9 +136,8 @@ class FeatureExtractor:
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
             ret, img = cap.read()
             if ret:
-                frame.image = img 
-
-        return frame_list
+                frame.image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            yield frame
 
 def get_framenum(frame: AnnotatedImage, fps: float) -> int:
     """Returns the frame number of the given FrameOfInterest
@@ -133,9 +149,8 @@ def serialize_data(metadata:dict, features: np.ndarray) -> None:
     
     @param: metadata = a python dictionary
     @param: features = a numpy array"""
-    metadata_json = json.dumps(metadata)
     with open(f"{metadata['guid']}.json",'w', encoding='utf8') as f:
-        f.write(metadata_json)
+        json.dump(metadata, f)
     np.save(metadata["guid"], features)
 
 # ============================================================================|
@@ -143,6 +158,7 @@ def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
     featurizer = FeatureExtractor()
+    print('extractor ready')
     feat_metadata, feat_matrix = featurizer.process_video(in_file, metadata_file)
     serialize_data(feat_metadata, feat_matrix)
 
