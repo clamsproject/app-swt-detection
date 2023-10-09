@@ -72,7 +72,7 @@ class FeatureExtractor:
             self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
 
         # Resnet50
-        elif model_name == "resnet":
+        elif model_name == "resnet50":
             self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
             # remove last layer
             self.model.fc = torch.nn.Identity()
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name",
                         type=str,
                         help="name of backbone model to use for feature extraction",
-                        choices=["resnet","vgg"],
+                        choices=["resnet50","vgg"],
                         default="vgg")
     clargs = parser.parse_args()
     main(clargs)
