@@ -26,6 +26,7 @@ import json
 import numpy as np
 from typing import List, Union, Tuple
 
+from tqdm import tqdm
 
 import torch
 from torchvision.models import vgg16, VGG16_Weights
@@ -79,18 +80,18 @@ class FeatureExtractor:
         frame_metadata = {'frames': []}
         frame_vecs = []
         #get image stills
-        for i, frame in enumerate(self.get_stills(vid_path, csv_path)):
-            print(i)
+        print(f'processing video: {vid_path}')
+        for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):
             if 'guid' not in frame_metadata:
                 frame_metadata['guid'] = frame.guid
             if 'duration' not in frame_metadata:
                 frame_metadata['duration'] = frame.total_time
         
-            #primary VGG Loop
+            #primary extraction Loop
             frame_vecs.append(self.process_frame(frame.image))
-            frame_metadata["frames"].append(
-                {k: v for k, v in frame.__dict__.items() 
-                 if k != "image" and k != "guid" and k != "total_time"})
+            frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time"}
+            frame_dict['vec_idx'] = i
+            frame_metadata["frames"].append(frame_dict)
 
         frame_matrix = np.vstack(frame_vecs)
         return frame_metadata, frame_matrix
@@ -108,7 +109,7 @@ class FeatureExtractor:
             self.model.to('cuda')
         with torch.no_grad():
             feature_vec = self.model(frame_vec)
-        print(feature_vec.shape)
+        # print(feature_vec.shape)
         return feature_vec.cpu().numpy()
 
     @staticmethod
