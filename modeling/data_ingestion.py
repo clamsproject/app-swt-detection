@@ -30,6 +30,7 @@ from tqdm import tqdm
 
 import torch
 from torchvision.models import vgg16, VGG16_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 import cv2
 from PIL import Image
 
@@ -53,20 +54,32 @@ class AnnotatedImage:
         return guid, total, curr
     
 # ============================================================================|
+
 class FeatureExtractor:
     """Convert an annotated video set into a machine-readable format
     uses <model> as a backbone to featurize the annotated still images 
     into 4096-dim vectors.
     """
-    
     # model = torch.hub.load('pytorch/vision', 'vgg16', weights=VGG16_Weights.IMAGENET1K_V1)
-    model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-    # remove last layer
-    model.classifier = model.classifier[:-1]
-    preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
+    def __init__(self, model_name: str):
+        self.modelname = model_name
 
-    # def __init__(self, **params):
-        # self.model = VGG16(include_top=False, weights="imagenet", pooling="avg")
+        # VGG16
+        if model_name == "vgg":
+            self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+            # remove last layer
+            self.model.classifier = self.model.classifier[:-1]
+            self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
+
+        # Resnet50
+        elif model_name == "resnet50":
+            self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+            # remove last layer
+            self.model.fc = torch.nn.Identity()
+            self.preprocess = ResNet50_Weights.IMAGENET1K_V1.transforms()
+        
+        else:
+            raise ValueError("No valid model found")
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
@@ -86,6 +99,8 @@ class FeatureExtractor:
                 frame_metadata['guid'] = frame.guid
             if 'duration' not in frame_metadata:
                 frame_metadata['duration'] = frame.total_time
+            if 'backbone_model' not in frame_metadata:
+                frame_metadata['backbone_model'] = self.modelname
         
             #primary extraction Loop
             frame_vecs.append(self.process_frame(frame.image))
@@ -144,21 +159,21 @@ def get_framenum(frame: AnnotatedImage, fps: float) -> int:
     """Returns the frame number of the given FrameOfInterest
     (converts from ms to frame#)"""
     return int(int(frame.curr_time)/1000 * fps)
-#=============================================================================|
+# ============================================================================|
 def serialize_data(metadata:dict, features: np.ndarray) -> None:
     """Serialize the dictionary and feature matrix into JSON/NP
     
     @param: metadata = a python dictionary
     @param: features = a numpy array"""
-    with open(f"{metadata['guid']}.json",'w', encoding='utf8') as f:
+    with open(f"/output/{metadata['guid']}.{metadata['backbone_model']}.json",'w', encoding='utf8') as f:
         json.dump(metadata, f)
-    np.save(metadata["guid"], features)
+    np.save(f"/output/{metadata['guid']}.{metadata['backbone_model']}", features)
 
 # ============================================================================|
 def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
-    featurizer = FeatureExtractor()
+    featurizer = FeatureExtractor(args.model_name)
     print('extractor ready')
     feat_metadata, feat_matrix = featurizer.process_video(in_file, metadata_file)
     serialize_data(feat_metadata, feat_matrix)
@@ -171,5 +186,10 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--csv_file",
                         help="filepath for the csv containing timepoints + labels",
                         required=True)
+    parser.add_argument("-m", "--model_name",
+                        type=str,
+                        help="name of backbone model to use for feature extraction",
+                        choices=["resnet50","vgg"],
+                        default="vgg")
     clargs = parser.parse_args()
     main(clargs)
