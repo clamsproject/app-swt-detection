@@ -24,11 +24,12 @@ class FrameDetectionDataset(Dataset):
         image_name = self.table.iloc[index]['filename']
         image = read_image(str(self.images[image_name])).float()
         label = get_label(self.table.iloc[index]['type label'])
-        return (image, label)
+        return image, label
+    
     
 def get_label(label):
     slate = ["S"]
-    chyron = ["I","N","Y"]
+    chyron = ["I", "N", "Y"]
     credit = ["C"]
     if label in slate:
         return 0
@@ -39,10 +40,12 @@ def get_label(label):
     else:
         return 3
 
+
 def get_net():
     num_classes = 10
     net = d2l.resnet18(num_classes, 3)
     return net
+
 
 def build_dataset(directory):
     p = Path(directory)
@@ -56,13 +59,15 @@ def build_dataset(directory):
     table = table.loc[table['filename'].isin(image_names)]
     return FrameDetectionDataset(table, image_names)
 
+
 def train(dataset):
     train_loader = DataLoader(dataset, batch_size=4, shuffle=True)      
     train_size = len(dataset) 
-    class_names =  ['slate', 'chyron', 'credit', 'not-interested']                
+    class_names = ['slate', 'chyron', 'credit', 'not-interested']                
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_model(get_net(), train_loader, train_size, loss, device)
+
 
 def train_model(model, train_loader, train_size, criterion, device, num_epochs=25):
     since = time.time()
