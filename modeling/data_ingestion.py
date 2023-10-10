@@ -22,7 +22,8 @@ import csv
 import os
 import json
 import numpy as np
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Callable, Dict
+from collections import defaultdict
 
 from tqdm import tqdm
 
@@ -51,35 +52,48 @@ class AnnotatedImage:
         return guid, total, curr
     
 
+class ExtractorModel:
+    name: str
+    model: torch.nn.Module
+    preprocess: Callable
+
+
+class Vgg16Extractor(ExtractorModel):
+    def __init__(self):
+        self.name = "vgg16"
+        self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        self.model.classifier = self.model.classifier[:-1]
+        self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
+        
+        
+class Resnet50Extractor(ExtractorModel):
+    def __init__(self):
+        self.name = "resnet50"
+        self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+        self.model.fc = torch.nn.Identity()
+        self.preprocess = ResNet50_Weights.IMAGENET1K_V1.transforms()
+
+
 class FeatureExtractor:
     """Convert an annotated video set into a machine-readable format
     uses <model> as a backbone to featurize the annotated still images 
     into 4096-dim vectors.
     """
-    # model = torch.hub.load('pytorch/vision', 'vgg16', weights=VGG16_Weights.IMAGENET1K_V1)
-    def __init__(self, model_name: str):
-        self.modelname = model_name
+    models: List[ExtractorModel]
 
-        # VGG16
-        if model_name == "vgg":
-            self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-            # remove last layer
-            self.model.classifier = self.model.classifier[:-1]
-            self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
-
-        # Resnet50
+    def __init__(self, model_name: str = None):
+        if model_name is None:
+            self.models = [Vgg16Extractor(), Resnet50Extractor()]
+        elif model_name == "vgg16":
+            self.models = [Vgg16Extractor()]
         elif model_name == "resnet50":
-            self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-            # remove last layer
-            self.model.fc = torch.nn.Identity()
-            self.preprocess = ResNet50_Weights.IMAGENET1K_V1.transforms()
-        
+            self.models = [Resnet50Extractor()]
         else:
             raise ValueError("No valid model found")
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
-                      csv_path: Union[os.PathLike, str],) -> Tuple[dict, np.ndarray]:
+                      csv_path: Union[os.PathLike, str],) -> Tuple[Dict, Dict[str, np.ndarray]]:
         """Extract the features for every annotated timepoint in a video.
         
         @param: vid_path = filename of the video
@@ -87,39 +101,35 @@ class FeatureExtractor:
         @returns: A list of metadata dictionaries and associated feature matrix"""
         
         frame_metadata = {'frames': []}
-        frame_vecs = []
-        # get image stills
+        frame_vecs = defaultdict(list)
         print(f'processing video: {vid_path}')
         for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):
             if 'guid' not in frame_metadata:
                 frame_metadata['guid'] = frame.guid
             if 'duration' not in frame_metadata:
                 frame_metadata['duration'] = frame.total_time
-            if 'backbone_model' not in frame_metadata:
-                frame_metadata['backbone_model'] = self.modelname
         
-            #primary extraction Loop
-            frame_vecs.append(self.process_frame(frame.image))
+            for model in self.models:
+                frame_vecs[model.name].append(self.process_frame(frame.image, model))
             frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time"}
             frame_dict['vec_idx'] = i
             frame_metadata["frames"].append(frame_dict)
 
-        frame_matrix = np.vstack(frame_vecs)
-        return frame_metadata, frame_matrix
+        frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
+        return frame_metadata, frame_mats
 
-    def process_frame(self, frame_vec: np.ndarray) -> np.ndarray:
+    def process_frame(self, frame_vec: np.ndarray, model) -> np.ndarray:
         """Extract the features of a single frame.
         
         @param: frame = a frame as a numpy array
         @returns: a numpy array representing the frame as <model> features"""
-        frame_vec = self.preprocess(frame_vec)
+        frame_vec = model.preprocess(frame_vec)
         frame_vec = frame_vec.unsqueeze(0)
         if torch.cuda.is_available():
             frame_vec = frame_vec.to('cuda')
-            self.model.to('cuda')
+            model.model.to('cuda')
         with torch.no_grad():
-            feature_vec = self.model(frame_vec)
-        # print(feature_vec.shape)
+            feature_vec = model.model(frame_vec)
         return feature_vec.cpu().numpy()
 
     @staticmethod
@@ -142,7 +152,11 @@ class FeatureExtractor:
         fps = cap.get(cv2.CAP_PROP_FPS)
 
         # for each frame, move the VideoCapture and read @ frame
+        # i = 0
         for frame in frame_list:
+            # if i > 10:
+            #     break
+            # i += 1
             frame_id = get_framenum(frame, fps)
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
             ret, img = cap.read()
@@ -157,23 +171,20 @@ def get_framenum(frame: AnnotatedImage, fps: float) -> int:
     return int(int(frame.curr_time)/1000 * fps)
 
 
-def serialize_data(metadata:dict, features: np.ndarray) -> None:
-    """Serialize the dictionary and feature matrix into JSON/NP
-    
-    @param: metadata = a python dictionary
-    @param: features = a numpy array"""
-    with open(f"/output/{metadata['guid']}.{metadata['backbone_model']}.json",'w', encoding='utf8') as f:
-        json.dump(metadata, f)
-    np.save(f"/output/{metadata['guid']}.{metadata['backbone_model']}", features)
-
-
 def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
     featurizer = FeatureExtractor(args.model_name)
     print('extractor ready')
-    feat_metadata, feat_matrix = featurizer.process_video(in_file, metadata_file)
-    serialize_data(feat_metadata, feat_matrix)
+    feat_metadata, feat_mats = featurizer.process_video(in_file, metadata_file)
+    print('extraction complete')
+    
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir, exist_ok=True)
+    with open(f"{args.outdir}/{feat_metadata['guid']}.json", 'w', encoding='utf8') as f:
+        json.dump(feat_metadata, f)
+    for name, vectors in feat_mats.items():
+        np.save(f"{args.outdir}/{feat_metadata['guid']}.{name}", vectors)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -186,7 +197,10 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name",
                         type=str,
                         help="name of backbone model to use for feature extraction",
-                        choices=["resnet50","vgg"],
-                        default="vgg")
+                        choices=["resnet50", "vgg16"],
+                        default=None)
+    parser.add_argument("-o", "--outdir",
+                        help="directory to save output files",
+                        default="vectorized")
     clargs = parser.parse_args()
     main(clargs)
