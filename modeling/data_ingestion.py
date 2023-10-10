@@ -17,8 +17,6 @@ OUTPUT:
     - subtype label
 """
 
-# ============================================================================|
-# Imports
 import argparse
 import csv
 import os
@@ -35,7 +33,6 @@ import cv2
 from PIL import Image
 
 
-# ============================================================================|
 class AnnotatedImage:
     """Object representing a single frame and its metadata"""
     def __init__(self, filename: str, label: str, subtype_label: str):
@@ -53,7 +50,6 @@ class AnnotatedImage:
         curr = curr[:-4]
         return guid, total, curr
     
-# ============================================================================|
 
 class FeatureExtractor:
     """Convert an annotated video set into a machine-readable format
@@ -92,7 +88,7 @@ class FeatureExtractor:
         
         frame_metadata = {'frames': []}
         frame_vecs = []
-        #get image stills
+        # get image stills
         print(f'processing video: {vid_path}')
         for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):
             if 'guid' not in frame_metadata:
@@ -110,7 +106,6 @@ class FeatureExtractor:
 
         frame_matrix = np.vstack(frame_vecs)
         return frame_metadata, frame_matrix
-
 
     def process_frame(self, frame_vec: np.ndarray) -> np.ndarray:
         """Extract the features of a single frame.
@@ -146,7 +141,7 @@ class FeatureExtractor:
         cap = cv2.VideoCapture(vid_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
 
-        #for each frame, move the VideoCapture and read @ frame
+        # for each frame, move the VideoCapture and read @ frame
         for frame in frame_list:
             frame_id = get_framenum(frame, fps)
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
@@ -155,11 +150,13 @@ class FeatureExtractor:
                 frame.image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
             yield frame
 
+
 def get_framenum(frame: AnnotatedImage, fps: float) -> int:
     """Returns the frame number of the given FrameOfInterest
     (converts from ms to frame#)"""
     return int(int(frame.curr_time)/1000 * fps)
-# ============================================================================|
+
+
 def serialize_data(metadata:dict, features: np.ndarray) -> None:
     """Serialize the dictionary and feature matrix into JSON/NP
     
@@ -169,7 +166,7 @@ def serialize_data(metadata:dict, features: np.ndarray) -> None:
         json.dump(metadata, f)
     np.save(f"/output/{metadata['guid']}.{metadata['backbone_model']}", features)
 
-# ============================================================================|
+
 def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
@@ -181,7 +178,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i","--input_file",
-                        help ="filepath for the video to be featurized",
+                        help="filepath for the video to be featurized",
                         required=True)
     parser.add_argument("-c", "--csv_file",
                         help="filepath for the csv containing timepoints + labels",
