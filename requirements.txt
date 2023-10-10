@@ -1,4 +1,5 @@
 torch==2.*
 torchvision
+torchmetrics
 opencv-python
 tqdm
