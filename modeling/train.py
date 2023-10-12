@@ -1,34 +1,44 @@
+from tqdm import tqdm
+import argparse
+import json
+import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from torchmetrics import functional as metrics
+
+import numpy as np
 import torch
 import torch.nn as nn
-from torchvision.io import read_image
 from torch.utils.data import Dataset, DataLoader
-import pandas as pd
-from pathlib import Path
-import argparse
-from d2l import torch as d2l
-import time
-from tempfile import TemporaryDirectory
 
 
-class FrameDetectionDataset(Dataset):
-    def __init__(self, table, images):
-        self.table = table
-        self.images = images
+class SWTDataset(Dataset):
+    def __init__(self, in_dir, feature_model, allow_guids=[], block_guids=[]):
+        self.feat_dim = 4096 if feature_model == 'vgg16' else 2048  # for now, there are only two models
+        self.labels = []
+        self.vectors = []
+        if not allow_guids:
+            # TODO (krim @ 10/10/23): implement whitelisting
+            for j in Path(in_dir).glob('*.json'):
+                guid = j.with_suffix("").name
+                if guid not in block_guids:
+                    feature_vecs = np.load(Path(in_dir) / f"{guid}.{feature_model}.npy")
+                    labels = json.load(open(Path(in_dir) / f"{guid}.json"))
+                    for i, vec in enumerate(feature_vecs):
+                        l = int_encode(labels['frames'][i]['label'])
+                        self.labels.append(int_encode(labels['frames'][i]['label']))
+                        self.vectors.append(torch.from_numpy(vec))
 
     def __len__(self):
-        return len(self.table)
+        return len(self.labels)
     
-    def __getitem__(self, index):
-        if torch.is_tensor(index):
-            index = index.tolist()
-        image_name = self.table.iloc[index]['filename']
-        image = read_image(str(self.images[image_name])).float()
-        label = get_label(self.table.iloc[index]['type label'])
-        return (image, label)
+    def __getitem__(self, i):
+        return self.vectors[i], self.labels[i]
     
-def get_label(label):
+    
+def int_encode(label):
     slate = ["S"]
-    chyron = ["I","N","Y"]
+    chyron = ["I", "N", "Y"]
     credit = ["C"]
     if label in slate:
         return 0
@@ -39,84 +49,85 @@ def get_label(label):
     else:
         return 3
 
-def get_net():
-    num_classes = 10
-    net = d2l.resnet18(num_classes, 3)
-    return net
 
-def build_dataset(directory):
-    p = Path(directory)
-    csvs = list(p.glob('**/*.csv'))
-    images = list(p.glob('**/*.jpg'))
-    image_names = {image.name:image for image in images}
-    tables = []
-    for csv in csvs:
-        tables.append(pd.read_csv(csv))
-    table = pd.concat(tables)
-    table = table.loc[table['filename'].isin(image_names)]
-    return FrameDetectionDataset(table, image_names)
+def get_net(dim=4096):
+    return nn.Sequential(
+        nn.Linear(dim, 128),
+        nn.ReLU(),
+        nn.Linear(128, 4),
+        # nn.Softmax(dim=1)
+    )
+
 
 def train(dataset):
-    train_loader = DataLoader(dataset, batch_size=4, shuffle=True)      
-    train_size = len(dataset) 
-    class_names =  ['slate', 'chyron', 'credit', 'not-interested']                
+    train, valid = torch.utils.data.random_split(dataset, [0.8, 0.2])
+    train_loader = DataLoader(train, batch_size=40, shuffle=True)
+    valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
+    print(len(train), len(valid))
     loss = nn.CrossEntropyLoss(reduction="none")
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    train_model(get_net(), train_loader, train_size, loss, device)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    train_model(get_net(dataset.feat_dim), train_loader, valid_loader, loss, device)
 
-def train_model(model, train_loader, train_size, criterion, device, num_epochs=25):
+
+def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=25):
     since = time.time()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
     with TemporaryDirectory() as tempdir:
         best_model_params_path = Path(tempdir) / 'best_model_params.pt'
 
         torch.save(model.state_dict(), best_model_params_path)
-        best_acc = 0.0
 
-        for epoch in range(num_epochs):
-            print(f'Epoch {epoch}/{num_epochs - 1}')
-            print('-' * 10)
+        for num_epoch in tqdm(range(num_epochs)):
+            # print(f'Epoch {epoch}/{num_epochs - 1}')
+            # print('-' * 10)
 
             running_loss = 0.0
-            running_corrects = 0
 
-            for inputs, labels in train_loader:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+            for num_batch, (feats, labels) in enumerate(train_loader):
+                feats.to(device)
+                labels.to(device)
 
                 with torch.set_grad_enabled(True):
-                        outputs = model(inputs)
-                        _, preds = torch.max(outputs, 1)
-                        loss = criterion(outputs, labels)
-                        loss.sum().backward()
+                    optimizer.zero_grad()
+                    outputs = model(feats)
+                    _, preds = torch.max(outputs, 1)
+                    loss = loss_fn(outputs, labels)
+                    loss.sum().backward()
+                    optimizer.step()
+                    
+                running_loss += loss.sum().item() * feats.size(0)
+                if num_batch % 100 == 0:
+                    print(f'Batch {num_batch} of {len(train_loader)}')
+                    print(f'Loss: {loss.sum().item():.4f}')
 
-                running_loss += loss.sum().item() * inputs.size(0)
-                print(preds)
-                print(labels.data)
-                running_corrects += torch.sum(preds == labels.data)
+            epoch_loss = running_loss / len(train_loader)
+            for vfeats, vlabels in valid_loader:
+                outputs = model(vfeats)
+                _, preds = torch.max(outputs, 1)
+            p = metrics.precision(preds, vlabels, 'multiclass', num_classes=4, average='macro')
+            r = metrics.recall(preds, vlabels, 'multiclass', num_classes=4, average='macro')
+            f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=4, average='macro')
+            m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=4)
 
-                epoch_loss = running_loss / train_size
-                epoch_acc = running_corrects.double() / train_size
-
-                print(f'Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
-
-                
-
-            print()
-
+            print(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
+            print(f'Precision: {p:.4f} after {num_epoch+1} epochs')
+            print(f'Recall: {r:.4f} after {num_epoch+1} epochs')
+            print(f'F-1: {f:.4f} after {num_epoch+1} epochs')
+            print(m)
+            print("slate, chyron, credit, none")
+            
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-        print(f'Best val Acc: {best_acc:4f}')
 
         model.load_state_dict(torch.load(best_model_params_path))
     return model
 
-                                                           
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("root_directory", help="root directory containing the images to train on")
-    args = parser.parse_args()
-    dataset = build_dataset(args.root_directory)
-    train(dataset)
 
-main()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
+    parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
+    args = parser.parse_args()
+    dataset = SWTDataset(args.indir, args.featuremodel)
+    train(dataset)
