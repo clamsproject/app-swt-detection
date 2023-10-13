@@ -158,7 +158,8 @@ def export_data(predictions, labels, fname, model_name="vgg16"):
                                 "F1-Score": binary_f1(pred_labels, true_labels).item()}
         
     with open(fname, 'a', encoding='utf8') as f:
-        writer = csv.DictWriter(f, fieldnames=["Model_Name", "Label", "Accuracy", "Precision", "Recall", "F1-Score"]) 
+        writer = csv.DictWriter(f, fieldnames=["Model_Name", "Label", "Accuracy", "Precision", "Recall", "F1-Score"])
+        writer.writeheader()
         for label, metrics in label_metrics.items():
             writer.writerow(metrics)
 
