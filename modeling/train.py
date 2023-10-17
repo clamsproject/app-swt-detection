@@ -21,6 +21,7 @@ feat_dims = {
     'resnet50': 2048,
 }
 
+
 class SWTDataset(Dataset):
     def __init__(self, feature_model, labels, vectors, allow_guids=[]):
         self.feature_model = feature_model
@@ -59,11 +60,12 @@ def int_encode(label):
         return 3
 
 
-def get_net(dim=4096):
+def get_net(in_dim):
     return nn.Sequential(
-        nn.Linear(dim, 128),
+        nn.Linear(in_dim, 128),
         nn.ReLU(),
         nn.Linear(128, 4),
+        # no softmax here since we're using CE loss which includes it
         # nn.Softmax(dim=1)
     )
 
@@ -94,6 +96,7 @@ def split_dataset(indir, validation_guids, feature_model):
 
 def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
     guids = get_guids(indir, blacklist)
+    val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
@@ -107,29 +110,31 @@ def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f'training on {len(guids) - len(validation_guids)} videos, validating on {validation_guids}')
         model, p, r, f = train_model(get_net(train.feat_dim), train_loader, valid_loader, loss, device)
+        val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
-    print_scores(p_scores, r_scores, f_scores)
+    print_scores(val_set_spec, p_scores, r_scores, f_scores)
     
 
-def print_scores(p_scores, r_scores, f_scores):
-    max = f_scores.index(max(f_scores))
-    min = f_scores.index(min(f_scores))
-    print("Highest p/r/f is")
-    print(f'\tprecision = {p_scores[max]}')
-    print(f'\trecall = {r_scores[max]}')
-    print(f'\tf-1 = {f_scores[max]}')
-    print("Lowest p/r/f is")
-    print(f'\tprecision = {p_scores[max]}')
-    print(f'\trecall = {r_scores[max]}')
-    print(f'\tf-1 = {f_scores[max]}')
-    print("Mean p/r/f is")
+def print_scores(trial_specs, p_scores, r_scores, f_scores):
+    max_f1_idx = f_scores.index(max(f_scores))
+    min_f1_idx = f_scores.index(min(f_scores))
+    print(f"Highest f1 @ {trial_specs[max_f1_idx]}")
+    print(f'\tf-1 = {f_scores[max_f1_idx]}')
+    print(f'\tprecision = {p_scores[max_f1_idx]}')
+    print(f'\trecall = {r_scores[max_f1_idx]}')
+    print(f"Lowest f1 @ {trial_specs[min_f1_idx]}")
+    print(f'\tf-1 = {f_scores[min_f1_idx]}')
+    print(f'\tprecision = {p_scores[min_f1_idx]}')
+    print(f'\trecall = {r_scores[min_f1_idx]}')
+    print("Mean performance")
+    print(f'\tf-1 = {sum(f_scores)/len(f_scores)}')
     print(f'\tprecision = {sum(p_scores)/len(p_scores)}')
     print(f'\trecall = {sum(r_scores)/len(r_scores)}')
-    print(f'\tf-1 = {sum(f_scores)/len(f_scores)}')
 
-def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=25):
+
+def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=2):
     since = time.time()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -179,11 +184,12 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=2
         export = True #TODO: deancahill 10/11/23 put this var in the run configuration
         if export:
             print("Exporting Data")
-            export_data(predictions=preds, labels=vlabels, fname="results/oct11_results.csv", model_name=train_loader.dataset.dataset.feature_model)
+            export_data(predictions=preds, labels=vlabels, fname="results/oct11_results.csv", model_name=train_loader.dataset.feature_model)
                 
         model.load_state_dict(torch.load(best_model_params_path))
         print()
     return model, p, r, f
+
 
 def export_data(predictions, labels, fname, model_name="vgg16"):
     """Exports the data into a human readable format.
@@ -218,8 +224,6 @@ def export_data(predictions, labels, fname, model_name="vgg16"):
             writer.writerow(metrics)
 
 
-            
-            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
@@ -228,4 +232,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     args.allow_guids = []
     args.block_guids = []
-    k_fold_train(args.indir, args.k_fold, args.featuremodel, args.allow_guids, args.block_guids)
+    k_fold_train(args.indir, int(args.k_fold), args.featuremodel, args.allow_guids, args.block_guids)
