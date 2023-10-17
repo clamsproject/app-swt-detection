@@ -12,12 +12,17 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 
+feat_dims = {
+    'vgg16': 4096,
+    'resnet50': 2048,
+}
+
 class SWTDataset(Dataset):
-    def __init__(self, feat_dim, labels, vectors, allow_guids=[]):
-        self.feat_dim = feat_dim 
+    def __init__(self, feature_model, labels, vectors, allow_guids=[]):
+        self.feature_model = feature_model
+        self.feat_dim = feat_dims[feature_model]
         self.labels = labels
         self.vectors = vectors
-        # TODO (krim @ 10/10/23): implement whitelisting
 
     def __len__(self):
         return len(self.labels)
@@ -27,6 +32,7 @@ class SWTDataset(Dataset):
 
 
 def get_guids(dir, block_guids=[]):
+    # TODO (krim @ 10/10/23): implement whitelisting
     guids = []
     for j in Path(dir).glob('*.json'):
         guid = j.with_suffix("").name
@@ -58,8 +64,7 @@ def get_net(dim=4096):
     )
 
 
-def split_dataset(indir, valid_guid, feature_model):
-    feat_dim = 4096 if feature_model == 'vgg16' else 2048  # for now, there are only two models
+def split_dataset(indir, validation_guids, feature_model):
     train_vectors = []
     train_labels = []
     valid_vectors = []
@@ -68,7 +73,7 @@ def split_dataset(indir, valid_guid, feature_model):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{feature_model}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
-        if guid == valid_guid:
+        if guid in validation_guids:
             for i, vec in enumerate(feature_vecs):
                 l = int_encode(labels['frames'][i]['label'])
                 valid_labels.append(int_encode(labels['frames'][i]['label']))
@@ -78,25 +83,26 @@ def split_dataset(indir, valid_guid, feature_model):
                 l = int_encode(labels['frames'][i]['label'])
                 train_labels.append(int_encode(labels['frames'][i]['label']))
                 train_vectors.append(torch.from_numpy(vec))
-    train = SWTDataset(feat_dim, train_labels, train_vectors)
-    valid = SWTDataset(feat_dim, valid_labels, valid_vectors)
+    train = SWTDataset(feature_model, train_labels, train_vectors)
+    valid = SWTDataset(feature_model, valid_labels, valid_vectors)
     return train, valid
 
 
-def train(indir, k_fold, featuremodel):
-    guids = get_guids(indir)
+def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
+    guids = get_guids(indir, blacklist)
     p_scores = []
     r_scores = []
     f_scores = []
     for i in range(k_fold):
-        valid_guid = guids[i]
-        train, valid = split_dataset(indir, valid_guid, featuremodel)
+        validation_guids = {guids[i]}
+        train, valid = split_dataset(indir, validation_guids, feature_model)
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
         print(len(train), len(valid))
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model, p, r, f = train_model(get_net(train.feat_dim), train_loader, valid_loader, loss, device, valid_guid)
+        print(f'training on {len(guids) - len(validation_guids)} videos, validating on {validation_guids}')
+        model, p, r, f = train_model(get_net(train.feat_dim), train_loader, valid_loader, loss, device)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
@@ -120,9 +126,7 @@ def print_scores(p_scores, r_scores, f_scores):
     print(f'\tf-1 = {sum(f_scores)/len(f_scores)}')
 
 
-def train_model(model, train_loader, valid_loader, loss_fn, device, valid_guid, num_epochs=25):
-    print(f'Using the guid {valid_guid} to evaluate')
-
+def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=25):
     since = time.time()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -181,4 +185,6 @@ if __name__ == "__main__":
     parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
     parser.add_argument("k_fold", help="the number of distinct dev sets to evaluate on", default=10)
     args = parser.parse_args()
-    train(args.indir, args.k_fold, args.featuremodel)
+    args.allow_guids = []
+    args.block_guids = []
+    k_fold_train(args.indir, args.k_fold, args.featuremodel, args.allow_guids, args.block_guids)
