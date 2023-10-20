@@ -21,6 +21,8 @@ import argparse
 import csv
 import os
 import json
+
+import av
 import numpy as np
 from typing import List, Union, Tuple, Callable, Dict
 from collections import defaultdict
@@ -30,8 +32,6 @@ from tqdm import tqdm
 import torch
 from torchvision.models import vgg16, VGG16_Weights
 from torchvision.models import resnet50, ResNet50_Weights
-import cv2
-from PIL import Image
 
 
 class AnnotatedImage:
@@ -39,6 +39,8 @@ class AnnotatedImage:
     def __init__(self, filename: str, label: str, subtype_label: str):
         self.image = None
         self.guid, self.total_time, self.curr_time = self.split_name(filename)
+        self.total_time = int(self.total_time)
+        self.curr_time = int(self.curr_time)
         self.label = label
         self.subtype_label = subtype_label
 
@@ -148,21 +150,27 @@ class FeatureExtractor:
                                          label=row[2],
                                          subtype_label=row[3]) for row in reader]
 
-        cap = cv2.VideoCapture(vid_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-
-        # for each frame, move the VideoCapture and read @ frame
-        # i = 0
-        for frame in frame_list:
-            # if i > 10:
-            #     break
-            # i += 1
-            frame_id = get_framenum(frame, fps)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-            ret, img = cap.read()
-            if ret:
-                frame.image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            yield frame
+        # this part is doing the same thing as the get_stills function in getstills.py
+        # (copied from https://github.com/WGBH-MLA/keystrokelabeler/blob/df4d2bc936fa3a73cdf3004803a0c35c290caf93/getstills.py#L36 )
+        
+        container = av.open(vid_path)
+        video_stream = next((s for s in container.streams if s.type == 'video'), None)
+        if video_stream is None:
+            raise Exception("No video stream found in {}".format(vfilename))
+        fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
+        cur_target_frame = 0
+        fcount = 0 
+        for frame in container.decode(video=0):
+            # if fcount % 10000 == 0:
+            #     print(f'processing frame {fcount}')
+            if cur_target_frame == len(frame_list):
+                break
+            ftime = int((fcount / fps) * 1000)
+            if ftime == frame_list[cur_target_frame].curr_time:
+                frame_list[cur_target_frame].image = frame.to_image()
+                yield frame_list[cur_target_frame]
+                cur_target_frame += 1
+            fcount += 1
 
 
 def get_framenum(frame: AnnotatedImage, fps: float) -> int:
