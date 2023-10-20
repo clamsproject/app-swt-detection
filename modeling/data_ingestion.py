@@ -26,12 +26,11 @@ import av
 import numpy as np
 from typing import List, Union, Tuple, Callable, Dict
 from collections import defaultdict
+import backbones
 
 from tqdm import tqdm
 
 import torch
-from torchvision.models import vgg16, VGG16_Weights
-from torchvision.models import resnet50, ResNet50_Weights
 
 
 class AnnotatedImage:
@@ -52,28 +51,6 @@ class AnnotatedImage:
         guid, total, curr = filename.split("_")
         curr = curr[:-4]
         return guid, total, curr
-    
-
-class ExtractorModel:
-    name: str
-    model: torch.nn.Module
-    preprocess: Callable
-
-
-class Vgg16Extractor(ExtractorModel):
-    def __init__(self):
-        self.name = "vgg16"
-        self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.model.classifier = self.model.classifier[:-1]
-        self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
-        
-        
-class Resnet50Extractor(ExtractorModel):
-    def __init__(self):
-        self.name = "resnet50"
-        self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        self.model.fc = torch.nn.Identity()
-        self.preprocess = ResNet50_Weights.IMAGENET1K_V1.transforms()
 
 
 class FeatureExtractor:
@@ -85,13 +62,12 @@ class FeatureExtractor:
 
     def __init__(self, model_name: str = None):
         if model_name is None:
-            self.models = [Vgg16Extractor(), Resnet50Extractor()]
-        elif model_name == "vgg16":
-            self.models = [Vgg16Extractor()]
-        elif model_name == "resnet50":
-            self.models = [Resnet50Extractor()]
+            self.models = [model() for model in backbones.model_map.values()]
         else:
-            raise ValueError("No valid model found")
+            if model_name in backbones.model_map:
+                self.models = [backbones.model_map[model_name]()]
+            else:
+                raise ValueError("No valid model found")
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
