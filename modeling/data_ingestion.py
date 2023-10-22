@@ -58,7 +58,7 @@ class FeatureExtractor:
     uses <model> as a backbone to featurize the annotated still images 
     into 4096-dim vectors.
     """
-    models: List[ExtractorModel]
+    models: List[backbones.ExtractorModel]
 
     def __init__(self, model_name: str = None):
         if model_name is None:
@@ -68,6 +68,7 @@ class FeatureExtractor:
                 self.models = [backbones.model_map[model_name]()]
             else:
                 raise ValueError("No valid model found")
+        print(f'using model(s): {[model.name for model in self.models]}')
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
