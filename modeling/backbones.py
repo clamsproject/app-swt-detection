@@ -239,3 +239,10 @@ class BN_VGG19Extractor(ExtractorModel):
 # ===========================================================================|
 
 model_map = {model.name: model for model in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
+
+if __name__ == "__main__":
+    import numpy as np
+    dummy_guid = 'cpb-aacip-fe9efa663c6'
+    for name in model_map.keys():
+        print(f'"{name}":', np.load(f'vectorized/{dummy_guid}.{name}.npy').shape[-1], ',')
+        

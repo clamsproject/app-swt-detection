@@ -1,24 +1,36 @@
-from tqdm import tqdm
 import argparse
 import csv
 import json
 import time
+from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from torchmetrics import functional as metrics
-from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
-from collections import defaultdict, Counter
-
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-
+from torchmetrics import functional as metrics
+from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
+from tqdm import tqdm
 
 feat_dims = {
-    'vgg16': 4096,
-    'resnet50': 2048,
+    "convnext_base": 1024,
+    "convnext_tiny": 768,
+    "convnext_small": 768,
+    "convnext_lg": 1536,
+    "densenet121": 1024,
+    "efficientnet_small": 1280,
+    "efficientnet_med": 1280,
+    "efficientnet_large": 1280,
+    "resnet18": 512,
+    "resnet50": 2048,
+    "resnet101": 2048,
+    "resnet152": 2048,
+    "vgg16": 4096,
+    "bn_vgg16": 4096,
+    "vgg19": 4096,
+    "bn_vgg19": 4096,
 }
 
 
@@ -31,7 +43,7 @@ class SWTDataset(Dataset):
 
     def __len__(self):
         return len(self.labels)
-    
+
     def __getitem__(self, i):
         return self.vectors[i], self.labels[i]
 
@@ -75,20 +87,24 @@ def split_dataset(indir, validation_guids, feature_model):
     train_labels = []
     valid_vectors = []
     valid_labels = []
+    train_vnum = train_vimg = valid_vnum = valid_vimg = 0
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{feature_model}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         if guid in validation_guids:
+            valid_vnum += 1
             for i, vec in enumerate(feature_vecs):
-                l = int_encode(labels['frames'][i]['label'])
+                valid_vimg += 1
                 valid_labels.append(int_encode(labels['frames'][i]['label']))
-                valid_vectors.append(torch.from_numpy(vec))   
+                valid_vectors.append(torch.from_numpy(vec))
         else:
-             for i, vec in enumerate(feature_vecs):
-                l = int_encode(labels['frames'][i]['label'])
+            train_vnum += 1
+            for i, vec in enumerate(feature_vecs):
+                train_vimg += 1
                 train_labels.append(int_encode(labels['frames'][i]['label']))
                 train_vectors.append(torch.from_numpy(vec))
+    print(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
     train = SWTDataset(feature_model, train_labels, train_vectors)
     valid = SWTDataset(feature_model, valid_labels, valid_vectors)
     return train, valid
@@ -115,7 +131,7 @@ def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
         r_scores.append(r)
         f_scores.append(f)
     print_scores(val_set_spec, p_scores, r_scores, f_scores)
-    
+
 
 def print_scores(trial_specs, p_scores, r_scores, f_scores):
     max_f1_idx = f_scores.index(max(f_scores))
@@ -129,9 +145,9 @@ def print_scores(trial_specs, p_scores, r_scores, f_scores):
     print(f'\tprecision = {p_scores[min_f1_idx]}')
     print(f'\trecall = {r_scores[min_f1_idx]}')
     print("Mean performance")
-    print(f'\tf-1 = {sum(f_scores)/len(f_scores)}')
-    print(f'\tprecision = {sum(p_scores)/len(p_scores)}')
-    print(f'\trecall = {sum(r_scores)/len(r_scores)}')
+    print(f'\tf-1 = {sum(f_scores) / len(f_scores)}')
+    print(f'\tprecision = {sum(p_scores) / len(p_scores)}')
+    print(f'\trecall = {sum(r_scores) / len(r_scores)}')
 
 
 def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=2):
@@ -160,7 +176,7 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=2
                     loss = loss_fn(outputs, labels)
                     loss.sum().backward()
                     optimizer.step()
-                    
+
                 running_loss += loss.sum().item() * feats.size(0)
                 if num_batch % 100 == 0:
                     print(f'Batch {num_batch} of {len(train_loader)}')
@@ -175,17 +191,18 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, num_epochs=2
             f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=4, average='macro')
             m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=4)
 
-            print(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
+            print(f'Loss: {epoch_loss:.4f} after {num_epoch + 1} epochs')
             print(m)
             print("slate, chyron, credit, none")
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
-        export = True #TODO: deancahill 10/11/23 put this var in the run configuration
+        export = True  # TODO: deancahill 10/11/23 put this var in the run configuration
         if export:
             print("Exporting Data")
-            export_data(predictions=preds, labels=vlabels, fname="results/oct11_results.csv", model_name=train_loader.dataset.feature_model)
-                
+            export_data(predictions=preds, labels=vlabels, fname="results/oct11_results.csv",
+                        model_name=train_loader.dataset.feature_model)
+
         model.load_state_dict(torch.load(best_model_params_path))
         print()
     return model, p, r, f
@@ -200,9 +217,9 @@ def export_data(predictions, labels, fname, model_name="vgg16"):
 
     @return: class-based accuracy metrics for each label, organized into a csv.
     """
-    
+
     label_metrics = defaultdict(dict)
-    
+
     for i, label in enumerate(["slate", "chyron", "credit", "none"]):
         pred_labels = torch.where(predictions == i, 1, 0)
         true_labels = torch.where(labels == i, 1, 0)
@@ -216,7 +233,7 @@ def export_data(predictions, labels, fname, model_name="vgg16"):
                                 "Precision": binary_prec(pred_labels, true_labels).item(),
                                 "Recall": binary_recall(pred_labels, true_labels).item(),
                                 "F1-Score": binary_f1(pred_labels, true_labels).item()}
-        
+
     with open(fname, 'a', encoding='utf8') as f:
         writer = csv.DictWriter(f, fieldnames=["Model_Name", "Label", "Accuracy", "Precision", "Recall", "F1-Score"])
         writer.writeheader()
@@ -227,7 +244,8 @@ def export_data(predictions, labels, fname, model_name="vgg16"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
+    parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'],
+                        default='vgg16')
     parser.add_argument("k_fold", help="the number of distinct dev sets to evaluate on", default=10)
     args = parser.parse_args()
     args.allow_guids = []
