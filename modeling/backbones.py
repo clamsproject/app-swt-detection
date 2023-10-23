@@ -20,11 +20,11 @@ from torchvision.models import efficientnet_v2_m, EfficientNet_V2_M_Weights  # E
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights  # EfficientNetV2 S
 # Inceptionv3
 from torchvision.models import inception_v3, Inception_V3_Weights  # Inception v3
-from torchvision.models import resnet101, ResNet101_Weights  # Resnet 101
-from torchvision.models import resnet152, ResNet152_Weights  # Resnet 152
 # ResNet Models
 from torchvision.models import resnet18, ResNet18_Weights  # Resnet 18
 from torchvision.models import resnet50, ResNet50_Weights  # Resnet 50
+from torchvision.models import resnet101, ResNet101_Weights  # Resnet 101
+from torchvision.models import resnet152, ResNet152_Weights  # Resnet 152
 # VGG Models
 from torchvision.models import vgg16, VGG16_Weights  # VGG16
 from torchvision.models import vgg16_bn, VGG16_BN_Weights  # VGG16 (Batch Normalized)
@@ -238,4 +238,4 @@ class BN_VGG19Extractor(ExtractorModel):
 
 # ===========================================================================|
 
-model_map = {model.name: model for model in sys.modules[__name__].ExtractorModel.__subclasses__()}
+model_map = {model.name: model for model in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
