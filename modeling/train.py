@@ -81,12 +81,10 @@ def split_dataset(indir, validation_guids, feature_model):
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         if guid in validation_guids:
             for i, vec in enumerate(feature_vecs):
-                l = int_encode(labels['frames'][i]['label'])
                 valid_labels.append(int_encode(labels['frames'][i]['label']))
                 valid_vectors.append(torch.from_numpy(vec))   
         else:
              for i, vec in enumerate(feature_vecs):
-                l = int_encode(labels['frames'][i]['label'])
                 train_labels.append(int_encode(labels['frames'][i]['label']))
                 train_vectors.append(torch.from_numpy(vec))
     train = SWTDataset(feature_model, train_labels, train_vectors)
@@ -96,12 +94,13 @@ def split_dataset(indir, validation_guids, feature_model):
 
 def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
     guids = get_guids(indir, blacklist)
+    len_val = len(guids) // k_fold
     val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
-    for i in range(k_fold):
-        validation_guids = {guids[i]}
+    for i in range(0, k_fold):
+        validation_guids = guids[i*len_val:(i+1)*len_val]
         train, valid = split_dataset(indir, validation_guids, feature_model)
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
