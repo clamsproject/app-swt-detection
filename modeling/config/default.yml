@@ -1,0 +1,10 @@
+bins:
+  pre:
+    slate:
+      - "S"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
