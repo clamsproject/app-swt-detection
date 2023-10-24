@@ -22,6 +22,10 @@ feat_dims = {
     'resnet50': 2048,
 }
 
+# full typology from https://github.com/clamsproject/app-swt-detection/issues/1
+FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
+               "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
+
 
 class SWTDataset(Dataset):
     def __init__(self, feature_model, labels, vectors, allow_guids=[]):
@@ -46,6 +50,7 @@ def get_guids(dir, block_guids=[]):
             guids.append(guid)
     return guids
 
+
 def pre_bin(label, specs):
     if specs is None or "pre" not in specs["bins"]:
         return int_encode(label)
@@ -63,16 +68,14 @@ def post_bin(label, specs):
         return label
     # If there was no pre-binning, use default int encoding
     if type(label) != str and "pre" not in specs["bins"]:
-        frame_types = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O", 
-                       "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
-        if label >= len(frame_types):
-            return len(frame_types)
-        label_name = frame_types[label]
+        if label >= len(FRAME_TYPES):
+            return len(FRAME_TYPES)
+        label_name = FRAME_TYPES[label]
     # Otherwise, get label name from pre-binning
     else:
         pre_bins = specs["bins"]["pre"].keys()
         if label >= len(pre_bins):
-            return len(specs["bins"]["post"].keys())
+            return len(pre_bins)
         label_name = list(pre_bins)[label]
     
     for i, post_bin in enumerate(specs["bins"]["post"].values()):
@@ -93,14 +96,12 @@ def load_config(config):
                 
 
 def int_encode(label):
-    if type(label) != str:
+    if not isinstance(label, str):
         return label
-    frame_types = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O", 
-                   "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
-    if label in frame_types:
-        return frame_types.index(label)
+    if label in FRAME_TYPES:
+        return FRAME_TYPES.index(label)
     else:
-        return len(frame_types)
+        return len(FRAME_TYPES)
 
 
 def get_net(in_dim, n_classes):
@@ -124,13 +125,11 @@ def split_dataset(indir, validation_guids, feature_model, bins):
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         if guid in validation_guids:
             for i, vec in enumerate(feature_vecs):
-                l = pre_bin(labels['frames'][i]['label'], bins)
-                valid_labels.append(l)
+                valid_labels.append(pre_bin(labels['frames'][i]['label'], bins))
                 valid_vectors.append(torch.from_numpy(vec))   
         else:
-             for i, vec in enumerate(feature_vecs):
-                l = pre_bin(labels['frames'][i]['label'], bins)
-                train_labels.append(l)
+            for i, vec in enumerate(feature_vecs):
+                train_labels.append(pre_bin(labels['frames'][i]['label'], bins))
                 train_vectors.append(torch.from_numpy(vec))
     train = SWTDataset(feature_model, train_labels, train_vectors)
     valid = SWTDataset(feature_model, valid_labels, valid_vectors)
@@ -179,14 +178,12 @@ def print_scores(trial_specs, p_scores, r_scores, f_scores):
 
 
 def get_valid_classes(config):
-    if config is None:
-        frame_types = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O", 
-                       "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R", "none"]
-        return frame_types
-    if "post" in config["bins"]:
-        return list(config["bins"]["post"].keys()) + ["none"]
-    elif "pre" in config["bins"]:
-        return list(config["bins"]["pre"].keys()) + ["none"]
+    base = FRAME_TYPES
+    if config and "post" in config["bins"]:
+        base = list(config["bins"]["post"].keys())
+    elif config and "pre" in config["bins"]:
+        base = list(config["bins"]["pre"].keys()) 
+    return base + ["none"]
     
 
 def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_valid_classes, num_epochs=2):
@@ -236,8 +233,6 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
             valid_classes = get_valid_classes(bins)
 
             print(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
-            print(m)
-            print(", ".join(valid_classes))
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
