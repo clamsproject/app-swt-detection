@@ -35,13 +35,14 @@ import torch
 
 class AnnotatedImage:
     """Object representing a single frame and its metadata"""
-    def __init__(self, filename: str, label: str, subtype_label: str):
+    def __init__(self, filename: str, label: str, subtype_label: str, mod: bool = False):
         self.image = None
         self.guid, self.total_time, self.curr_time = self.split_name(filename)
         self.total_time = int(self.total_time)
         self.curr_time = int(self.curr_time)
         self.label = label
         self.subtype_label = subtype_label
+        self.mod = mod
 
     @staticmethod
     def split_name(filename:str) -> List[str]:
@@ -111,8 +112,7 @@ class FeatureExtractor:
             feature_vec = model.model(frame_vec)
         return feature_vec.cpu().numpy()
 
-    @staticmethod
-    def get_stills(vid_path: Union[os.PathLike, str], 
+    def get_stills(self, vid_path: Union[os.PathLike, str], 
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
         """Extract stills at given timepoints from a video file
         
@@ -125,7 +125,11 @@ class FeatureExtractor:
             next(reader)
             frame_list = [AnnotatedImage(filename=row[0],
                                          label=row[2],
-                                         subtype_label=row[3]) for row in reader]
+                                         subtype_label=row[3],
+                                         mod=row[4].lower() == 'true') for row in reader if row[1] == 'true']
+        # mod=True should discard (taken as "unseen")
+        # performace jump from additional batch (from 2nd) 
+        # maybe we can throw away the video with the least (88) frames annotation from B2 to make 20/20 split on dense vs sparse annotation 
 
         # this part is doing the same thing as the get_stills function in getstills.py
         # (copied from https://github.com/WGBH-MLA/keystrokelabeler/blob/df4d2bc936fa3a73cdf3004803a0c35c290caf93/getstills.py#L36 )
@@ -133,7 +137,7 @@ class FeatureExtractor:
         container = av.open(vid_path)
         video_stream = next((s for s in container.streams if s.type == 'video'), None)
         if video_stream is None:
-            raise Exception("No video stream found in {}".format(vfilename))
+            raise Exception("No video stream found in {}".format(vid_path))
         fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
         cur_target_frame = 0
         fcount = 0 
@@ -173,7 +177,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i","--input_file",
+    parser.add_argument("-i", "--input_file",
                         help="filepath for the video to be featurized",
                         required=True)
     parser.add_argument("-c", "--csv_file",
@@ -181,8 +185,8 @@ if __name__ == "__main__":
                         required=True)
     parser.add_argument("-m", "--model_name",
                         type=str,
-                        help="name of backbone model to use for feature extraction",
-                        choices=["resnet50", "vgg16"],
+                        help="name of backbone model to use for feature extraction, when not given use all available models",
+                        choices=list(backbones.model_map.keys()),
                         default=None)
     parser.add_argument("-o", "--outdir",
                         help="directory to save output files",
