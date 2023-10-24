@@ -2,7 +2,7 @@
 
 This folder is for YAML files specifying the binning strategy used by the k-folds swt model. Files can be passed into the model using the optional -b or --bins flag:
 
-```python3 train.py <indir> <featuremodel> <k_fold> -b ../config/default.yml```
+```python3 train.py <indir> <featuremodel> <k_fold> -b config/default.yml```
 
 ## Format
 
