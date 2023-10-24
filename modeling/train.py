@@ -126,11 +126,11 @@ def int_encode(label):
         return len(FRAME_TYPES)
 
 
-def get_net(in_dim, n_classes):
+def get_net(in_dim, n_labels):
     return nn.Sequential(
         nn.Linear(in_dim, 128),
         nn.ReLU(),
-        nn.Linear(128, n_classes),
+        nn.Linear(128, n_labels),
         # no softmax here since we're using CE loss which includes it
         # nn.Softmax(dim=1)
     )
@@ -141,6 +141,10 @@ def split_dataset(indir, train_guids, validation_guids, feature_model, bins):
     train_labels = []
     valid_vectors = []
     valid_labels = []
+    if bins and 'bins' in bins and 'pre' in bins['bins']:
+        pre_bin_size = len(bins['bins']['pre'].keys()) + 1
+    else:
+        pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
@@ -161,7 +165,7 @@ def split_dataset(indir, train_guids, validation_guids, feature_model, bins):
     print(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
     train = SWTDataset(feature_model, train_labels, train_vectors)
     valid = SWTDataset(feature_model, valid_labels, valid_vectors)
-    return train, valid, max(train_labels)+1, max(valid_labels)+1
+    return train, valid, pre_bin_size
 
 
 def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=()):
@@ -183,7 +187,7 @@ def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=(
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid, n_train_classes, n_valid_classes = split_dataset(indir, train_guids, validation_guids, feature_model, bins)
+        train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, feature_model, bins)
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {i} due to lack of data")
             continue
@@ -192,7 +196,7 @@ def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=(
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        model, p, r, f = train_model(get_net(train.feat_dim, n_train_classes), train_loader, valid_loader, loss, device, bins, n_valid_classes)
+        model, p, r, f = train_model(get_net(train.feat_dim, labelset_size), train_loader, valid_loader, loss, device, bins, labelset_size)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
@@ -226,7 +230,7 @@ def get_valid_classes(config):
     return base + ["none"]
     
 
-def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_valid_classes, num_epochs=2, export_fname=None):
+def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_labels, num_epochs=2, export_fname=None):
     since = time.time()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -263,10 +267,10 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
                 # post-binning
                 preds = torch.from_numpy(np.vectorize(post_bin)(preds, bins))
                 vlabels = torch.from_numpy(np.vectorize(post_bin)(vlabels, bins))
-            p = metrics.precision(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
-            r = metrics.recall(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
-            f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
-            # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_valid_classes)
+            p = metrics.precision(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
+            r = metrics.recall(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
+            f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
+            # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_labels)
 
             valid_classes = get_valid_classes(bins)
 
@@ -281,14 +285,14 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
             p = Path(export_fname)
             p.parent.mkdir(parents=True, exist_ok=True)
             export_f = open(p.parent / f'{timestamp}.{p.name}', 'w', encoding='utf8')
-        export_result(out=export_f, predictions=preds, labels=vlabels, valid_classes=valid_classes, model_name=train_loader.dataset.feature_model)
+        export_result(out=export_f, predictions=preds, labels=vlabels, labelset=valid_classes, model_name=train_loader.dataset.feature_model)
         logger.info(f"Exported to {export_f.name}")
                 
         model.load_state_dict(torch.load(best_model_params_path))
     return model, p, r, f
 
 
-def export_result(out, predictions, labels, valid_classes, model_name):
+def export_result(out, predictions, labels, labelset, model_name):
     """Exports the data into a human readable format.
     
     @param: predictions - a list of predicted labels across validation instances
@@ -300,7 +304,7 @@ def export_result(out, predictions, labels, valid_classes, model_name):
 
     label_metrics = defaultdict(dict)
 
-    for i, label in enumerate(valid_classes):
+    for i, label in enumerate(labelset):
         pred_labels = torch.where(predictions == i, 1, 0)
         true_labels = torch.where(labels == i, 1, 0)
         binary_acc = BinaryAccuracy()
@@ -327,6 +331,6 @@ if __name__ == "__main__":
     parser.add_argument("k_fold", help="k (interger), the number of distinct dev splits to evaluate on", default=10)
     parser.add_argument("-b", "--bins", help="The YAML config file specifying binning strategy", default=None)
     args = parser.parse_args()
-    args.allow_guids = []
-    args.block_guids = []
+    args.block_train = []
+    args.block_valid = []
     k_fold_train(indir=args.indir, k_fold=int(args.k_fold), feature_model=args.featuremodel, block_train=args.block_train, block_val=args.block_valid, bins=args.bins)
