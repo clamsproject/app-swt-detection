@@ -1,19 +1,18 @@
-from tqdm import tqdm
 import argparse
 import csv
 import json
 import time
+from collections import defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from torchmetrics import functional as metrics
-from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
-from collections import defaultdict, Counter
-
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torchmetrics import functional as metrics
+from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
+from tqdm import tqdm
 
 
 feat_dims = {
@@ -23,7 +22,7 @@ feat_dims = {
 
 
 class SWTDataset(Dataset):
-    def __init__(self, feature_model, labels, vectors, allow_guids=[]):
+    def __init__(self, feature_model, labels, vectors):
         self.feature_model = feature_model
         self.feat_dim = feat_dims[feature_model]
         self.labels = labels
@@ -34,15 +33,16 @@ class SWTDataset(Dataset):
     
     def __getitem__(self, i):
         return self.vectors[i], self.labels[i]
+    
+    def has_data(self):
+        return 0 < len(self.vectors) == len(self.labels)
 
 
-def get_guids(dir, block_guids=[]):
-    # TODO (krim @ 10/10/23): implement whitelisting
+def get_guids(data_dir):
     guids = []
-    for j in Path(dir).glob('*.json'):
+    for j in Path(data_dir).glob('*.json'):
         guid = j.with_suffix("").name
-        if guid not in block_guids:
-            guids.append(guid)
+        guids.append(guid)
     return guids
 
 
@@ -70,7 +70,7 @@ def get_net(in_dim):
     )
 
 
-def split_dataset(indir, validation_guids, feature_model):
+def split_dataset(indir, train_guids, validation_guids, feature_model):
     train_vectors = []
     train_labels = []
     valid_vectors = []
@@ -83,8 +83,8 @@ def split_dataset(indir, validation_guids, feature_model):
             for i, vec in enumerate(feature_vecs):
                 valid_labels.append(int_encode(labels['frames'][i]['label']))
                 valid_vectors.append(torch.from_numpy(vec))   
-        else:
-             for i, vec in enumerate(feature_vecs):
+        elif guid in train_guids:
+            for i, vec in enumerate(feature_vecs):
                 train_labels.append(int_encode(labels['frames'][i]['label']))
                 train_vectors.append(torch.from_numpy(vec))
     train = SWTDataset(feature_model, train_labels, train_vectors)
@@ -92,16 +92,26 @@ def split_dataset(indir, validation_guids, feature_model):
     return train, valid
 
 
-def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist):
-    guids = get_guids(indir, blacklist)
+def k_fold_train(indir, k_fold, feature_model, block_train=(), block_val=()):
+    # need to implement "whitelist"? 
+    guids = get_guids(indir)
     len_val = len(guids) // k_fold
     val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
     for i in range(0, k_fold):
-        validation_guids = guids[i*len_val:(i+1)*len_val]
+        validation_guids = set(guids[i*len_val:(i+1)*len_val])
+        train_guids = set(guids) - validation_guids
+        for block in block_val:
+            validation_guids.discard(block)
+        for block in block_train:
+            train_guids.discard(block)
         train, valid = split_dataset(indir, validation_guids, feature_model)
+        train, valid = split_dataset(indir, train_guids, validation_guids, feature_model)
+        if not train.has_data() or not valid.has_data():
+            print(f"Skipping fold {i} due to lack of data")
+            continue
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
         print(len(train), len(valid))
@@ -227,7 +237,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
     parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
-    parser.add_argument("k_fold", help="the number of distinct dev sets to evaluate on", default=10)
+    parser.add_argument("k_fold", help="k (interger), the number of distinct dev splits to evaluate on", default=10)
     args = parser.parse_args()
     args.allow_guids = []
     args.block_guids = []
