@@ -21,26 +21,28 @@ import argparse
 import csv
 import os
 import json
+
+import av
 import numpy as np
 from typing import List, Union, Tuple, Callable, Dict
 from collections import defaultdict
+import backbones
 
 from tqdm import tqdm
 
 import torch
-from torchvision.models import vgg16, VGG16_Weights
-from torchvision.models import resnet50, ResNet50_Weights
-import cv2
-from PIL import Image
 
 
 class AnnotatedImage:
     """Object representing a single frame and its metadata"""
-    def __init__(self, filename: str, label: str, subtype_label: str):
+    def __init__(self, filename: str, label: str, subtype_label: str, mod: bool = False):
         self.image = None
         self.guid, self.total_time, self.curr_time = self.split_name(filename)
+        self.total_time = int(self.total_time)
+        self.curr_time = int(self.curr_time)
         self.label = label
         self.subtype_label = subtype_label
+        self.mod = mod
 
     @staticmethod
     def split_name(filename:str) -> List[str]:
@@ -50,28 +52,6 @@ class AnnotatedImage:
         guid, total, curr = filename.split("_")
         curr = curr[:-4]
         return guid, total, curr
-    
-
-class ExtractorModel:
-    name: str
-    model: torch.nn.Module
-    preprocess: Callable
-
-
-class Vgg16Extractor(ExtractorModel):
-    def __init__(self):
-        self.name = "vgg16"
-        self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.model.classifier = self.model.classifier[:-1]
-        self.preprocess = VGG16_Weights.IMAGENET1K_V1.transforms()
-        
-        
-class Resnet50Extractor(ExtractorModel):
-    def __init__(self):
-        self.name = "resnet50"
-        self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        self.model.fc = torch.nn.Identity()
-        self.preprocess = ResNet50_Weights.IMAGENET1K_V1.transforms()
 
 
 class FeatureExtractor:
@@ -79,17 +59,17 @@ class FeatureExtractor:
     uses <model> as a backbone to featurize the annotated still images 
     into 4096-dim vectors.
     """
-    models: List[ExtractorModel]
+    models: List[backbones.ExtractorModel]
 
     def __init__(self, model_name: str = None):
         if model_name is None:
-            self.models = [Vgg16Extractor(), Resnet50Extractor()]
-        elif model_name == "vgg16":
-            self.models = [Vgg16Extractor()]
-        elif model_name == "resnet50":
-            self.models = [Resnet50Extractor()]
+            self.models = [model() for model in backbones.model_map.values()]
         else:
-            raise ValueError("No valid model found")
+            if model_name in backbones.model_map:
+                self.models = [backbones.model_map[model_name]()]
+            else:
+                raise ValueError("No valid model found")
+        print(f'using model(s): {[model.name for model in self.models]}')
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
@@ -132,8 +112,7 @@ class FeatureExtractor:
             feature_vec = model.model(frame_vec)
         return feature_vec.cpu().numpy()
 
-    @staticmethod
-    def get_stills(vid_path: Union[os.PathLike, str], 
+    def get_stills(self, vid_path: Union[os.PathLike, str], 
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
         """Extract stills at given timepoints from a video file
         
@@ -146,23 +125,33 @@ class FeatureExtractor:
             next(reader)
             frame_list = [AnnotatedImage(filename=row[0],
                                          label=row[2],
-                                         subtype_label=row[3]) for row in reader]
+                                         subtype_label=row[3],
+                                         mod=row[4].lower() == 'true') for row in reader if row[1] == 'true']
+        # mod=True should discard (taken as "unseen")
+        # performace jump from additional batch (from 2nd) 
+        # maybe we can throw away the video with the least (88) frames annotation from B2 to make 20/20 split on dense vs sparse annotation 
 
-        cap = cv2.VideoCapture(vid_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-
-        # for each frame, move the VideoCapture and read @ frame
-        # i = 0
-        for frame in frame_list:
-            # if i > 10:
-            #     break
-            # i += 1
-            frame_id = get_framenum(frame, fps)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-            ret, img = cap.read()
-            if ret:
-                frame.image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            yield frame
+        # this part is doing the same thing as the get_stills function in getstills.py
+        # (copied from https://github.com/WGBH-MLA/keystrokelabeler/blob/df4d2bc936fa3a73cdf3004803a0c35c290caf93/getstills.py#L36 )
+        
+        container = av.open(vid_path)
+        video_stream = next((s for s in container.streams if s.type == 'video'), None)
+        if video_stream is None:
+            raise Exception("No video stream found in {}".format(vid_path))
+        fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
+        cur_target_frame = 0
+        fcount = 0 
+        for frame in container.decode(video=0):
+            # if fcount % 10000 == 0:
+            #     print(f'processing frame {fcount}')
+            if cur_target_frame == len(frame_list):
+                break
+            ftime = int((fcount / fps) * 1000)
+            if ftime == frame_list[cur_target_frame].curr_time:
+                frame_list[cur_target_frame].image = frame.to_image()
+                yield frame_list[cur_target_frame]
+                cur_target_frame += 1
+            fcount += 1
 
 
 def get_framenum(frame: AnnotatedImage, fps: float) -> int:
@@ -188,7 +177,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i","--input_file",
+    parser.add_argument("-i", "--input_file",
                         help="filepath for the video to be featurized",
                         required=True)
     parser.add_argument("-c", "--csv_file",
@@ -196,8 +185,8 @@ if __name__ == "__main__":
                         required=True)
     parser.add_argument("-m", "--model_name",
                         type=str,
-                        help="name of backbone model to use for feature extraction",
-                        choices=["resnet50", "vgg16"],
+                        help="name of backbone model to use for feature extraction, when not given use all available models",
+                        choices=list(backbones.model_map.keys()),
                         default=None)
     parser.add_argument("-o", "--outdir",
                         help="directory to save output files",

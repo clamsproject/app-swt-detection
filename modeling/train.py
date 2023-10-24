@@ -1,25 +1,46 @@
-from tqdm import tqdm
 import argparse
 import csv
 import json
+import sys
 import time
+from collections import defaultdict
 import yaml
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from torchmetrics import functional as metrics
-from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
-from collections import defaultdict, Counter
-
+import logging
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torchmetrics import functional as metrics
+from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
+from tqdm import tqdm
 
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 feat_dims = {
-    'vgg16': 4096,
-    'resnet50': 2048,
+    "convnext_base": 1024,
+    "convnext_tiny": 768,
+    "convnext_small": 768,
+    "convnext_lg": 1536,
+    "densenet121": 1024,
+    "efficientnet_small": 1280,
+    "efficientnet_med": 1280,
+    "efficientnet_large": 1280,
+    "resnet18": 512,
+    "resnet50": 2048,
+    "resnet101": 2048,
+    "resnet152": 2048,
+    "vgg16": 4096,
+    "bn_vgg16": 4096,
+    "vgg19": 4096,
+    "bn_vgg19": 4096,
 }
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
@@ -28,7 +49,7 @@ FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
 
 
 class SWTDataset(Dataset):
-    def __init__(self, feature_model, labels, vectors, allow_guids=[]):
+    def __init__(self, feature_model, labels, vectors):
         self.feature_model = feature_model
         self.feat_dim = feat_dims[feature_model]
         self.labels = labels
@@ -36,18 +57,19 @@ class SWTDataset(Dataset):
 
     def __len__(self):
         return len(self.labels)
-    
+
     def __getitem__(self, i):
         return self.vectors[i], self.labels[i]
+    
+    def has_data(self):
+        return 0 < len(self.vectors) == len(self.labels)
 
 
-def get_guids(dir, block_guids=[]):
-    # TODO (krim @ 10/10/23): implement whitelisting
+def get_guids(data_dir):
     guids = []
-    for j in Path(dir).glob('*.json'):
+    for j in Path(data_dir).glob('*.json'):
         guid = j.with_suffix("").name
-        if guid not in block_guids:
-            guids.append(guid)
+        guids.append(guid)
     return guids
 
 
@@ -114,67 +136,85 @@ def get_net(in_dim, n_classes):
     )
 
 
-def split_dataset(indir, validation_guids, feature_model, bins):
+def split_dataset(indir, train_guids, validation_guids, feature_model, bins):
     train_vectors = []
     train_labels = []
     valid_vectors = []
     valid_labels = []
+    train_vnum = train_vimg = valid_vnum = valid_vimg = 0
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{feature_model}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         if guid in validation_guids:
+            valid_vnum += 1
             for i, vec in enumerate(feature_vecs):
+                valid_vimg += 1
                 valid_labels.append(pre_bin(labels['frames'][i]['label'], bins))
-                valid_vectors.append(torch.from_numpy(vec))   
-        else:
+                valid_vectors.append(torch.from_numpy(vec))
+        elif guid in train_guids:
+            train_vnum += 1
             for i, vec in enumerate(feature_vecs):
+                train_vimg += 1
                 train_labels.append(pre_bin(labels['frames'][i]['label'], bins))
                 train_vectors.append(torch.from_numpy(vec))
+    print(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
     train = SWTDataset(feature_model, train_labels, train_vectors)
     valid = SWTDataset(feature_model, valid_labels, valid_vectors)
     return train, valid, max(train_labels)+1, max(valid_labels)+1
 
 
-def k_fold_train(indir, k_fold, feature_model, whitelist, blacklist, bins):
-    guids = get_guids(indir, blacklist)
+def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=()):
+    # need to implement "whitelist"? 
+    guids = get_guids(indir)
     bins = load_config(bins)
+    len_val = len(guids) // k_fold
     val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
-    for i in range(k_fold):
-        validation_guids = {guids[i]}
-        train, valid, n_train_classes, n_valid_classes = split_dataset(indir, validation_guids, feature_model, bins)
+    for i in range(0, k_fold):
+        validation_guids = set(guids[i*len_val:(i+1)*len_val])
+        train_guids = set(guids) - validation_guids
+        for block in block_val:
+            validation_guids.discard(block)
+        for block in block_train:
+            train_guids.discard(block)
+        logger.debug(f'After applied block lists:')
+        logger.debug(f'train set: {train_guids}')
+        logger.debug(f'dev set: {validation_guids}')
+        train, valid, n_train_classes, n_valid_classes = split_dataset(indir, train_guids, validation_guids, feature_model, bins)
+        if not train.has_data() or not valid.has_data():
+            logger.info(f"Skipping fold {i} due to lack of data")
+            continue
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
-        print(len(train), len(valid))
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f'training on {len(guids) - len(validation_guids)} videos, validating on {validation_guids}')
+        logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
         model, p, r, f = train_model(get_net(train.feat_dim, n_train_classes), train_loader, valid_loader, loss, device, bins, n_valid_classes)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
     print_scores(val_set_spec, p_scores, r_scores, f_scores)
-    
 
-def print_scores(trial_specs, p_scores, r_scores, f_scores):
+
+def print_scores(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout):
     max_f1_idx = f_scores.index(max(f_scores))
     min_f1_idx = f_scores.index(min(f_scores))
-    print(f"Highest f1 @ {trial_specs[max_f1_idx]}")
-    print(f'\tf-1 = {f_scores[max_f1_idx]}')
-    print(f'\tprecision = {p_scores[max_f1_idx]}')
-    print(f'\trecall = {r_scores[max_f1_idx]}')
-    print(f"Lowest f1 @ {trial_specs[min_f1_idx]}")
-    print(f'\tf-1 = {f_scores[min_f1_idx]}')
-    print(f'\tprecision = {p_scores[min_f1_idx]}')
-    print(f'\trecall = {r_scores[min_f1_idx]}')
-    print("Mean performance")
-    print(f'\tf-1 = {sum(f_scores)/len(f_scores)}')
-    print(f'\tprecision = {sum(p_scores)/len(p_scores)}')
-    print(f'\trecall = {sum(r_scores)/len(r_scores)}')
+    out.write(f'Highest f1 @ {trial_specs[max_f1_idx]}\n')
+    out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
+    out.write(f'\tprecision = {p_scores[max_f1_idx]}\n')
+    out.write(f'\trecall = {r_scores[max_f1_idx]}\n')
+    out.write(f'Lowest f1 @ {trial_specs[min_f1_idx]}\n')
+    out.write(f'\tf-1 = {f_scores[min_f1_idx]}\n')
+    out.write(f'\tprecision = {p_scores[min_f1_idx]}\n')
+    out.write(f'\trecall = {r_scores[min_f1_idx]}\n')
+    out.write('Mean performance\n')
+    out.write(f'\tf-1 = {sum(f_scores) / len(f_scores)}\n')
+    out.write(f'\tprecision = {sum(p_scores) / len(p_scores)}\n')
+    out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
 def get_valid_classes(config):
@@ -186,7 +226,7 @@ def get_valid_classes(config):
     return base + ["none"]
     
 
-def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_valid_classes, num_epochs=2):
+def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_valid_classes, num_epochs=2, export_fname=None):
     since = time.time()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -196,8 +236,6 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
         torch.save(model.state_dict(), best_model_params_path)
 
         for num_epoch in tqdm(range(num_epochs)):
-            # print(f'Epoch {epoch}/{num_epochs - 1}')
-            # print('-' * 10)
 
             running_loss = 0.0
 
@@ -212,11 +250,11 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
                     loss = loss_fn(outputs, labels)
                     loss.sum().backward()
                     optimizer.step()
-                    
+
                 running_loss += loss.sum().item() * feats.size(0)
                 if num_batch % 100 == 0:
-                    print(f'Batch {num_batch} of {len(train_loader)}')
-                    print(f'Loss: {loss.sum().item():.4f}')
+                    logger.debug(f'Batch {num_batch} of {len(train_loader)}')
+                    logger.debug(f'Loss: {loss.sum().item():.4f}')
 
             epoch_loss = running_loss / len(train_loader)
             for vfeats, vlabels in valid_loader:
@@ -228,25 +266,29 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_vali
             p = metrics.precision(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
             r = metrics.recall(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
             f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_valid_classes, average='macro')
-            m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_valid_classes)
+            # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_valid_classes)
 
             valid_classes = get_valid_classes(bins)
 
-            print(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
+            logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
         time_elapsed = time.time() - since
-        print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+        logger.info(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
-        export = True #TODO: deancahill 10/11/23 put this var in the run configuration
-        if export:
-            print("Exporting Data")
-            export_data(predictions=preds, labels=vlabels, fname="results/oct11_results.csv", valid_classes=valid_classes, model_name=train_loader.dataset.feature_model)
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        if export_fname is None:
+            export_f = sys.stdout
+        else:
+            p = Path(export_fname)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            export_f = open(p.parent / f'{timestamp}.{p.name}', 'w', encoding='utf8')
+        export_result(out=export_f, predictions=preds, labels=vlabels, valid_classes=valid_classes, model_name=train_loader.dataset.feature_model)
+        logger.info(f"Exported to {export_f.name}")
                 
         model.load_state_dict(torch.load(best_model_params_path))
-        print()
     return model, p, r, f
 
 
-def export_data(predictions, labels, fname, valid_classes, model_name="vgg16"):
+def export_result(out, predictions, labels, valid_classes, model_name):
     """Exports the data into a human readable format.
     
     @param: predictions - a list of predicted labels across validation instances
@@ -255,8 +297,9 @@ def export_data(predictions, labels, fname, valid_classes, model_name="vgg16"):
 
     @return: class-based accuracy metrics for each label, organized into a csv.
     """
-    
+
     label_metrics = defaultdict(dict)
+
     for i, label in enumerate(valid_classes):
         pred_labels = torch.where(predictions == i, 1, 0)
         true_labels = torch.where(labels == i, 1, 0)
@@ -270,21 +313,20 @@ def export_data(predictions, labels, fname, valid_classes, model_name="vgg16"):
                                 "Precision": binary_prec(pred_labels, true_labels).item(),
                                 "Recall": binary_recall(pred_labels, true_labels).item(),
                                 "F1-Score": binary_f1(pred_labels, true_labels).item()}
-
-    with open(fname, 'a', encoding='utf8') as f:
-        writer = csv.DictWriter(f, fieldnames=["Model_Name", "Label", "Accuracy", "Precision", "Recall", "F1-Score"])
-        writer.writeheader()
-        for label, metrics in label_metrics.items():
-            writer.writerow(metrics)
+        
+    writer = csv.DictWriter(out, fieldnames=["Model_Name", "Label", "Accuracy", "Precision", "Recall", "F1-Score"])
+    writer.writeheader()
+    for label, metrics in label_metrics.items():
+        writer.writerow(metrics)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
     parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
-    parser.add_argument("k_fold", help="the number of distinct dev sets to evaluate on", default=10)
+    parser.add_argument("k_fold", help="k (interger), the number of distinct dev splits to evaluate on", default=10)
     parser.add_argument("-b", "--bins", help="The YAML config file specifying binning strategy", default=None)
     args = parser.parse_args()
     args.allow_guids = []
     args.block_guids = []
-    k_fold_train(args.indir, int(args.k_fold), args.featuremodel, args.allow_guids, args.block_guids, args.bins)
+    k_fold_train(indir=args.indir, k_fold=int(args.k_fold), feature_model=args.featuremodel, block_train=args.block_train, block_val=args.block_valid, bins=args.bins)
