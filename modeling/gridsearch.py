@@ -2,17 +2,16 @@ import itertools
 
 import backbones
 
-num_splits = {20}
-num_epochs = {2, 5}
-num_layers = {1, 2, 3, 4, 5}
+num_splits = {30}
+num_epochs = {2, 5, 10, 20}
+num_layers = {2, 3, 4, 5}
 dropouts = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5}
 backbone_name = backbones.model_map.keys()
 block_guids_train = [
-    {"cpb-aacip-254-75r7szdz"},    # always block this the most "uninteresting" video (88/882 frames annotated)
+    {"cpb-aacip-254-75r7szdz"},     # always block this the most "uninteresting" video (88/882 frames annotated)
 ]
 block_guids_valid = [
-    {},    # no block
-    {      # block all loosely-annotated videos
+    {                               # block all loosely-annotated videos
         "cpb-aacip-254-75r7szdz",
         "cpb-aacip-259-4j09zf95",
         "cpb-aacip-526-hd7np1xn78",
@@ -35,6 +34,7 @@ block_guids_valid = [
         "cpb-aacip-512-3n20c4tr34",
         "cpb-aacip-512-3f4kk9534t",
     },
+    {"cpb-aacip-254-75r7szdz"},  # effectively no block except
 ]
 bins = [
     {'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
