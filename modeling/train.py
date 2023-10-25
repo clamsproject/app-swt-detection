@@ -17,6 +17,8 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
+import gridsearch
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -353,4 +355,8 @@ if __name__ == "__main__":
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
     parser.add_argument("-c", "--config", help="The YAML config file specifying binning strategy", default=None)
     args = parser.parse_args()
-    k_fold_train(indir=args.indir, configs=args.config)
+    if args.config:
+        k_fold_train(indir=args.indir, configs=args.config)
+    else:
+        for config in gridsearch.configs:
+            k_fold_train(indir=args.indir, configs=config)
