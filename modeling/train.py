@@ -160,15 +160,17 @@ def split_dataset(indir, train_guids, validation_guids, configs):
         if guid in validation_guids:
             valid_vnum += 1
             for i, vec in enumerate(feature_vecs):
-                valid_vimg += 1
-                valid_labels.append(pre_bin(labels['frames'][i]['label'], configs))
-                valid_vectors.append(torch.from_numpy(vec))
+                if not labels['frames'][i]['mod']:  # "transitional" frames
+                    valid_vimg += 1
+                    valid_labels.append(pre_bin(labels['frames'][i]['label'], configs))
+                    valid_vectors.append(torch.from_numpy(vec))
         elif guid in train_guids:
             train_vnum += 1
             for i, vec in enumerate(feature_vecs):
-                train_vimg += 1
-                train_labels.append(pre_bin(labels['frames'][i]['label'], configs))
-                train_vectors.append(torch.from_numpy(vec))
+                if not labels['frames'][i]['mod']:  # "transitional" frames
+                    train_vimg += 1
+                    train_labels.append(pre_bin(labels['frames'][i]['label'], configs))
+                    train_vectors.append(torch.from_numpy(vec))
     logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
     train = SWTDataset(configs['backbone_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['backbone_name'], valid_labels, valid_vectors)
