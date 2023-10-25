@@ -19,18 +19,17 @@ OUTPUT:
 
 import argparse
 import csv
-import os
 import json
+import os
+from collections import defaultdict
+from typing import List, Union, Tuple, Dict
 
 import av
 import numpy as np
-from typing import List, Union, Tuple, Callable, Dict
-from collections import defaultdict
-import backbones
-
+import torch
 from tqdm import tqdm
 
-import torch
+import backbones
 
 
 class AnnotatedImage:
