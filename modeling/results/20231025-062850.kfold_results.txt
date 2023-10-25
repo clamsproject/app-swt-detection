@@ -1,0 +1,23 @@
+K-fold results
+	num_splits: 30
+	num_epochs: 2
+	num_layers: 2
+	dropouts: 0.0
+	backbone_name: convnext_tiny
+	block_guids_train: {'cpb-aacip-254-75r7szdz'}
+	block_guids_valid: {'cpb-aacip-512-3f4kk9534t', 'cpb-aacip-e7a25f07d35', 'cpb-aacip-690722078b2', 'cpb-aacip-512-4f1mg7h078', 'cpb-aacip-f3fa7215348', 'cpb-aacip-259-4j09zf95', 'cpb-aacip-75-72b8h82x', 'cpb-aacip-15-93gxdjk6', 'cpb-aacip-512-3n20c4tr34', 'cpb-aacip-fe9efa663c6', 'cpb-aacip-ec590a6761d', 'cpb-aacip-e649135e6ec', 'cpb-aacip-526-hd7np1xn78', 'cpb-aacip-f2a88c88d9d', 'cpb-aacip-ce6d5e4bd7f', 'cpb-aacip-512-4b2x34nt7g', 'cpb-aacip-f13ae523e20', 'cpb-aacip-c7c64922fcd', 'cpb-aacip-254-75r7szdz', 'cpb-aacip-512-4m9183583s', 'cpb-aacip-f5847a01db5'}
+	bins: {'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}
+Highest f1 @ 006
+	{'cpb-aacip-507-0z70v8b17g'}
+	f-1 = 0.9355242252349854
+	precision = 0.9141104817390442
+	recall = 0.9594694375991821
+Lowest f1 @ 003
+	{'cpb-aacip-394-149p8fcw'}
+	f-1 = 0.6372561454772949
+	precision = 0.6468933820724487
+	recall = 0.6309623122215271
+Mean performance
+	f-1 = 0.7804688215255737
+	precision = 0.7903640270233154
+	recall = 0.8185709714889526

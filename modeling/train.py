@@ -1,21 +1,24 @@
 import argparse
 import csv
 import json
+import logging
 import sys
+import os
 import time
 from collections import defaultdict
-import yaml
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import logging
 
 import numpy as np
 import torch
 import torch.nn as nn
+import yaml
 from torch.utils.data import Dataset, DataLoader
 from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
+
+import gridsearch
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -46,6 +49,7 @@ feat_dims = {
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
+RESULTS_DIR = f"results-{os.getenv('HOSTNAME').split('.')[0]}"
 
 
 class SWTDataset(Dataset):
@@ -113,7 +117,7 @@ def load_config(config):
         try:
             return(yaml.safe_load(f))
         except yaml.scanner.ScannerError:
-            print("Invalid config file. Using full label set.")
+            logger.error("Invalid config file. Using full label set.")
             return None
                 
 
@@ -126,68 +130,78 @@ def int_encode(label):
         return len(FRAME_TYPES)
 
 
-def get_net(in_dim, n_labels):
-    return nn.Sequential(
-        nn.Linear(in_dim, 128),
-        nn.ReLU(),
-        nn.Linear(128, n_labels),
-        # no softmax here since we're using CE loss which includes it
-        # nn.Softmax(dim=1)
-    )
+def get_net(in_dim, n_labels, num_layers, dropout=0.0):
+    dropouts = [dropout] * (num_layers - 1) if isinstance(dropout, (int, float)) else dropout
+    if len(dropouts) + 1 != num_layers:
+        raise ValueError("length of dropout must be equal to num_layers - 1")
+    net = nn.Sequential()
+    for i in range(1, num_layers):
+        neurons = max(128 // i, n_labels)
+        net.add_module(f"fc{i}", nn.Linear(in_dim, neurons))
+        net.add_module(f"relu{i}", nn.ReLU())
+        net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
+        in_dim = neurons
+    net.add_module("fc_out", nn.Linear(neurons, n_labels))
+    # no softmax here since we're using CE loss which includes it
+    # net.add_module(Softmax(dim=1))
+    return net
 
 
-def split_dataset(indir, train_guids, validation_guids, feature_model, bins):
+def split_dataset(indir, train_guids, validation_guids, configs):
     train_vectors = []
     train_labels = []
     valid_vectors = []
     valid_labels = []
-    if bins and 'bins' in bins and 'pre' in bins['bins']:
-        pre_bin_size = len(bins['bins']['pre'].keys()) + 1
+    if configs and 'bins' in configs and 'pre' in configs['bins']:
+        pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
-        feature_vecs = np.load(Path(indir) / f"{guid}.{feature_model}.npy")
+        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         if guid in validation_guids:
             valid_vnum += 1
             for i, vec in enumerate(feature_vecs):
-                valid_vimg += 1
-                valid_labels.append(pre_bin(labels['frames'][i]['label'], bins))
-                valid_vectors.append(torch.from_numpy(vec))
+                if not labels['frames'][i]['mod']:  # "transitional" frames
+                    valid_vimg += 1
+                    valid_labels.append(pre_bin(labels['frames'][i]['label'], configs))
+                    valid_vectors.append(torch.from_numpy(vec))
         elif guid in train_guids:
             train_vnum += 1
             for i, vec in enumerate(feature_vecs):
-                train_vimg += 1
-                train_labels.append(pre_bin(labels['frames'][i]['label'], bins))
-                train_vectors.append(torch.from_numpy(vec))
-    print(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
-    train = SWTDataset(feature_model, train_labels, train_vectors)
-    valid = SWTDataset(feature_model, valid_labels, valid_vectors)
+                if not labels['frames'][i]['mod']:  # "transitional" frames
+                    train_vimg += 1
+                    train_labels.append(pre_bin(labels['frames'][i]['label'], configs))
+                    train_vectors.append(torch.from_numpy(vec))
+    logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
+    train = SWTDataset(configs['backbone_name'], train_labels, train_vectors)
+    valid = SWTDataset(configs['backbone_name'], valid_labels, valid_vectors)
     return train, valid, pre_bin_size
 
 
-def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=()):
+def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
-    bins = load_config(bins)
-    len_val = len(guids) // k_fold
+    configs = load_config(configs) if not isinstance(configs, dict) else configs
+    logger.info(f'Using config: {configs}')
+    len_val = len(guids) // configs['num_splits']
     val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
-    for i in range(0, k_fold):
+    for i in range(0, configs['num_splits']):
         validation_guids = set(guids[i*len_val:(i+1)*len_val])
         train_guids = set(guids) - validation_guids
-        for block in block_val:
+        for block in configs['block_guids_valid']:
             validation_guids.discard(block)
-        for block in block_train:
+        for block in configs['block_guids_train']:
             train_guids.discard(block)
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, feature_model, bins)
+        train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, configs)
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {i} due to lack of data")
             continue
@@ -196,22 +210,38 @@ def k_fold_train(indir, k_fold, feature_model, bins, block_train=(), block_val=(
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        model, p, r, f = train_model(get_net(train.feat_dim, labelset_size), train_loader, valid_loader, loss, device, bins, labelset_size)
+        model, p, r, f = train_model(get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
+                                     loss, device, 
+                                     train_loader, valid_loader, 
+                                     configs, labelset_size, 
+                                     export_fname=f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv")
+        torch.save(model.state_dict(), f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt")
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
-    print_scores(val_set_spec, p_scores, r_scores, f_scores)
+    if train_id:
+        p = Path(f'{RESULTS_DIR}/{train_id}.kfold_results.txt')
+        p.parent.mkdir(parents=True, exist_ok=True)
+        export_f = open(p, 'w', encoding='utf8')
+    else:
+        export_f = sys.stdout
+    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
 
 
-def print_scores(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout):
+def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
     max_f1_idx = f_scores.index(max(f_scores))
     min_f1_idx = f_scores.index(min(f_scores))
-    out.write(f'Highest f1 @ {trial_specs[max_f1_idx]}\n')
+    out.write(f'K-fold results\n')
+    for k, v in train_spec.items():
+        out.write(f'\t{k}: {v}\n')
+    out.write(f'Highest f1 @ {max_f1_idx:03d}\n')
+    out.write(f'\t{trial_specs[max_f1_idx]}\n')
     out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
     out.write(f'\tprecision = {p_scores[max_f1_idx]}\n')
     out.write(f'\trecall = {r_scores[max_f1_idx]}\n')
-    out.write(f'Lowest f1 @ {trial_specs[min_f1_idx]}\n')
+    out.write(f'Lowest f1 @ {min_f1_idx:03d}\n')
+    out.write(f'\t{trial_specs[min_f1_idx]}\n')
     out.write(f'\tf-1 = {f_scores[min_f1_idx]}\n')
     out.write(f'\tprecision = {p_scores[min_f1_idx]}\n')
     out.write(f'\trecall = {r_scores[min_f1_idx]}\n')
@@ -221,7 +251,7 @@ def print_scores(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout):
     out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def get_valid_classes(config):
+def get_valid_labels(config):
     base = FRAME_TYPES
     if config and "post" in config["bins"]:
         base = list(config["bins"]["post"].keys())
@@ -230,7 +260,7 @@ def get_valid_classes(config):
     return base + ["none"]
     
 
-def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_labels, num_epochs=2, export_fname=None):
+def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_labels, export_fname=None):
     since = time.time()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -239,7 +269,7 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_labe
 
         torch.save(model.state_dict(), best_model_params_path)
 
-        for num_epoch in tqdm(range(num_epochs)):
+        for num_epoch in tqdm(range(configs['num_epochs'])):
 
             running_loss = 0.0
 
@@ -265,34 +295,33 @@ def train_model(model, train_loader, valid_loader, loss_fn, device, bins, n_labe
                 outputs = model(vfeats)
                 _, preds = torch.max(outputs, 1)
                 # post-binning
-                preds = torch.from_numpy(np.vectorize(post_bin)(preds, bins))
-                vlabels = torch.from_numpy(np.vectorize(post_bin)(vlabels, bins))
+                preds = torch.from_numpy(np.vectorize(post_bin)(preds, configs))
+                vlabels = torch.from_numpy(np.vectorize(post_bin)(vlabels, configs))
             p = metrics.precision(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
             r = metrics.recall(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
             f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
             # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_labels)
 
-            valid_classes = get_valid_classes(bins)
+            valid_classes = get_valid_labels(configs)
 
             logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
         time_elapsed = time.time() - since
         logger.info(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
 
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        if export_fname is None:
+        if not export_fname:
             export_f = sys.stdout
         else:
-            p = Path(export_fname)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            export_f = open(p.parent / f'{timestamp}.{p.name}', 'w', encoding='utf8')
-        export_result(out=export_f, predictions=preds, labels=vlabels, labelset=valid_classes, model_name=train_loader.dataset.feature_model)
+            path = Path(export_fname)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            export_f = open(path, 'w', encoding='utf8')
+        export_train_result(out=export_f, predictions=preds, labels=vlabels, labelset=valid_classes, model_name=train_loader.dataset.feature_model)
         logger.info(f"Exported to {export_f.name}")
                 
         model.load_state_dict(torch.load(best_model_params_path))
     return model, p, r, f
 
 
-def export_result(out, predictions, labels, labelset, model_name):
+def export_train_result(out, predictions, labels, labelset, model_name):
     """Exports the data into a human readable format.
     
     @param: predictions - a list of predicted labels across validation instances
@@ -327,10 +356,10 @@ def export_result(out, predictions, labels, labelset, model_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("featuremodel", help="feature vectors to use for training", choices=['vgg16', 'resnet50'], default='vgg16')
-    parser.add_argument("k_fold", help="k (interger), the number of distinct dev splits to evaluate on", default=10)
-    parser.add_argument("-b", "--bins", help="The YAML config file specifying binning strategy", default=None)
+    parser.add_argument("-c", "--config", help="The YAML config file specifying binning strategy", default=None)
     args = parser.parse_args()
-    args.block_train = []
-    args.block_valid = []
-    k_fold_train(indir=args.indir, k_fold=int(args.k_fold), feature_model=args.featuremodel, block_train=args.block_train, block_val=args.block_valid, bins=args.bins)
+    if args.config:
+        k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
+    else:
+        for config in gridsearch.configs:
+            k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))
