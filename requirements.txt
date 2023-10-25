@@ -3,4 +3,5 @@ torchvision
 torchmetrics
 opencv-python
 tqdm
+pyyaml
 av==10.*
