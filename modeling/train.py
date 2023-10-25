@@ -3,6 +3,7 @@ import csv
 import json
 import logging
 import sys
+import os
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -48,6 +49,7 @@ feat_dims = {
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
+RESULTS_DIR = f"results-{os.getenv('HOSTNAME').split('.')[0]}"
 
 
 class SWTDataset(Dataset):
@@ -212,14 +214,14 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
                                      loss, device, 
                                      train_loader, valid_loader, 
                                      configs, labelset_size, 
-                                     export_fname=f"results/{train_id}.kfold_{i:03d}.csv")
-        torch.save(model.state_dict(), f"results/{train_id}.kfold_{i:03d}.pt")
+                                     export_fname=f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv")
+        torch.save(model.state_dict(), f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt")
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
     if train_id:
-        p = Path(f'results/{train_id}.kfold_results.txt')
+        p = Path(f'{RESULTS_DIR}/{train_id}.kfold_results.txt')
         p.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(p, 'w', encoding='utf8')
     else:
@@ -357,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--config", help="The YAML config file specifying binning strategy", default=None)
     args = parser.parse_args()
     if args.config:
-        k_fold_train(indir=args.indir, configs=args.config)
+        k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
     else:
         for config in gridsearch.configs:
-            k_fold_train(indir=args.indir, configs=config)
+            k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))
