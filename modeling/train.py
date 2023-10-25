@@ -213,6 +213,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
                                      train_loader, valid_loader, 
                                      configs, labelset_size, 
                                      export_fname=f"results/{train_id}.kfold_{i:03d}.csv")
+        torch.save(model.state_dict(), f"results/{train_id}.kfold_{i:03d}.pt")
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
