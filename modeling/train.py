@@ -19,8 +19,6 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
-import gridsearch
-
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -149,9 +147,9 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     net = nn.Sequential()
     for i in range(1, num_layers):
         neurons = max(128 // i, n_labels)
+        net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
         net.add_module(f"fc{i}", nn.Linear(in_dim, neurons))
         net.add_module(f"relu{i}", nn.ReLU())
-        net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
         in_dim = neurons
     net.add_module("fc_out", nn.Linear(neurons, n_labels))
     # no softmax here since we're using CE loss which includes it
@@ -391,6 +389,7 @@ if __name__ == "__main__":
         adjust_dims(args.config)
         k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
     else:
+        import gridsearch
         for config in gridsearch.configs:
             adjust_dims(config)
             k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))
