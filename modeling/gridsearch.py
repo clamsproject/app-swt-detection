@@ -9,10 +9,10 @@ positional_encoding = {"fractional", "sinusoidal", "none"}
 dropouts = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5}
 backbone_name = backbones.model_map.keys()
 block_guids_train = [
-    {"cpb-aacip-254-75r7szdz"},     # always block this the most "uninteresting" video (88/882 frames annotated)
+    ["cpb-aacip-254-75r7szdz"],     # always block this the most "uninteresting" video (88/882 frames annotated)
 ]
 block_guids_valid = [
-    {                               # block all loosely-annotated videos
+    [                               # block all loosely-annotated videos
         "cpb-aacip-254-75r7szdz",
         "cpb-aacip-259-4j09zf95",
         "cpb-aacip-526-hd7np1xn78",
@@ -34,16 +34,56 @@ block_guids_valid = [
         "cpb-aacip-512-4b2x34nt7g",
         "cpb-aacip-512-3n20c4tr34",
         "cpb-aacip-512-3f4kk9534t",
-    },
-    {"cpb-aacip-254-75r7szdz"},  # effectively no block except
+    ]
+    # {"cpb-aacip-254-75r7szdz"},  # effectively no block except
 ]
 bins = [
-    {'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
-    {'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
+# Defaults
+{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
+{'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
+# Other binning strategies
+{'pre': {'B': ['B'], 'S': ['S'], 'M': ['M'], 'I': ['I'], 'N': ['N'], 'Y': ['Y'], 'C': ['C']}, 'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'logo': ['L'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C'], 'main_title': ['M'], 'copyright': ['R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'], 'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'text-not-chyron': ['K', 'G', 'T', 'F'], 'person-not-chyron': ['P'], 'credits': ['C', 'R']}, 'post': {'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
+{'pre': {'opening': ['B', 'O', 'M', 'L'], 'text': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'I', 'N', 'E', 'Y', 'K', 'T', 'G', 'F'], 'credits': ['C', 'R'], 'warning': ['W']}},
+{'post': {'opening': ['B', 'O', 'M', 'L'], 'text': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'I', 'N', 'E', 'Y', 'K', 'T', 'G', 'F'], 'credits': ['C', 'R'], 'warning': ['W']}},
+{'pre': {'bars': ['O'], 'opening_info': ['B', 'M', 'L'], 'person_identification': ['I', 'N', 'Y', 'P'], 'text_frames': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'K', 'G', 'T', 'F'], 'credits_and_copyright': ['C', 'R'], 'warning': ['W']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'], 'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'], 'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'], 'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']}},
+{'post': {'bars': ['O'], 'opening_info': ['B', 'M', 'L'], 'person_identification': ['I', 'N', 'Y', 'P'], 'text_frames': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'K', 'G', 'T', 'F'], 'credits_and_copyright': ['C', 'R'], 'warning': ['W']}},
+{'pre': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyrons': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
+{'post': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyrons': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'credits': ['C', 'R']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'credits': ['C', 'R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+{'pre': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}},
+{'post': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}},
+# Evaluating individual categories (treating as binary classifier)
+{'pre': {'copyright': ['C']}},
+{'post': {'copyright': ['C']}},
+{'pre': {'bars': ['B']}},
+{'post': {'bars': ['B']}},
+{'pre': {'chyron': ['I', 'N', 'Y']}},
+{'post': {'chyron': ['I', 'N', 'Y']}},
+{'pre': {'credits': ['C'], 'copyright': ['R']}},
+{'post': {'credits': ['C'], 'copyright': ['R']}},
+{'pre': {'credits-and-copyright': ['C', 'R']}},
+{'post': {'credits-and-copyright': ['C', 'R']}},
+{'pre': {'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G']}},
+{'post': {'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G']}}
 ]
+
 
 param_keys = ['num_splits', 'num_epochs', 'num_layers', 'positional_encoding', 'dropouts', 'backbone_name', 'block_guids_train', 'block_guids_valid', 'bins']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
     configs.append(dict(zip(param_keys, vals)))
+
