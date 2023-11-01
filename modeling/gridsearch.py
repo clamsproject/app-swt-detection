@@ -5,6 +5,7 @@ import backbones
 num_splits = {30}
 num_epochs = {2, 5, 10, 20}
 num_layers = {2, 3, 4, 5}
+positional_encoding = {"fractional", "sinusoidal", "none"}
 dropouts = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5}
 backbone_name = backbones.model_map.keys()
 block_guids_train = [
@@ -41,7 +42,7 @@ bins = [
     {'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
 ]
 
-param_keys = ['num_splits', 'num_epochs', 'num_layers', 'dropouts', 'backbone_name', 'block_guids_train', 'block_guids_valid', 'bins']
+param_keys = ['num_splits', 'num_epochs', 'num_layers', 'positional_encoding', 'dropouts', 'backbone_name', 'block_guids_train', 'block_guids_valid', 'bins']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):

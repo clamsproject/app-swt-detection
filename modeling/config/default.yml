@@ -4,6 +4,7 @@ backbone_name: "vgg16"
 block_guids_train: []
 block_guids_valid: []
 num_layers: 3
+positional_encoding: "fractional"
 dropouts: 0.2
 bins:
   pre:
