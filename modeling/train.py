@@ -54,7 +54,7 @@ RESULTS_DIR = f"results-{platform.node().split('.')[0]}"
 class SWTDataset(Dataset):
     def __init__(self, feature_model, labels, vectors):
         self.feature_model = feature_model
-        self.feat_dim = feat_dims[feature_model]
+        self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
         self.labels = labels
         self.vectors = vectors
 
@@ -187,7 +187,7 @@ def split_dataset(indir, train_guids, validation_guids, configs):
                         elif configs['positional_encoding'] == 'sinusoidal':
                             # TODO: implement sinusoidal encoding
                             pass
-                    valid_vectors.append(torch.from_numpy(vector))
+                    valid_vectors.append(vector)
         elif guid in train_guids:
             train_vnum += 1
             for i, vec in enumerate(feature_vecs):
