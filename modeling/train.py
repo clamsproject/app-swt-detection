@@ -171,40 +171,31 @@ def split_dataset(indir, train_guids, validation_guids, configs):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
-        if guid in validation_guids:
-            valid_vnum += 1
-            for i, vec in enumerate(feature_vecs):
-                if not labels['frames'][i]['mod']:  # "transitional" frames
-                    valid_vimg += 1
-                    valid_labels.append(pre_bin(labels['frames'][i]['label'], configs))
-                    vector = torch.from_numpy(vec)
-                    position = labels['frames'][i]['curr_time']
-                    if configs and 'positional_encoding' in configs:
-                        if configs['positional_encoding'] == 'fractional':
-                            total = labels['duration']
-                            fraction = position / total
-                            vector = torch.concat((vector, torch.tensor([fraction])))
-                        elif configs['positional_encoding'] == 'sinusoidal':
-                            # TODO: implement sinusoidal encoding
-                            pass
+        # posenced_vecs = []
+        # if configs and 'positional_encoding' in configs:
+        #     if configs['positional_encoding'] == 'fractional':
+        for i, vec in enumerate(feature_vecs):
+            if not labels['frames'][i]['mod']:  # "transitional" frames
+                valid_vimg += 1
+                pre_binned_label = pre_bin(labels['frames'][i]['label'], configs)
+                vector = torch.from_numpy(vec)
+                position = labels['frames'][i]['curr_time']
+                if configs and 'positional_encoding' in configs:
+                    if configs['positional_encoding'] == 'fractional':
+                        total = labels['duration']
+                        fraction = position / total
+                        vector = torch.concat((vector, torch.tensor([fraction])))
+                    elif configs['positional_encoding'] == 'sinusoidal':
+                        # TODO: implement sinusoidal encoding
+                        pass
+                if guid in validation_guids:
+                    valid_vnum += 1
                     valid_vectors.append(vector)
-        elif guid in train_guids:
-            train_vnum += 1
-            for i, vec in enumerate(feature_vecs):
-                if not labels['frames'][i]['mod']:  # "transitional" frames
-                    train_vimg += 1
-                    train_labels.append(pre_bin(labels['frames'][i]['label'], configs))
-                    vector = torch.from_numpy(vec)
-                    position = labels['frames'][i]['curr_time']
-                    if configs and 'positional_encoding' in configs:
-                        if configs['positional_encoding'] == 'fractional':
-                            total = labels['duration']
-                            fraction = position / total
-                            vector = torch.concat((vector, torch.tensor([fraction])))
-                        elif configs['positional_encoding'] == 'sinusoidal':
-                            # TODO: implement sinusoidal encoding
-                            pass
+                    valid_labels.append(pre_binned_label)
+                elif guid in train_guids:
+                    train_vnum += 1
                     train_vectors.append(vector)
+                    train_labels.append(pre_binned_label)
     logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
     train = SWTDataset(configs['backbone_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['backbone_name'], valid_labels, valid_vectors)
