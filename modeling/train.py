@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-feat_dims = {
+ori_feat_dims = {
     "convnext_base": 1024,
     "convnext_tiny": 768,
     "convnext_small": 768,
@@ -44,6 +44,7 @@ feat_dims = {
     "vgg19": 4096,
     "bn_vgg19": 4096,
 }
+feat_dims = {}
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
@@ -69,14 +70,15 @@ class SWTDataset(Dataset):
 
 
 def adjust_dims(configs):
+    additional_dim = 0
     if configs and 'positional_encoding' in configs:
         if configs['positional_encoding'] == 'fractional':
-            global feat_dims 
-            feat_dims = {backbone: dim + 1 for backbone, dim in feat_dims.items()}
+            additional_dim = 1
         elif configs['positional_encoding'] == 'sinusoidal-concat':
             if 'embedding_size' in configs:
-                global feat_dims
-                feat_dims = {backbone: dim + configs['embedding_size'] for backbone, dim in feat_dims.items()}
+                additional_dim = configs['embedding_size']
+    global feat_dims
+    feat_dims = {backbone: dim + additional_dim for backbone, dim in ori_feat_dims.items()}
     return
 
 
@@ -180,14 +182,23 @@ def split_dataset(indir, train_guids, validation_guids, configs):
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    if configs and 'positional_encoding' in configs and configs['positional_encoding'] in ['sinusoidal-add, sinusoidal-concat']:
-        max_len = 3600000 / unit
+    logger.warn(configs['positional_encoding'])
+    if configs and 'positional_encoding' in configs and configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
+        # for now, hard-coding the longest video length in the annotated dataset 
+        # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
+        # cpb-aacip-259-4j09zf95	  Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
+        # 94 miins = 5640 secs = 5640000 ms
+        logger.warn('POSITIONAL ENCODING IS EXPERIMENTAL')
+        max_len = int(5640000 / unit)
+        if max_len % 2 == 1:
+            max_len += 1
         if configs['positional_encoding'] == 'sinusoidal-add':
-            embedding_dim = feat_dims(configs['backbone_name'])
+            embedding_dim = feat_dims[configs['backbone_name']]
         elif 'embedding_size' in configs:
             embedding_dim = configs['embedding_size']
         else:
             embedding_dim = 512
+        logger.info(f'creating positional encoding: {max_len} x {embedding_dim}')
         positional_encoding = create_sinusoidal_embeddings(max_len, embedding_dim)
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
@@ -213,7 +224,7 @@ def split_dataset(indir, train_guids, validation_guids, configs):
                         if configs['positional_encoding'] == 'sinusoidal-add':
                             vector = torch.add(vector, embedding)
                         else:
-                            vector = torch.concat(vector, embedding)
+                            vector = torch.concat((vector, embedding))
                 if guid in validation_guids:
                     valid_vnum += 1
                     valid_vectors.append(vector)
