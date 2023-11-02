@@ -73,10 +73,19 @@ def adjust_dims(configs):
         if configs['positional_encoding'] == 'fractional':
             global feat_dims 
             feat_dims = {backbone: dim + 1 for backbone, dim in feat_dims.items()}
-        elif configs['positional_encoding'] == 'sinusoidal':
-            # TODO: implement sinusoidal encoding
-            pass
+        elif configs['positional_encoding'] == 'sinusoidal-concat':
+            if 'embedding_size' in configs:
+                global feat_dims
+                feat_dims = {backbone: dim + configs['embedding_size'] for backbone, dim in feat_dims.items()}
     return
+
+
+def create_sinusoidal_embeddings(n_pos, dim):
+    matrix = torch.zeros(n_pos, dim)
+    position_enc = np.array([[pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)] for pos in range(n_pos)])
+    matrix[:, 0::2] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
+    matrix[:, 1::2] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
+    return matrix
 
 
 def get_guids(data_dir):
@@ -162,11 +171,24 @@ def split_dataset(indir, train_guids, validation_guids, configs):
     train_labels = []
     valid_vectors = []
     valid_labels = []
+    if configs and 'unit_multiplier' in configs:
+        unit = configs['unit_multiplier']
+    else:
+        unit = 3600000
     if configs and 'bins' in configs and 'pre' in configs['bins']:
         pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
+    if configs and 'positional_encoding' in configs and configs['positional_encoding'] in ['sinusoidal-add, sinusoidal-concat']:
+        max_len = 3600000 / unit
+        if configs['positional_encoding'] == 'sinusoidal-add':
+            embedding_dim = feat_dims(configs['backbone_name'])
+        elif 'embedding_size' in configs:
+            embedding_dim = configs['embedding_size']
+        else:
+            embedding_dim = 512
+        positional_encoding = create_sinusoidal_embeddings(max_len, embedding_dim)
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
@@ -185,9 +207,13 @@ def split_dataset(indir, train_guids, validation_guids, configs):
                         total = labels['duration']
                         fraction = position / total
                         vector = torch.concat((vector, torch.tensor([fraction])))
-                    elif configs['positional_encoding'] == 'sinusoidal':
-                        # TODO: implement sinusoidal encoding
-                        pass
+                    elif configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
+                        position = round(position/unit)
+                        embedding = positional_encoding[position]
+                        if configs['positional_encoding'] == 'sinusoidal-add':
+                            vector = torch.add(vector, embedding)
+                        else:
+                            vector = torch.concat(vector, embedding)
                 if guid in validation_guids:
                     valid_vnum += 1
                     valid_vectors.append(vector)

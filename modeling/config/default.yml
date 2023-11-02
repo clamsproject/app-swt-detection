@@ -27,6 +27,8 @@ block_guids_valid: [
   ]
 num_layers: 3
 positional_encoding: "fractional"
+unit_multiplier: 60000
+embedding_size: 512
 dropouts: 0.1
 bins:
   pre:
