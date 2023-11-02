@@ -218,3 +218,18 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,mac,windows,linux
 .idea
+
+# MacOS FInder information
+.DS_Store
+
+# Files created by data_ingestion
+modeling/features
+modeling/results*/*kfold*pt
+modeling/results*/*kfold*csv
+modeling/results*/*kfold*txt
+modeling/vectorized/*
+
+# Files used or created by classify.py
+modeling/data/*
+modeling/frames/*
+modeling/predictions.json

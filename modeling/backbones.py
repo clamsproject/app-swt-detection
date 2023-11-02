@@ -238,7 +238,9 @@ class BN_VGG19Extractor(ExtractorModel):
 
 # ===========================================================================|
 
-model_map = {model.name: model for model in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
+model_map = {
+    model.name: model for model
+    in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
 
 if __name__ == "__main__":
     import numpy as np
