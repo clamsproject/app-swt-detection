@@ -25,12 +25,11 @@ from modeling import backbones
 from utils import get_net
 
 
-# For now just using the model from the first fold of a test (and also assuming
+# For now just some random model from the first fold of a test (and also assuming
 # that it has the labels as listed in config/default.yml).
-BEST_MODEL = 'results-test/20231026-135541.kfold_000.pt'
-BEST_MODEL = 'modeling/results-test/20231026-164841.kfold_000.pt'
+MODEL = 'modeling/models/20231026-164841.kfold_000.pt'
 
-# Assuming for now that the model's feature extractor uses the VGG16 model.
+# The above model's feature extractor uses the VGG16 model.
 MODEL_TYPE = 'vgg16'
 
 # Mappings from prediction indices to label name. Another temporary assumption,
@@ -60,7 +59,7 @@ LABELS = {label for label in sorted(LABEL_MAPPINGS.values()) if label != 'other'
 
 # Loading the model and featurizer.
 model = get_net(4096, 4, 3, 0.2)
-model.load_state_dict(torch.load(BEST_MODEL))
+model.load_state_dict(torch.load(MODEL))
 featurizer = backbones.model_map[MODEL_TYPE]()
 
 
