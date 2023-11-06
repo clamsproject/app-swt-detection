@@ -1,13 +1,8 @@
 """
-DELETE THIS MODULE STRING AND REPLACE IT WITH A DESCRIPTION OF YOUR APP.
 
-app.py Template
+CLAMS app to detect scenes with text.
 
-The app.py script does several things:
-- import the necessary code
-- create a subclass of ClamsApp that defines the metadata and provides a method to run the wrapped NLP tool
-- provide a way to run the code as a RESTful Flask service 
-
+The kinds of scenes that are recognized include slates, chryons and credits.
 
 """
 
@@ -15,17 +10,16 @@ import argparse
 import logging
 from typing import Union
 
-# Imports needed for Clams and MMIF.
-# Non-NLP Clams applications will require AnnotationTypes
-
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
 
-# For an NLP tool we need to import the LAPPS vocabulary items
-from lapps.discriminators import Uri
+import classify
 
 
-class Scaffolding(ClamsApp):
+logging.basicConfig(filename='swt.log', level=logging.DEBUG)
+
+
+class SwtDetection(ClamsApp):
 
     def __init__(self):
         super().__init__()
@@ -38,20 +32,40 @@ class Scaffolding(ClamsApp):
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._annotate
-        raise NotImplementedError
+
+        vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
+        if not vds:
+            # TODO: should add warning
+            return mmif
+        vd = vds[0]
+
+        # calculate the frame predictions and extract the timeframes
+        predictions = classify.process_video(vd.location, step=classify.STEP_SIZE)
+        timeframes = classify.extract_timeframes(predictions)
+
+        # aad the timeframes to a new view and return the updated Mmif object
+        new_view: View = mmif.new_view()
+        self.sign_view(new_view, parameters)
+        new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
+        for tf in timeframes:
+            start, end, score, label = tf
+            timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
+            timeframe_annotation.add_property("start", start)
+            timeframe_annotation.add_property("end", end)
+            timeframe_annotation.add_property("frameType", label),
+            timeframe_annotation.add_property("score", score)
+        return mmif
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", action="store", default="5000", help="set port to listen" )
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
-    # add more arguments as needed
-    # parser.add_argument(more_arg...)
 
     parsed_args = parser.parse_args()
 
-    # create the app instance
-    app = Scaffolding()
+    app = SwtDetection()
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode

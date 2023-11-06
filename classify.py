@@ -10,6 +10,7 @@ It started diverging from its source very quickly.
 import os
 import sys
 import json
+import logging
 from operator import itemgetter
 
 import torch
@@ -68,6 +69,7 @@ def process_video(mp4_file: str, step: int = 1000):
     and apply the model. Returns a list of predictions, where each prediction is
     an instance of numpy.ndarray."""
     print(f'Processing {mp4_file}...')
+    logging.info(f'processing {mp4_file}...')
     all_predictions = []
     for n, image in get_frames(mp4_file, step):
         img = Image.fromarray(image[:,:,::-1])
@@ -79,6 +81,7 @@ def process_video(mp4_file: str, step: int = 1000):
         all_predictions.append(prediction)
         if SAFE_FRAMES:
             cv2.imwrite(f"frames/frame-{n:06d}.jpg", image)
+    logging.info(f'number of predictions = {len(all_predictions)}')
     return(all_predictions)
 
 
@@ -124,6 +127,7 @@ def save_predictions(predictions: list, filename: str):
 
 
 def load_predictions(filename: str) -> list:
+    # TODO: needs to recreate the Prediction instances
     with open(filename) as fh:
         predictions = json.load(fh)
         return predictions
@@ -134,16 +138,16 @@ def enrich_predictions(predictions: list):
     0 through 4. For example if the raw probability score for the slate is in the
     0.5-0.75 range than ('slate', 3) will be added."""
     for prediction in predictions:
-        binned_scores = compute_labels(prediction[1])
-        prediction[1].append(binned_scores)
+        binned_scores = compute_labels(prediction.data)
+        prediction.data.append(binned_scores)
 
 
 def print_predictions(predictions):
-    print('\n     slate  chyron creds  other')
+    print('\n        slate  chyron creds  other')
     for prediction in predictions:
-        milliseconds = prediction[0]
-        p1, p2, p3, p4 = prediction[1][:4]
-        binned_scores = prediction[1][4]
+        milliseconds = prediction.timepoint
+        p1, p2, p3, p4 = prediction.data[:4]
+        binned_scores = prediction.data[-1]
         labels = ' '.join([f'{label}-{score}' for label, score in binned_scores])
         print(f'{milliseconds:6}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}  {labels}')
     print(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
@@ -165,13 +169,23 @@ def scale(score):
             return score_out
 
 
+def extract_timeframes(predictions):
+    enrich_predictions(predictions)
+    #print_predictions(predictions)
+    timeframes = collect_timeframes(predictions)
+    compress_timeframes(timeframes)
+    filter_timeframes(timeframes)
+    timeframes = remove_overlapping_timeframes(timeframes)
+    return timeframes
+
+
 def collect_timeframes(predictions: list) -> dict:
     """Find sequences of frames for all labels where the score is not 0."""
     timeframes = { label: [] for label in LABELS}
     open_frames = { label: [] for label in LABELS}
     for prediction in predictions:
-        timepoint = prediction[0]
-        bins = prediction[1][4]
+        timepoint = prediction.timepoint
+        bins = prediction.data[-1]
         for label, score in bins:
             if score == 0:
                 if open_frames[label]:
@@ -179,6 +193,7 @@ def collect_timeframes(predictions: list) -> dict:
                 open_frames[label] = []
             elif score >= 1:
                 open_frames[label].append((timepoint, score, label))
+    # TODO: this is fragile because it depends on a variable in the loop above
     for label, score in bins:
         if open_frames[label]:
             timeframes[label].append(open_frames[label])
@@ -273,23 +288,11 @@ class Prediction:
 
 if __name__ == '__main__':
 
-    create_frame_predictions = False
-    create_timeframes = False
-
-    if create_frame_predictions:
-        predictions = process_video('data/cpb-aacip-690722078b2-shrunk.mp4', step=STEP_SIZE)
-        save_predictions(predictions, 'predictions.json')
-
-    if create_timeframes:
-        predictions = load_predictions('predictions.json')
-        enrich_predictions(predictions)
-        #print_predictions(predictions)
-        timeframes = collect_timeframes(predictions)
-        compress_timeframes(timeframes)
-        filter_timeframes(timeframes)
-        #for label in timeframes:
-        #    print(label, timeframes[label])
-        timeframes = remove_overlapping_timeframes(timeframes)
-        print(timeframes)
-
+    predictions = process_video('modeling/data/cpb-aacip-690722078b2-shrunk.mp4', step=STEP_SIZE)
+    enrich_predictions(predictions)
+    timeframes = collect_timeframes(predictions)
+    compress_timeframes(timeframes)
+    filter_timeframes(timeframes)
+    timeframes = remove_overlapping_timeframes(timeframes)
+    print(timeframes)
 

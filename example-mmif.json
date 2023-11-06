@@ -8,7 +8,7 @@
       "properties": {
         "id": "m1",
         "mime": "video/mpeg",
-        "location": "file:///Users/marc/Desktop/projects/clams/code/clamsproject/apps/app-swt-detection/modeling/data/cpb-aacip-690722078b2-shrunk.mp4"
+        "location": "file:///data/video/cpb-aacip-690722078b2-shrunk.mp4"
       }
     }
   ],

@@ -1,65 +1,125 @@
-# TO_DEVS: BURN AFTER READING
+# Scene-with-text 
 
-Delete this section of the document once the app development is done, before publishing the repository. 
-
----
-This skeleton code is a scaffolding for Python-based CLAMS app development. Specifically, it contains 
-
-1. `app.py` and `metadata.py` to write the app 
-1. `requirements.txt` to specify python dependencies
-1. `Containerfile` to containerize the app and specify system dependencies
-1. `.gitignore` and `.dockerignore` files listing commonly ignored files
-1. an empty `LICENSE` file to replace with an actual license information of the app
-1. `CLAMS-generic-readme.md` file with basic instructions of app installation and execution
-1. This `README.md` file for additional information not specified in the generic readme file. 
-1. A number of GitHub Actions workflows for issue/bug-report management 
-1. A GHA workflow to publish app images upon any push of a git tag
-   * **NOTE**: All GHA workflows included are designed to only work in repositories under `clamsproject` organization.
-
-Before pushing your first commit, please make sure to delete this section of the document.
-
-Then use the following section to document any additional information specific to this app. If your app works significantly different from what's described in the generic readme file, be as specific as possible. 
-
-
-> **warning** 
-> TO_DEVS: Delete these `TO_DEVS` notes and warnings before publishing the repository.
-
----
-
-# Scaffolding
-
-> **warning** 
-> TO_DEVS: Again, delete these `TO_DEVS` notes and warnings before publishing the repository.
 
 ## Description
 
-> **note**
-> TO_DEVS: A brief description of the app, expected behavior, underlying software/library/technology, etc.
+Proof of concept prototype for an app that extracts scenes with textual content. At the moment, it extracts slates, chyrons and credits.
 
-## User instruction
+
+## User instructions
 
 General user instructions for CLAMS apps is available at [CLAMS Apps documentation](https://apps.clams.ai/clamsapp).
-
-> **note** 
-> TO_DEVS: Below is a list of additional information specific to this app.
 
 
 ### System requirements
 
-> **note**
-> TO_DEVS: Any system-level software required to run this app. Usually include some of the following:
-> * supported OS and CPU architectures
-> * usage of GPU
-> * system package names (e.g. `ffmpeg`, `libav`, `libopencv-dev`, etc.)
-> * some example code snippet to install them on Debian/Ubuntu (because our base images are based on Debian)
->     * e.g. `apt-get update && apt-get install -y <package-name>`
+The preferred platform is Debian 10.13 or higher, but the code is known to run on MacOSX. GPU is not required but performance will be better with it. The main system packages needed are FFmpeg ([https://ffmpeg.org/](https://ffmpeg.org/)), OpenCV4 ([https://opencv.org/](https://opencv.org/)), and Python 3.8 or higher. 
 
-### Configurable runtime parameter
+The easiest way to get these is to get the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image. For more details take a peek at the following container specifications:
 
-Although all CLAMS apps are supposed to run as *stateless* HTTP servers, some apps can configured at request time using [URL query strings](https://en.wikipedia.org/wiki/Query_string). For runtime parameter supported by this app, please visit [CLAMS App Directory](https://apps.clams.ai) and look for the app name and version. 
+- [https://github.com/clamsproject/clams-python/blob/main/container/Containerfile](https://github.com/clamsproject/clams-python/blob/main/container/Containerfile)
+- [https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile)
+- [https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile)
 
-> **warning**
-> TO_DEVS: If you're not developing this app for publishing on the CLAMS App Directory, the above paragraph is not applicable. Feel free to delete or change it.
+The following Python packages are needed: clams-python, ffmpeg-python, opencv-python-rolling, torch and torchvision:
 
-> **note**
-> TO_DEVS: all runtime parameters are supported to be VERY METICULOUSLY documented in the app's `metadata.py` file. However for some reason, if you need to use this space to elaborate what's already documented in `metadata.py`, feel free to do so.
+```bash
+pip install clams-python==1.0.9 ffmpeg-python==0.2.* opencv-python-rolling
+pip install torch==2.1.0 torchvision==0.16.0
+```
+
+The installs in the first line are part of the clams-python-opencv4 image, the torch and torchvision packages need to be installed in addition (see the `Containerfile` specification in this repository, that specification also loads a PyTorch model).
+
+
+### Configurable runtime parameters
+
+Although all CLAMS apps are supposed to run as *stateless* HTTP servers, some apps can be configured at request time using [URL query strings](https://en.wikipedia.org/wiki/Query_string). For runtime parameter supported by this app, please visit [CLAMS App Directory](https://apps.clams.ai) and look for the app name and version. 
+
+
+### Running the application
+
+To test the code without running a Flask server use the `test.py` script. 
+
+```bash
+python test.py example-mmif.json out.json
+```
+
+The example MMIF file in `example-mmif.json` depends on there being a video file in `/data/video/`, edit the example file as needed.
+
+To build the Docker image
+
+```bash
+docker build -t app-swt:1.0 -f Containerfile .
+```
+
+To run the container
+
+```bash
+docker run --rm -d -v /Users/Shared/archive/:/data -p 5000:5000 app-swt:1.0
+```
+
+Now you can access the app:
+
+```bash
+curl http://localhost:5000?pretty=true
+curl -X POST -d@input/example-1.mmif http://localhost:5000/
+```
+
+The first gets you the metadata and the second, which may take a while depending on the size of your video file, returns a MMIF object with timeframes added, for example
+
+```json
+{
+  "metadata": {
+    "mmif": "http://mmif.clams.ai/0.4.0"
+  },
+  "documents": [
+    {
+      "@type": "http://mmif.clams.ai/0.4.0/vocabulary/VideoDocument",
+      "properties": {
+        "mime": "video/mpeg",
+        "id": "m1",
+        "location": "file:///data/video/cpb-aacip-690722078b2-shrunk.mp4"
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "v_0",
+      "metadata": {
+        "timestamp": "2023-11-06T20:00:18.311889",
+        "app": "http://apps.clams.ai/swt-detection",
+        "contains": {
+          "http://mmif.clams.ai/vocabulary/TimeFrame/v1": {
+            "document": "m1"
+          }
+        },
+        "parameters": {
+          "pretty": "True"
+        }
+      },
+      "annotations": [
+        {
+          "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
+          "properties": {
+            "start": 30000,
+            "end": 40000,
+            "frameType": "slate",
+            "score": 3.909090909090909,
+            "id": "tf_1"
+          }
+        },
+        {
+          "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
+          "properties": {
+            "start": 56000,
+            "end": 58000,
+            "frameType": "slate",
+            "score": 1.3333333333333333,
+            "id": "tf_2"
+          }
+        }
+      ]
+    }
+  ]
+}
+```

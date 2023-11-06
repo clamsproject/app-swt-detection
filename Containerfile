@@ -1,5 +1,5 @@
-# Use the same base image version as the clams-python python library version
-FROM ghcr.io/clamsproject/clams-python:1.0.9
+FROM ghcr.io/clamsproject/clams-python-opencv4:1.0.9
+
 # See https://github.com/orgs/clamsproject/packages?tab=packages&q=clams-python for more base images
 # IF you want to automatically publish this image to the clamsproject organization, 
 # 1. you should have generated this template without --no-github-actions flag
@@ -19,11 +19,24 @@ ENV CLAMS_APP_VERSION ${CLAMS_APP_VERSION}
 # install more system packages as needed using the apt manager
 ################################################################################
 
+RUN apt-get update && apt-get install -y wget
+
 ################################################################################
 # main app installation
-COPY ./ /app
+
+RUN pip install --no-cache-dir torch==2.1.0
+RUN pip install --no-cache-dir torchvision==0.16.0
+
+# Getting the model at build time so we don't need to get it each time we start
+# a container. This is also because without it I ran into "Connection reset by peer"
+# errors once in a while.
+RUN wget https://download.pytorch.org/models/vgg16-397923af.pth
+RUN mkdir /root/.cache/torch /root/.cache/torch/hub /root/.cache/torch/hub/checkpoints
+RUN mv vgg16-397923af.pth /root/.cache/torch/hub/checkpoints
+
 WORKDIR /app
-RUN pip3 install -r requirements.txt
+
+COPY . /app
 
 # default command to run the CLAMS app in a production server 
 CMD ["python3", "app.py", "--production"]
