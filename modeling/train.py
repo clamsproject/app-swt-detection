@@ -6,6 +6,7 @@ import platform
 import sys
 import time
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import List, IO
 
@@ -82,6 +83,7 @@ def adjust_dims(configs):
     return
 
 
+@lru_cache
 def create_sinusoidal_embeddings(n_pos, dim):
     matrix = torch.zeros(n_pos, dim)
     position_enc = np.array([[pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)] for pos in range(n_pos)])
