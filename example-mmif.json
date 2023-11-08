@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "mmif": "http://mmif.clams.ai/0.4.0"
+  },
+  "documents": [
+    {
+      "@type": "http://mmif.clams.ai/0.4.0/vocabulary/VideoDocument",
+      "properties": {
+        "id": "m1",
+        "mime": "video/mpeg",
+        "location": "file:///data/video/cpb-aacip-690722078b2-shrunk.mp4"
+      }
+    }
+  ],
+  "views": [
+  ]
+}
