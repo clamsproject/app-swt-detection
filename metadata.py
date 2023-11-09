@@ -20,7 +20,7 @@ def appmetadata() -> AppMetadata:
     """
     
     metadata = AppMetadata(
-        name="Scene-with-text Detection",
+        name="Scenes-with-text Detection",
         description="Detects scenes with text, like slates, chyrons and credits.",
         app_license="Apache 2.0",
         identifier="swt-detection",
