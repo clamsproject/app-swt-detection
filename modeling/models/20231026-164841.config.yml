@@ -1,0 +1,5 @@
+model_type: "vgg16"
+in_dim: 4096
+labels: ["slate", "chyron", "credit", "other"]
+num_layers: 3
+dropout: 0.2

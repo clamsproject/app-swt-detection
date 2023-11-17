@@ -287,6 +287,21 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     else:
         export_f = sys.stdout
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
+    export_config(configs, train_id)
+
+
+def export_config(configs, train_id):
+    model = configs["backbone_name"]
+    in_dim = feat_dims[model]
+    num_layers = configs["num_layers"]
+    dropout = configs["dropouts"]
+    labels = get_valid_labels(configs)
+    yaml_txt = f"""'model_type': {model}\n'in_dim': {in_dim}\n'labels': {labels}\n'num_layers' {num_layers}\n'dropout': {dropout}"""
+    config_yaml = yaml.safe_load(yaml_txt)
+    config_path = Path(f"{RESULTS_DIR}/{train_id}.config.yml")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, 'w') as file:
+        yaml.dump(config_yaml, file)
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
@@ -317,7 +332,7 @@ def get_valid_labels(config):
         base = list(config["bins"]["post"].keys())
     elif config and "pre" in config["bins"]:
         base = list(config["bins"]["pre"].keys()) 
-    return base + ["none"]
+    return base + ["other"]
     
 
 def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_labels, export_fname=None):
