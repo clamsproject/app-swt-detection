@@ -1,31 +1,17 @@
-"""classify.py
-
-This started out as an exact copy of modeling/classify.py. It was copied because I did
-not want to take the effort to turn the modeling directory into a package.
-
-It started diverging from its source very quickly.
-
-"""
-
-import os
-import sys
-import json
-import yaml
-import logging
 import argparse
+import json
+import logging
+import sys
 from operator import itemgetter
 
-import torch
-import torch.nn as nn
-
-import numpy as np
 import cv2
+import numpy as np
+import torch
+import yaml
 from PIL import Image
 
-from mmif.utils import video_document_helper as vdh
-
-from modeling import backbones, data_ingestion
-from utils import get_net
+from modeling import backbones
+from modeling.train import get_net
 
 
 class Classifier:
@@ -48,7 +34,6 @@ class Classifier:
         self.model.load_state_dict(torch.load(config["model"]))
         self.featurizer = backbones.model_map[model_type]()
 
-
     def process_video(self, mp4_file: str):
         """Loops over the frames in a video and for each frame extract the features
         and apply the model. Returns a list of predictions, where each prediction is
@@ -69,7 +54,6 @@ class Classifier:
         logging.info(f'number of predictions = {len(all_predictions)}')
         return(all_predictions)
     
-
     def extract_features(self, frame_vec: np.ndarray, model: torch.nn.Sequential) -> torch.Tensor:
         """Extract the features of a single frame. Based on, but not identical to, the
         process_frame() method of the FeatureExtractor class in data_ingestion.py."""
@@ -107,7 +91,6 @@ class Classifier:
             if score < score_in:
                 return score_out
             
-    
     def enrich_predictions(self, predictions: list):
         """For each prediction, add a nominal score for each label. The scores go from
         0 through 4. For example if the raw probability score for the slate is in the
@@ -116,17 +99,14 @@ class Classifier:
             binned_scores = self.compute_labels(prediction.data)
             prediction.data.append(binned_scores)
 
-
     def extract_timeframes(self, predictions):
         self.enrich_predictions(predictions)
-        #print_predictions(predictions)
         timeframes = self.collect_timeframes(predictions)
         self.compress_timeframes(timeframes)
         self.filter_timeframes(timeframes)
         timeframes = self.remove_overlapping_timeframes(timeframes)
         return timeframes
     
-
     def collect_timeframes(self, predictions: list) -> dict:
         """Find sequences of frames for all labels where the score is not 0."""
         timeframes = { label: [] for label in self.labels}
@@ -189,26 +169,6 @@ class Classifier:
         return False
 
 
-    def experiment(self):
-        """This is an older experiment. It was the first one that I could get to work
-        and it was fully based on the code in data_ingestion.py"""
-        outdir = 'vectorized2'
-        featurizer = data_ingestion.FeatureExtractor('vgg16')
-        in_file = 'data/cpb-aacip-690722078b2-shrunk.mp4'
-        #in_file = 'data/cpb-aacip-690722078b2.mp4'
-        metadata_file = 'data/cpb-aacip-690722078b2.csv'
-        feat_metadata, feat_mats = featurizer.process_video(in_file, metadata_file)
-        print('extraction complete')
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-        for name, vectors in feat_mats.items():
-            with open(f"{outdir}/{feat_metadata['guid']}.json", 'w', encoding='utf8') as f:
-                json.dump(feat_metadata, f)
-            np.save(f"{outdir}/{feat_metadata['guid']}.{name}", vectors)
-            outputs = self.model(torch.from_numpy(vectors))
-            print(outputs)
-
-
 def read_model_config(configs):
     with open(configs) as f:
         config = yaml.safe_load(configs)
@@ -236,7 +196,7 @@ def get_frames(mp4_file: str, step: int = 1000):
 
 
 def softmax(x):
-    return(np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum())
+    return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
 
 
 def load_predictions(filename: str) -> list:
@@ -281,8 +241,8 @@ class Prediction:
         return [self.timepoint, self.data]
 
 
-
 if __name__ == '__main__':
+    # purely for debugging purposes
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", help="The YAML config file")
     args = parser.parse_args()

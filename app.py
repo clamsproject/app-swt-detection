@@ -11,10 +11,9 @@ import logging
 from typing import Union
 
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
+from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 
-import classify
-
+from modeling import classify
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
@@ -24,7 +23,6 @@ class SwtDetection(ClamsApp):
     def __init__(self, configs):
         super().__init__()
         self.classifier = classify.Classifier(configs)
-
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata

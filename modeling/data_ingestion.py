@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-import backbones
+from modeling import backbones
 
 
 class AnnotatedImage:
