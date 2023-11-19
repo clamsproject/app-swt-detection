@@ -17,8 +17,7 @@ from modeling.train import get_net
 class Classifier:
 
     def __init__(self, configs):
-        with open(configs) as f:
-            config = yaml.safe_load(configs)
+        config = yaml.safe_load(configs)
         self.step_size = config["step_size"]
         self.minimum_score = config["minimum_score"]
         self.score_mapping = config["score_mapping"]

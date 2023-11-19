@@ -20,6 +20,8 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
+from modeling import backbones
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -27,24 +29,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-ori_feat_dims = {
-    "convnext_base": 1024,
-    "convnext_tiny": 768,
-    "convnext_small": 768,
-    "convnext_lg": 1536,
-    "densenet121": 1024,
-    "efficientnet_small": 1280,
-    "efficientnet_med": 1280,
-    "efficientnet_large": 1280,
-    "resnet18": 512,
-    "resnet50": 2048,
-    "resnet101": 2048,
-    "resnet152": 2048,
-    "vgg16": 4096,
-    "bn_vgg16": 4096,
-    "vgg19": 4096,
-    "bn_vgg19": 4096,
-}
 feat_dims = {}
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
@@ -79,7 +63,7 @@ def adjust_dims(configs):
             if 'embedding_size' in configs:
                 additional_dim = configs['embedding_size']
     global feat_dims
-    feat_dims = {backbone: dim + additional_dim for backbone, dim in ori_feat_dims.items()}
+    feat_dims = {backbone: dim + additional_dim for backbone, dim in backbones.model_dim_map.items()}
     return
 
 
