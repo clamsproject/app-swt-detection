@@ -102,18 +102,24 @@ class FeatureExtractor(object):
         self.__class__.sinusoidal_embeddings[(n_pos, dim)] = matrix
         return matrix
 
-    def get_img_vectors(self, img_vec):
-        img_vec = self.img_encoder.preprocess(img_vec)
+    def get_img_vector(self, raw_img, as_numpy=True):
+        img_vec = self.img_encoder.preprocess(raw_img)
         img_vec = img_vec.unsqueeze(0)
         if torch.cuda.is_available():
             img_vec = img_vec.to('cuda')
             self.img_encoder.model.to('cuda')
         with torch.no_grad():
             feature_vec = self.img_encoder.model(img_vec)
-        return feature_vec.cpu().numpy()
+        if as_numpy:
+            return feature_vec.cpu().numpy()
+        else:
+            return feature_vec.cpu()
     
     def encode_position(self, cur_time, tot_time, img_vec):
         pos = cur_time / tot_time
+        if isinstance(img_vec, np.ndarray):
+            img_vec = torch.from_numpy(img_vec)
+        img_vec = img_vec.squeeze(0)
         if self.pos_encoder is None:
             return img_vec
         elif self.pos_encoder == 'fractional':
@@ -131,8 +137,8 @@ class FeatureExtractor(object):
         elif self.pos_encoder == 'fractional':
             return self.img_encoder.dim + 1
                     
-    def get_full_feature_vectors(self, img_vec, cur_time, tot_time):
-        img_vecs = self.get_img_vectors(img_vec)
+    def get_full_feature_vectors(self, raw_img, cur_time, tot_time):
+        img_vecs = self.get_img_vector(raw_img, as_numpy=False)
         return self.encode_position(cur_time, tot_time, img_vecs)
 
 
@@ -169,7 +175,7 @@ class TrainingDataPreprocessor(object):
                 frame_metadata['duration'] = frame.total_time
         
             for extractor in self.models:
-                frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vectors(frame.image))
+                frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vector(frame.image, as_numpy=True))
             frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time"}
             frame_dict['vec_idx'] = i
             frame_metadata["frames"].append(frame_dict)

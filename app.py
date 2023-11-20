@@ -10,6 +10,7 @@ import argparse
 import logging
 from typing import Union
 
+import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
 
@@ -21,10 +22,9 @@ logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, config_file: str):
+    def __init__(self, configs):
         super().__init__()
-        self.classifier = classify.Classifier(config_file)
-
+        self.classifier = classify.Classifier(**configs)
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -62,14 +62,14 @@ class SwtDetection(ClamsApp):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="The YAML config file")
-    parser.add_argument("--port", action="store", default="5000", help="set port to listen" )
+    parser.add_argument("-c", "--config", help="The YAML config file", default='modeling/config/classifier.yaml')
+    parser.add_argument("--port", action="store", default="5000", help="set port to listen")
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
-    CONFIGS = parsed_args.config
+    classifier_configs = yaml.safe_load(parsed_args.configs)
 
-    app = SwtDetection(CONFIGS)
+    app = SwtDetection(classifier_configs)
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode

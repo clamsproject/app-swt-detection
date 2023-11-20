@@ -46,9 +46,7 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
 
 class Classifier:
 
-    def __init__(self, config_file: str):
-        with open(config_file) as f:
-            config = yaml.safe_load(f)
+    def __init__(self, config: dict):
         # model and model configuration
         self.model_file = config["model_file"]
         with open(config["model_config"]) as f:
