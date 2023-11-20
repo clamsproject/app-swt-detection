@@ -5,11 +5,11 @@ import backbones
 num_splits = {30}
 num_epochs = {2, 5, 10, 20}
 num_layers = {2, 3, 4, 5}
-positional_encoding = {"fractional", "sinusoidal-add", "sinusoidal-concat", "none"}
-unit_multiplier = {1000, 60000}
-embedding_size = {128, 256, 512}
+pos_enc_name = {"fractional", "sinusoidal-add", "sinusoidal-concat", "none"}
+position_unit = {1000, 60000}
+pos_enc_dim = {128, 256, 512}
 dropouts = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5}
-backbone_name = backbones.model_map.keys()
+img_enc_name = backbones.model_map.keys()
 block_guids_train = [
     ["cpb-aacip-254-75r7szdz"],     # always block this the most "uninteresting" video (88/882 frames annotated)
 ]
@@ -83,7 +83,7 @@ bins = [
 ]
 
 
-param_keys = ['num_splits', 'num_epochs', 'num_layers', 'positional_encoding', 'unit_multiplier', 'embedding_size', 'dropouts', 'backbone_name', 'block_guids_train', 'block_guids_valid', 'bins']
+param_keys = ['num_splits', 'num_epochs', 'num_layers', 'pos_enc_name', 'position_unit', 'pos_enc_dim', 'dropouts', 'img_enc_name', 'block_guids_train', 'block_guids_valid', 'bins']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
