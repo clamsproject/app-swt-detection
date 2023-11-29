@@ -67,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
-    CONFIGS = parsed_args.configs
+    CONFIGS = parsed_args.config
 
     app = SwtDetection(CONFIGS)
 

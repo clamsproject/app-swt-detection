@@ -4,7 +4,7 @@ Running the application code without using a Flask application.
 
 Usage:
 
-$ python test.py example-mmif.json out.json
+$ python test.py example-mmif.json out.json example-config.yml
 
 """
 
@@ -12,7 +12,7 @@ import sys
 
 from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
 
-import classify
+from classify import Classifier
 
 
 with open(sys.argv[1]) as fh_in, open(sys.argv[2], 'w') as fh_out:
@@ -24,11 +24,13 @@ with open(sys.argv[1]) as fh_in, open(sys.argv[2], 'w') as fh_out:
         exit("no video found")
     vd = vds[0]
 
-    # calculate the frame predictions and extract the timeframes
-    predictions = classify.process_video(vd.location, step=1000)
-    timeframes = classify.extract_timeframes(predictions)
+    classifier = Classifier(sys.argv[3])
 
-    # Add the timeframes.
+    # Calculate the frame predictions and extract the timeframes
+    predictions = classifier.process_video(vd.location)
+    timeframes = classifier.extract_timeframes(predictions)
+
+    # Add the timeframes
     new_view: View = input_mmif.new_view()
     new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
     print(timeframes)

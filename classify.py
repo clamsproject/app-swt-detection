@@ -21,21 +21,43 @@ import torch.nn as nn
 import numpy as np
 import cv2
 from PIL import Image
+import torch.nn as nn
 
 from mmif.utils import video_document_helper as vdh
 
-from modeling import backbones, data_ingestion
-from utils import get_net
+from modeling import backbones
+
+
+def get_net(in_dim, n_labels, num_layers, dropout=0.0):
+    # Copied from modeling.train
+    # TODO: use the one from the train module, requires creating a proper package
+    dropouts = [dropout] * (num_layers - 1) if isinstance(dropout, (int, float)) else dropout
+    if len(dropouts) + 1 != num_layers:
+        raise ValueError("length of dropout must be equal to num_layers - 1")
+    net = nn.Sequential()
+    for i in range(1, num_layers):
+        neurons = max(128 // i, n_labels)
+        net.add_module(f"fc{i}", nn.Linear(in_dim, neurons))
+        net.add_module(f"relu{i}", nn.ReLU())
+        net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
+        in_dim = neurons
+    net.add_module("fc_out", nn.Linear(neurons, n_labels))
+    # no softmax here since we're using CE loss which includes it
+    # net.add_module(Softmax(dim=1))
+    return net
 
 
 class Classifier:
 
-    def __init__(self, configs):
-        with open(configs) as f:
-            config = yaml.safe_load(configs)
+    def __init__(self, config_file: str):
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
         self.step_size = config["step_size"]
         self.minimum_score = config["minimum_score"]
         self.score_mapping = config["score_mapping"]
+        # TODO: this works for now but it is wrong, the labels should be taken from
+        # the model configuration file
+        self.labels = config["labels"]
         if "safe_frames" in config:
             self.safe_frames = config["safe_frames"]
         else:
@@ -45,9 +67,8 @@ class Classifier:
         else:
             self.dribble = False
         model_type, self.label_mappings, self.model = read_model_config(config["model_config"])
-        self.model.load_state_dict(torch.load(config["model"]))
+        self.model.load_state_dict(torch.load(config["model_file"]))
         self.featurizer = backbones.model_map[model_type]()
-
 
     def process_video(self, mp4_file: str):
         """Loops over the frames in a video and for each frame extract the features
@@ -68,7 +89,6 @@ class Classifier:
                 cv2.imwrite(f"frames/frame-{n:06d}.jpg", image)
         logging.info(f'number of predictions = {len(all_predictions)}')
         return(all_predictions)
-    
 
     def extract_features(self, frame_vec: np.ndarray, model: torch.nn.Sequential) -> torch.Tensor:
         """Extract the features of a single frame. Based on, but not identical to, the
@@ -83,7 +103,7 @@ class Classifier:
         with torch.no_grad():
             feature_vec = model.model(frame_vec)
         return feature_vec.cpu()
-    
+
     def save_predictions(self, predictions: list, filename: str):
         json_obj = []
         for prediction in predictions:
@@ -106,8 +126,7 @@ class Classifier:
         for score_in, score_out in self.score_mapping:
             if score < score_in:
                 return score_out
-            
-    
+
     def enrich_predictions(self, predictions: list):
         """For each prediction, add a nominal score for each label. The scores go from
         0 through 4. For example if the raw probability score for the slate is in the
@@ -115,7 +134,6 @@ class Classifier:
         for prediction in predictions:
             binned_scores = self.compute_labels(prediction.data)
             prediction.data.append(binned_scores)
-
 
     def extract_timeframes(self, predictions):
         self.enrich_predictions(predictions)
@@ -125,7 +143,6 @@ class Classifier:
         self.filter_timeframes(timeframes)
         timeframes = self.remove_overlapping_timeframes(timeframes)
         return timeframes
-    
 
     def collect_timeframes(self, predictions: list) -> dict:
         """Find sequences of frames for all labels where the score is not 0."""
@@ -211,12 +228,13 @@ class Classifier:
 
 def read_model_config(configs):
     with open(configs) as f:
-        config = yaml.safe_load(configs)
+        config = yaml.safe_load(f)
     labels = config["labels"]
     in_dim = config["in_dim"]
     n_labels = len(labels)
     num_layers = config["num_layers"]
     dropout = config["dropout"]
+    # TODO: move this out of here because it is not a config setting
     model = get_net(in_dim, n_labels, num_layers, dropout)
     model_type = config["model_type"]
     label_mappings = {i: label for i, label in enumerate(labels)}

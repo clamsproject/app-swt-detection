@@ -62,7 +62,7 @@ Now you can access the app:
 
 ```bash
 curl http://localhost:5000?pretty=true
-curl -X POST -d@input/example-1.mmif http://localhost:5000/
+curl -X POST -d@example-mmif.json http://localhost:5000/
 ```
 
 The first gets you the metadata and the second, which may take a while depending on the size of your video file, returns a MMIF object with timeframes added, for example
