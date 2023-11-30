@@ -2,7 +2,7 @@ model_file: "modeling/models/20231026-164841.kfold_000.pt"
 model_config: "modeling/models/20231026-164841.config.yml"
 step_size: 1000
 minimum_score: 1.01
-safe_frames: False
+save_frames: False
 dribble: False
 score_mapping: [[0.01, 0], [0.25, 1], [0.50, 2], [0.75, 3], [1.01, 4]]
 labels: ['slate', 'chyron', 'credit']

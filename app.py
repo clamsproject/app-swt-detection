@@ -21,9 +21,9 @@ logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, configs):
+    def __init__(self, config_file: str):
         super().__init__()
-        self.classifier = classify.Classifier(configs)
+        self.classifier = classify.Classifier(config_file)
 
 
     def _appmetadata(self):
