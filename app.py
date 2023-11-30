@@ -21,8 +21,10 @@ logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self):
+    def __init__(self, config_file: str):
         super().__init__()
+        self.classifier = classify.Classifier(config_file)
+
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -40,8 +42,8 @@ class SwtDetection(ClamsApp):
         vd = vds[0]
 
         # calculate the frame predictions and extract the timeframes
-        predictions = classify.process_video(vd.location, step=classify.STEP_SIZE)
-        timeframes = classify.extract_timeframes(predictions)
+        predictions = self.classifier.process_video(vd.location)
+        timeframes = self.classifier.extract_timeframes(predictions)
 
         # aad the timeframes to a new view and return the updated Mmif object
         new_view: View = mmif.new_view()
@@ -60,12 +62,14 @@ class SwtDetection(ClamsApp):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", help="The YAML config file")
     parser.add_argument("--port", action="store", default="5000", help="set port to listen" )
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
+    CONFIGS = parsed_args.config
 
-    app = SwtDetection()
+    app = SwtDetection(CONFIGS)
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode

@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y wget
 
 RUN pip install --no-cache-dir torch==2.1.0
 RUN pip install --no-cache-dir torchvision==0.16.0
+RUN pip install --no-cache-dir pyyaml==6.0.1
 
 # Getting the model at build time so we don't need to get it each time we start
 # a container. This is also because without it I ran into "Connection reset by peer"
@@ -39,5 +40,5 @@ WORKDIR /app
 COPY . /app
 
 # default command to run the CLAMS app in a production server 
-CMD ["python3", "app.py", "--production"]
+CMD ["python3", "app.py", "--production", "-c", "example-config.yml"]
 ################################################################################

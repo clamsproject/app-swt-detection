@@ -8,7 +8,7 @@ Proof of concept prototype for an app that extracts scenes with textual content.
 
 ## User instructions
 
-General user instructions for CLAMS apps is available at [CLAMS Apps documentation](https://apps.clams.ai/clamsapp).
+General user instructions for CLAMS apps are available at the [CLAMS Apps documentation](https://apps.clams.ai/clamsapp).
 
 
 ### System requirements
@@ -25,7 +25,7 @@ The following Python packages are needed: clams-python, ffmpeg-python, opencv-py
 
 ```bash
 pip install clams-python==1.0.9 ffmpeg-python==0.2.* opencv-python-rolling
-pip install torch==2.1.0 torchvision==0.16.0
+pip install torch==2.1.0 torchvision==0.16.0 pyyaml==6.0.1
 ```
 
 The installs in the first line are part of the clams-python-opencv4 image, the torch and torchvision packages need to be installed in addition (see the `Containerfile` specification in this repository, that specification also loads a PyTorch model).
@@ -33,7 +33,7 @@ The installs in the first line are part of the clams-python-opencv4 image, the t
 
 ### Configurable runtime parameters
 
-Although all CLAMS apps are supposed to run as *stateless* HTTP servers, some apps can be configured at request time using [URL query strings](https://en.wikipedia.org/wiki/Query_string). For runtime parameter supported by this app, please visit [CLAMS App Directory](https://apps.clams.ai) and look for the app name and version. 
+Apps can be configured at request time using [URL query strings](https://en.wikipedia.org/wiki/Query_string). For runtime parameter supported by this app, please visit the [CLAMS App Directory](https://apps.clams.ai) and look for the app name and version. 
 
 
 ### Running the application
@@ -62,7 +62,7 @@ Now you can access the app:
 
 ```bash
 curl http://localhost:5000?pretty=true
-curl -X POST -d@input/example-1.mmif http://localhost:5000/
+curl -X POST -d@example-mmif.json http://localhost:5000/
 ```
 
 The first gets you the metadata and the second, which may take a while depending on the size of your video file, returns a MMIF object with timeframes added, for example

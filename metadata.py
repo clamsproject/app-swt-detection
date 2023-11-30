@@ -30,9 +30,9 @@ def appmetadata() -> AppMetadata:
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
     metadata.add_output(AnnotationTypes.TimeFrame)
     
-    metadata.add_parameter(name='model', description='the model to use, not implemented yet',
-                           type='string', default='vgg16')
-    
+    #metadata.add_parameter(name='model', description='the model to use, not implemented yet',
+    #                       type='string', default='vgg16')
+
     return metadata
 
 
