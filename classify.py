@@ -58,10 +58,10 @@ class Classifier:
         # TODO: this works for now but it is wrong, the labels should be taken from
         # the model configuration file
         self.labels = config["labels"]
-        if "safe_frames" in config:
-            self.safe_frames = config["safe_frames"]
+        if "save_frames" in config:
+            self.save_frames = config["save_frames"]
         else:
-            self.safe_frames = False
+            self.save_frames = False
         if "dribble" in config:
             self.dribble = config["dribble"]
         else:
@@ -85,7 +85,7 @@ class Classifier:
             if self.dribble:
                 print(f'{n:07d}', prediction)
             all_predictions.append(prediction)
-            if self.safe_frames:
+            if self.save_frames:
                 cv2.imwrite(f"frames/frame-{n:06d}.jpg", image)
         logging.info(f'number of predictions = {len(all_predictions)}')
         return(all_predictions)
