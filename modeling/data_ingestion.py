@@ -145,7 +145,7 @@ class FeatureExtractor:
             #     print(f'processing frame {fcount}')
             if cur_target_frame == len(frame_list):
                 break
-            ftime = int((fcount / fps) * 1000)
+            ftime = int(frame.time * 1000) 
             if ftime == frame_list[cur_target_frame].curr_time:
                 frame_list[cur_target_frame].image = frame.to_image()
                 yield frame_list[cur_target_frame]
