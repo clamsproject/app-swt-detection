@@ -185,6 +185,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
+    backbone = configs['backbone_name']
     logger.info(f'Using config: {configs}')
     len_val = len(guids) // configs['num_splits']
     val_set_spec = []
@@ -211,18 +212,19 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        model, p, r, f = train_model(get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
-                                     loss, device, 
-                                     train_loader, valid_loader, 
-                                     configs, labelset_size, 
-                                     export_fname=f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv")
-        torch.save(model.state_dict(), f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt")
+        export_csv_file = f"{RESULTS_DIR}/{backbone}.{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{RESULTS_DIR}/{backbone}.{train_id}.kfold_{i:03d}.pt"
+        model, p, r, f = train_model(
+                get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
+                loss, device, train_loader, valid_loader, configs, labelset_size,
+                export_fname=export_csv_file)
+        torch.save(model.state_dict(), export_model_file)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
     if train_id:
-        p = Path(f'{RESULTS_DIR}/{train_id}.kfold_results.txt')
+        p = Path(f'{RESULTS_DIR}/{backbone}.{train_id}.kfold_results.txt')
         p.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(p, 'w', encoding='utf8')
     else:
@@ -231,26 +233,22 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     export_config(configs, train_id, train.feat_dim)
 
 
-def export_config(configs, train_id, feat_dim):
-    model = configs["backbone_name"]
-    in_dim = feat_dim
-    num_layers = configs["num_layers"]
-    dropout = configs["dropouts"]
-    labels = get_valid_labels(configs)
-    yaml_txt = f"'model_type': {model}\n'in_dim': {in_dim}\n'labels': {labels}\n'num_layers': {num_layers}\n'dropout': {dropout}"
-    config_yaml = yaml.safe_load(yaml_txt)
-    config_path = Path(f"{RESULTS_DIR}/{train_id}.config.yml")
+def export_config(configs: dict, train_id: str, feat_dim):
+    backbone = configs["backbone_name"]
+    config_path = Path(f"{RESULTS_DIR}", f"{backbone}.{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, 'w') as file:
-        yaml.dump(config_yaml, file)
+    with open(config_path, 'w') as fh:
+        for k, v in configs.items():
+            fh.write(f'{k}: {v}\n\n')
+        fh.write(f'labels: {get_valid_labels(configs)}\n\n')
+        # TODO: keeping this for now because some other downstream code depends
+        # on it, but remove this after the backbone refactoring is merged in
+        fh.write(f'in_dim: {feat_dim}\n\n')
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
     max_f1_idx = f_scores.index(max(f_scores))
     min_f1_idx = f_scores.index(min(f_scores))
-    out.write(f'K-fold results\n')
-    for k, v in train_spec.items():
-        out.write(f'\t{k}: {v}\n')
     out.write(f'Highest f1 @ {max_f1_idx:03d}\n')
     out.write(f'\t{trial_specs[max_f1_idx]}\n')
     out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
@@ -367,10 +365,15 @@ def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: 
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("-c", "--config", help="The YAML config file specifying binning strategy", default=None)
+    parser.add_argument("-c", "--config", help="the YAML config file specifying binning strategy", default=None)
+    # Added because I wanted to be able to overrule the RESULTS_DIR with a parameter,
+    # but commented out because I haven't finished that yet. (MV)
+    # parser.add_argument("-r", "--results", metavar="DIR", help="the results directory")
     args = parser.parse_args()
+
     if args.config:
         k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
     else:
