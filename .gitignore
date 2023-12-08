@@ -265,4 +265,3 @@ modeling/vectorized/*
 # Files used or created by classify.py
 modeling/data/*
 modeling/frames/*
-modeling/predictions.json
