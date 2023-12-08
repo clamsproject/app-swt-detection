@@ -1,9 +1,9 @@
-# Scene-with-text 
+# Scenes-with-text 
 
 
 ## Description
 
-Proof of concept prototype for an app that extracts scenes with textual content. At the moment, it extracts slates, chyrons and credits.
+Proof of concept prototype for an app that extracts scenes with textual content. The default model included in the app extracts slates, chyrons and credits.
 
 
 ## User instructions
@@ -38,23 +38,10 @@ Apps can be configured at request time using [URL query strings](https://en.wiki
 
 ### Running the application
 
-To test the code without running a Flask server use the `test.py` script. 
-
-```bash
-python test.py example-mmif.json out.json
-```
-
-The example MMIF file in `example-mmif.json` depends on there being a video file in `/data/video/`, edit the example file as needed.
-
-To build the Docker image
+To build the Docker image and run the container
 
 ```bash
 docker build -t app-swt:1.0 -f Containerfile .
-```
-
-To run the container
-
-```bash
 docker run --rm -d -v /Users/Shared/archive/:/data -p 5000:5000 app-swt:1.0
 ```
 
@@ -123,3 +110,15 @@ The first gets you the metadata and the second, which may take a while depending
   ]
 }
 ```
+
+Note that the example MMIF file in `example-mmif.json` depends on there being a video file in `/data/video/`, edit this path as needed.
+
+
+### Developer notes
+
+To test the code without running a Flask server use the `test.py` script. 
+
+```bash
+python test.py example-mmif.json out.json example-config.yml
+```
+

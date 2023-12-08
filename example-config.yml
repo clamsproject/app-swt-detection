@@ -1,8 +1,28 @@
-model_file: "modeling/models/20231026-164841.kfold_000.pt"
-model_config: "modeling/models/20231026-164841.config.yml"
-step_size: 1000
-minimum_score: 1.01
-save_frames: False
+# Default run-time configuration settings
+# Some of these can be changed by setting parameters when running SWT as an app
+
+# The model file and its configuration settings
+# May want to use 20231026-164841.kfold_results.txt as well
+#model_file: "modeling/models/20231026-164841.kfold_000.pt"
+#model_config: "modeling/models/20231026-164841.config.yml"
+model_file: "modeling/results-vgg16/20231207-143821.kfold_003.pt"
+model_config: "modeling/results-vgg16/20231207-143821.config.yml"
+
+
+# Time unit for output timeframe
+time_unit: 'milliseconds'
+
+# Milliseconds between sampled frames
+sample_rate: 1000
+
+# Minimum score for a frame to be included in a potential timeframe
+minimum_frame_score: 0.01
+
+# Minimum score for a timeframe to be selected
+minimum_timeframe_score: 0.25
+
+# Minimum number of sampled frames required for a timeframe to be included
+minimum_frame_count: 2
+
+# Debugging setting
 dribble: False
-score_mapping: [[0.01, 0], [0.25, 1], [0.50, 2], [0.75, 3], [1.01, 4]]
-labels: ['slate', 'chyron', 'credit']

@@ -16,12 +16,9 @@ import argparse
 from operator import itemgetter
 
 import torch
-import torch.nn as nn
-
 import numpy as np
 import cv2
 from PIL import Image
-import torch.nn as nn
 
 from mmif.utils import video_document_helper as vdh
 
@@ -34,14 +31,14 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     dropouts = [dropout] * (num_layers - 1) if isinstance(dropout, (int, float)) else dropout
     if len(dropouts) + 1 != num_layers:
         raise ValueError("length of dropout must be equal to num_layers - 1")
-    net = nn.Sequential()
+    net = torch.nn.Sequential()
     for i in range(1, num_layers):
         neurons = max(128 // i, n_labels)
-        net.add_module(f"fc{i}", nn.Linear(in_dim, neurons))
-        net.add_module(f"relu{i}", nn.ReLU())
-        net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
+        net.add_module(f"fc{i}", torch.nn.Linear(in_dim, neurons))
+        net.add_module(f"relu{i}", torch.nn.ReLU())
+        net.add_module(f"dropout{i}", torch.nn.Dropout(p=dropouts[i - 1]))
         in_dim = neurons
-    net.add_module("fc_out", nn.Linear(neurons, n_labels))
+    net.add_module("fc_out", torch.nn.Linear(neurons, n_labels))
     # no softmax here since we're using CE loss which includes it
     # net.add_module(Softmax(dim=1))
     return net
@@ -52,23 +49,31 @@ class Classifier:
     def __init__(self, config_file: str):
         with open(config_file) as f:
             config = yaml.safe_load(f)
-        self.step_size = config["step_size"]
-        self.minimum_score = config["minimum_score"]
-        self.score_mapping = config["score_mapping"]
-        # TODO: this works for now but it is wrong, the labels should be taken from
-        # the model configuration file
-        self.labels = config["labels"]
-        if "save_frames" in config:
-            self.save_frames = config["save_frames"]
-        else:
-            self.save_frames = False
-        if "dribble" in config:
-            self.dribble = config["dribble"]
-        else:
-            self.dribble = False
-        model_type, self.label_mappings, self.model = read_model_config(config["model_config"])
-        self.model.load_state_dict(torch.load(config["model_file"]))
-        self.featurizer = backbones.model_map[model_type]()
+        # model and model configuration
+        self.model_file = config["model_file"]
+        with open(config["model_config"]) as f:
+            self.model_config = yaml.safe_load(f)
+        # classifier parameters
+        self.time_unit = config["time_unit"]
+        self.sample_rate = config["sample_rate"]
+        self.minimum_frame_score = config["minimum_frame_score"]
+        self.minimum_timeframe_score = config["minimum_timeframe_score"]
+        self.minimum_frame_count = config["minimum_frame_count"]
+        # not including the "other" label
+        self.labels = tuple(self.model_config["labels"][:-1])
+        # debugging parameters
+        self.dribble = config.get("dribble", False)
+        self.load_model()
+
+    def load_model(self):
+        self.model = get_net(
+            self.model_config["in_dim"],
+            len(self.model_config["labels"]),
+            self.model_config["num_layers"],
+            self.model_config["dropout"])
+        self.model.load_state_dict(torch.load(self.model_file))
+        self.model_type = self.model_config["model_type"]
+        self.featurizer = backbones.model_map[self.model_type]()
 
     def process_video(self, mp4_file: str):
         """Loops over the frames in a video and for each frame extract the features
@@ -76,17 +81,16 @@ class Classifier:
         an instance of numpy.ndarray."""
         print(f'Processing {mp4_file}...')
         logging.info(f'processing {mp4_file}...')
+        basename = os.path.splitext(os.path.basename(mp4_file))[0]
         all_predictions = []
-        for n, image in get_frames(mp4_file, self.step_size):
+        for n, image in get_frames(mp4_file, self.sample_rate):
             img = Image.fromarray(image[:,:,::-1])
             features = self.extract_features(img, self.featurizer)
             prediction = self.model(features)
-            prediction = Prediction(n, prediction)
+            prediction = Prediction(n, self.labels, prediction)
             if self.dribble:
                 print(f'{n:07d}', prediction)
             all_predictions.append(prediction)
-            if self.save_frames:
-                cv2.imwrite(f"frames/frame-{n:06d}.jpg", image)
         logging.info(f'number of predictions = {len(all_predictions)}')
         return(all_predictions)
 
@@ -104,40 +108,7 @@ class Classifier:
             feature_vec = model.model(frame_vec)
         return feature_vec.cpu()
 
-    def save_predictions(self, predictions: list, filename: str):
-        json_obj = []
-        for prediction in predictions:
-            json_obj.append(prediction.as_json())
-        with open(filename, 'w') as fh:
-            json.dump(json_obj, fh)
-            if self.dribble:
-                print(f'Saved predictions to {filename}')
-
-    def compute_labels(self, scores: list):
-        return (
-            ('slate', self.scale(scores[0])),
-            ('chyron', self.scale(scores[1])),
-            ('credit', self.scale(scores[2])))
-
-    def scale(self, score):
-        """Put the score on a scale from 0 through 4, where 0 means the score is less
-        than 0.01 and 1 though 4 are quartiles for score bins 0.01-0.25, 0.25-0.50,
-        0.50-0.75 and 0.75-1.00."""
-        for score_in, score_out in self.score_mapping:
-            if score < score_in:
-                return score_out
-
-    def enrich_predictions(self, predictions: list):
-        """For each prediction, add a nominal score for each label. The scores go from
-        0 through 4. For example if the raw probability score for the slate is in the
-        0.5-0.75 range than ('slate', 3) will be added."""
-        for prediction in predictions:
-            binned_scores = self.compute_labels(prediction.data)
-            prediction.data.append(binned_scores)
-
     def extract_timeframes(self, predictions):
-        self.enrich_predictions(predictions)
-        #print_predictions(predictions)
         timeframes = self.collect_timeframes(predictions)
         self.compress_timeframes(timeframes)
         self.filter_timeframes(timeframes)
@@ -164,6 +135,26 @@ class Classifier:
                 timeframes[label].append(open_frames[label])
         return timeframes
 
+    def collect_timeframes(self, predictions: list) -> dict:
+        """Find sequences of frames for all labels where the score is not 0."""
+        timeframes = { label: [] for label in self.labels}
+        open_frames = { label: [] for label in self.labels}
+        for prediction in predictions:
+            #print(prediction)
+            timepoint = prediction.timepoint
+            for i, label in enumerate(prediction.labels):
+                score = prediction.data[i]
+                if score < self.minimum_frame_score:
+                    if open_frames[label]:
+                        timeframes[label].append(open_frames[label])
+                    open_frames[label] = []
+                else:
+                    open_frames[label].append((timepoint, score, label))
+        for label in self.labels:
+            if open_frames[label]:
+                timeframes[label].append(open_frames[label])
+        return timeframes
+
     def compress_timeframes(self, timeframes: dict):
         """Compresses all timeframes from [(t_1, score_1), ...  (t_n, score_n)] into the
         shorter representation (t_1, t_n, average_score)."""
@@ -179,7 +170,8 @@ class Classifier:
         """Filter out all timeframes with an average score below the threshold defined
         in MINIMUM_SCORE."""
         for label in self.labels:
-            timeframes[label] = [tf for tf in timeframes[label] if tf[2] > self.minimum_score]
+            #timeframes[label] = [tf for tf in timeframes[label] if tf[2] > 0.25]
+            timeframes[label] = [tf for tf in timeframes[label] if tf[2] > self.minimum_timeframe_score]
 
     def remove_overlapping_timeframes(self, timeframes: dict) -> list:
         all_frames = []
@@ -194,20 +186,19 @@ class Classifier:
                 continue
             final_frames.append(frame)
             start, end, _, _ = frame
-            for p in range(start, end + self.step_size, self.step_size):
+            for p in range(start, end + self.sample_rate, self.sample_rate):
                 outlawed_timepoints.add(p)
         return all_frames
 
     def is_included(self, frame, outlawed_timepoints):
         start, end, _, _ = frame
-        for i in range(start, end + self.step_size, self.step_size):
+        for i in range(start, end + self.sample_rate, self.sample_rate):
             if i in outlawed_timepoints:
                 return True
         return False
 
-
     def experiment(self):
-        """This is an older experiment. It was the first one that I could get to work
+        """This is an old experiment. It was the first one that I could get to work
         and it was fully based on the code in data_ingestion.py"""
         outdir = 'vectorized2'
         featurizer = data_ingestion.FeatureExtractor('vgg16')
@@ -226,21 +217,6 @@ class Classifier:
             print(outputs)
 
 
-def read_model_config(configs):
-    with open(configs) as f:
-        config = yaml.safe_load(f)
-    labels = config["labels"]
-    in_dim = config["in_dim"]
-    n_labels = len(labels)
-    num_layers = config["num_layers"]
-    dropout = config["dropout"]
-    # TODO: move this out of here because it is not a config setting
-    model = get_net(in_dim, n_labels, num_layers, dropout)
-    model_type = config["model_type"]
-    label_mappings = {i: label for i, label in enumerate(labels)}
-    return model_type, label_mappings, model
-
-
 def get_frames(mp4_file: str, step: int = 1000):
     """Generator to get frames from an mp4 file. The step parameter defines the number
     of milliseconds between the frames."""
@@ -257,22 +233,51 @@ def softmax(x):
     return(np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum())
 
 
-def load_predictions(filename: str) -> list:
-    # TODO: needs to recreate the Prediction instances
+def save_predictions(predictions: list, filename: str):
+    json_obj = []
+    for prediction in predictions:
+        json_obj.append(prediction.as_json())
+    with open(filename, 'w') as fh:
+        json.dump(json_obj, fh)
+        print(f'Saved predictions to {filename}')
+
+
+def load_predictions(filename: str, labels: list) -> list:
+    predictions = []
     with open(filename) as fh:
-        predictions = json.load(fh)
-        return predictions
+        for (n, tensor, data) in json.load(fh):
+            p = Prediction(n, labels, torch.Tensor(tensor), data=data)
+            predictions.append(p)
+    return predictions
 
 
-def print_predictions(predictions):
-    print('\n        slate  chyron creds  other')
+def print_predictions(predictions, filename=None):
+    fh = sys.stdout if filename is None else open(filename, 'w')
+    fh.write('\n        slate  chyron creds  other\n')
     for prediction in predictions:
         milliseconds = prediction.timepoint
         p1, p2, p3, p4 = prediction.data[:4]
-        binned_scores = prediction.data[-1]
-        labels = ' '.join([f'{label}-{score}' for label, score in binned_scores])
-        print(f'{milliseconds:6}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}  {labels}')
-    print(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
+        fh.write(f'{milliseconds:7}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}\n')
+    fh.write(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
+
+
+def print_timeframes(labels, timeframes):
+    if timeframes:
+        if type(timeframes) is dict:
+            print(f'\nNumber of time frames is {sum([len(v) for v in timeframes.values()])}\n')
+            for label in labels:
+                for tf in timeframes[label]:
+                    print(label, tf)
+        elif type(timeframes) is list:
+            print(f'\nNumber of time frames is {len(timeframes)}\n')
+            for tf in timeframes:
+                print(tf)
+        
+        else:
+            print("\nWARNING: cannot print timeframes")
+            print(timeframes)
+    else:
+        print(f'\nNumber of time frames is 0\n')
 
 
 class Prediction:
@@ -287,30 +292,58 @@ class Prediction:
 
     """
 
-    def __init__(self, timepoint: int, prediction: torch.Tensor):
+    def __init__(self, timepoint: int, labels: list,
+                 prediction: torch.Tensor, data: list = None):
         self.timepoint = timepoint
+        self.labels = labels
         self.tensor = prediction
-        self.data = softmax(self.tensor.detach().numpy())[0].tolist()
+        if data is None:
+            self.data = softmax(self.tensor.detach().numpy())[0].tolist()
+        else:
+            self.data = data
 
     def __str__(self):
-        return f'<Prediction {self.timepoint} {self.data}>'
+        label_scores = ' '.join(["%.4f" % d for d in self.data[:3]])
+        other_score = self.data[len(self.labels)]
+        return f'<Prediction {self.timepoint:6} {label_scores} {other_score:.4f}>'
+
+    def score_for_label(self, label: str):
+        return self.data[self.labels.index(label)]
 
     def as_json(self):
-        return [self.timepoint, self.data]
+        return [self.timepoint, self.tensor.detach().numpy().tolist(), self.data]
 
 
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="The YAML config file")
+    conf_help = "the YAML config file"
+    pred_help = "use cached predictions"
+    parser.add_argument("-i", "--input", help="Input video file")
+    parser.add_argument("-c", "--config", default='example-config.yml', help=conf_help)
+    parser.add_argument("--use-predictions", action='store_true', help=pred_help)
     args = parser.parse_args()
-    
+
     classifier = Classifier(args.config)
-    predictions = classifier.process_video('modeling/data/cpb-aacip-690722078b2-shrunk.mp4')
-    classifier.enrich_predictions(predictions)
+
+    input_basename, extension = os.path.splitext(args.input)
+    predictions_file = f'{input_basename}.json'
+    if args.use_predictions:
+        predictions = load_predictions(predictions_file, classifier.labels)
+    else:
+        predictions = classifier.process_video(args.input)
+        save_predictions(predictions, predictions_file)
+    #print_predictions(predictions, filename='predictions.txt')
+
     timeframes = classifier.collect_timeframes(predictions)
+    
     classifier.compress_timeframes(timeframes)
+    print_timeframes(classifier.labels, timeframes)
+
     classifier.filter_timeframes(timeframes)
+    print_timeframes(classifier.labels, timeframes)
+
     timeframes = classifier.remove_overlapping_timeframes(timeframes)
-    print(timeframes)
+    print_timeframes(classifier.labels, timeframes)
 
