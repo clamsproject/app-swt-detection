@@ -3,11 +3,8 @@
 
 # The model file and its configuration settings
 # May want to use 20231026-164841.kfold_results.txt as well
-#model_file: "modeling/models/20231026-164841.kfold_000.pt"
-#model_config: "modeling/models/20231026-164841.config.yml"
-model_file: "modeling/results-vgg16/20231207-143821.kfold_003.pt"
-model_config: "modeling/results-vgg16/20231207-143821.config.yml"
-
+model_file: "modeling/models/20231026-164841.kfold_000.pt"
+model_config: "modeling/models/20231026-164841.config.yml"
 
 # Time unit for output timeframe
 time_unit: 'milliseconds'
