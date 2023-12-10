@@ -6,7 +6,6 @@ import platform
 import sys
 import time
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 from typing import List, IO
 
@@ -20,6 +19,8 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
+from modeling import data_ingestion
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -27,30 +28,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-ori_feat_dims = {
-    "convnext_base": 1024,
-    "convnext_tiny": 768,
-    "convnext_small": 768,
-    "convnext_lg": 1536,
-    "densenet121": 1024,
-    "efficientnet_small": 1280,
-    "efficientnet_med": 1280,
-    "efficientnet_large": 1280,
-    "resnet18": 512,
-    "resnet50": 2048,
-    "resnet101": 2048,
-    "resnet152": 2048,
-    "vgg16": 4096,
-    "bn_vgg16": 4096,
-    "vgg19": 4096,
-    "bn_vgg19": 4096,
-}
 feat_dims = {}
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
-RESULTS_DIR = f"results-{platform.node().split('.')[0]}"
+RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
@@ -68,28 +51,6 @@ class SWTDataset(Dataset):
     
     def has_data(self):
         return 0 < len(self.vectors) == len(self.labels)
-
-
-def adjust_dims(configs):
-    additional_dim = 0
-    if configs and 'positional_encoding' in configs:
-        if configs['positional_encoding'] == 'fractional':
-            additional_dim = 1
-        elif configs['positional_encoding'] == 'sinusoidal-concat':
-            if 'embedding_size' in configs:
-                additional_dim = configs['embedding_size']
-    global feat_dims
-    feat_dims = {backbone: dim + additional_dim for backbone, dim in ori_feat_dims.items()}
-    return
-
-
-@lru_cache
-def create_sinusoidal_embeddings(n_pos, dim):
-    matrix = torch.zeros(n_pos, dim)
-    position_enc = np.array([[pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)] for pos in range(n_pos)])
-    matrix[:, 0::2] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
-    matrix[:, 1::2] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
-    return matrix
 
 
 def get_guids(data_dir):
@@ -175,57 +136,37 @@ def split_dataset(indir, train_guids, validation_guids, configs):
     train_labels = []
     valid_vectors = []
     valid_labels = []
-    if configs and 'unit_multiplier' in configs:
-        unit = configs['unit_multiplier']
-    else:
-        unit = 3600000
     if configs and 'bins' in configs and 'pre' in configs['bins']:
         pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    if configs and 'positional_encoding' in configs and configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
+    logger.warn(configs['positional_encoding'])
+        
+    extractor = data_ingestion.FeatureExtractor(
+        dense_encoder_name=configs['backbone_name'],
+        positional_encoder=configs['positional_encoding'],
+        positional_unit=configs['unit_multiplier'] if configs and 'unit_multiplier' in configs else 3600000,
+        positional_embedding_dim=configs['embedding_size'] if 'embedding_size' in configs else 512,
         # for now, hard-coding the longest video length in the annotated dataset 
         # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
         # cpb-aacip-259-4j09zf95	  Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
-        # 94 miins = 5640 secs = 5640000 ms
-        logger.warning('POSITIONAL ENCODING IS EXPERIMENTAL')
-        max_len = int(5640000 / unit)
-        if max_len % 2 == 1:
-            max_len += 1
-        if configs['positional_encoding'] == 'sinusoidal-add':
-            embedding_dim = feat_dims[configs['backbone_name']]
-        elif 'embedding_size' in configs:
-            embedding_dim = configs['embedding_size']
-        else:
-            embedding_dim = 512
-        logger.info(f'creating positional encoding: {max_len} x {embedding_dim}')
-        positional_encoding = create_sinusoidal_embeddings(max_len, embedding_dim)
+        # 94 mins = 5640 secs = 5640000 ms
+        max_input_length=5640000
+    )
+        
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
-        # posenced_vecs = []
-        # if configs and 'positional_encoding' in configs:
-        #     if configs['positional_encoding'] == 'fractional':
+        total_video_len = labels['duration']
         for i, vec in enumerate(feature_vecs):
             if not labels['frames'][i]['mod']:  # "transitional" frames
                 valid_vimg += 1
                 pre_binned_label = pre_bin(labels['frames'][i]['label'], configs)
                 vector = torch.from_numpy(vec)
                 position = labels['frames'][i]['curr_time']
-                if configs and 'positional_encoding' in configs:
-                    if configs['positional_encoding'] == 'fractional':
-                        total = labels['duration']
-                        fraction = position / total
-                        vector = torch.concat((vector, torch.tensor([fraction])))
-                    elif configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
-                        position = round(position/unit)
-                        embedding = positional_encoding[position]
-                        if configs['positional_encoding'] == 'sinusoidal-add':
-                            vector = torch.add(vector, embedding)
-                        else:
-                            vector = torch.concat((vector, embedding))
+                vector = extractor.encode_position(position, total_video_len, vector)
                 if guid in validation_guids:
                     valid_vnum += 1
                     valid_vectors.append(vector)
@@ -262,6 +203,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
         train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, configs)
+        # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {i} due to lack of data")
             continue
@@ -288,10 +230,10 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     else:
         export_f = sys.stdout
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
-    export_config(configs, train_id)
+    export_config(configs, train_id, train.feat_dim)
 
 
-def export_config(configs: dict, train_id: str):
+def export_config(configs: dict, train_id: str, feat_dim):
     backbone = configs["backbone_name"]
     config_path = Path(f"{RESULTS_DIR}", f"{backbone}.{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -301,7 +243,7 @@ def export_config(configs: dict, train_id: str):
         fh.write(f'labels: {get_valid_labels(configs)}\n\n')
         # TODO: keeping this for now because some other downstream code depends
         # on it, but remove this after the backbone refactoring is merged in
-        fh.write(f'in_dim: {feat_dims[backbone]}\n\n')
+        fh.write(f'in_dim: {feat_dim}\n\n')
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
@@ -433,10 +375,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.config:
-        adjust_dims(args.config)
         k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
     else:
         import gridsearch
         for config in gridsearch.configs:
-            adjust_dims(config)
             k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))

@@ -22,7 +22,8 @@ import csv
 import json
 import os
 from collections import defaultdict
-from typing import List, Union, Tuple, Dict
+from pathlib import Path
+from typing import List, Union, Tuple, Dict, ClassVar
 
 import av
 import numpy as np
@@ -53,22 +54,101 @@ class AnnotatedImage:
         return guid, total, curr
 
 
-class FeatureExtractor:
-    """Convert an annotated video set into a machine-readable format
-    uses <model> as a backbone to featurize the annotated still images 
-    into 4096-dim vectors.
-    """
-    models: List[backbones.ExtractorModel]
+class FeatureExtractor(object):
+    
+    dense_encoder: backbones.ExtractorModel
+    pos_encoder: str
+    max_input_length: int
+    pos_dim: int
+    sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
 
-    def __init__(self, model_name: str = None):
+    def __init__(self, dense_encoder_name: str,
+                 positional_encoder: str = None,
+                 positional_embedding_dim: int = 512,
+                 max_input_length: int = 5640000,  # 94 min = the longest video in the first round of annotation
+                 positional_unit: int = 60000):
+        """
+        Initializes the FeatureExtractor object.
+        
+        @param: model_name = a name of backbone model to use for dense (i.e., CNN) vector extraction
+        @param: positional_encoder = type of positional encoder to use, one of 'fractional', sinusoidal-add', 'sinusoidal-concat', when not given use no positional encoding
+        @param: positional_embedding_dim = dimension of positional embedding, only relevant to 'sinusoidal-add' scheme, when not given use 512
+        @param: max_input_length = maximum length of input video in milliseconds, used for padding positional encoding
+        @param: positional_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
+        """
+        if dense_encoder_name is None:
+            raise ValueError("A dense vector model must be specified")
+        else:
+            self.dense_encoder: backbones.ExtractorModel = backbones.model_map[dense_encoder_name]()
+        self.pos_encoder = positional_encoder
+        self.pos_dim = positional_unit
+        if positional_encoder in ['sinusoidal-add', 'sinusoidal-concat']:
+            position_dim = int(max_input_length / positional_unit)
+            if position_dim % 2 == 1:
+                position_dim += 1
+            if positional_encoder == 'sinusoidal-concat':
+                self.pos_vec_lookup = self.get_sinusoidal_embeddings(position_dim, positional_embedding_dim)
+            elif positional_encoder == 'sinusoidal-add':
+                self.pos_vec_lookup = self.get_sinusoidal_embeddings(position_dim, self.dense_encoder.dim)
+
+    def get_sinusoidal_embeddings(self, n_pos, dim):
+        if (n_pos, dim) in self.__class__.sinusoidal_embeddings:
+            return self.__class__.sinusoidal_embeddings[(n_pos, dim)]
+        matrix = torch.zeros(n_pos, dim)
+        position_enc = np.array(
+            [[pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)] for pos in range(n_pos)])
+        matrix[:, 0::2] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
+        matrix[:, 1::2] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
+        self.__class__.sinusoidal_embeddings[(n_pos, dim)] = matrix
+        return matrix
+
+    def get_dense_vector(self, img_vec):
+        img_vec = self.dense_encoder.preprocess(img_vec)
+        img_vec = img_vec.unsqueeze(0)
+        if torch.cuda.is_available():
+            img_vec = img_vec.to('cuda')
+            self.dense_encoder.model.to('cuda')
+        with torch.no_grad():
+            feature_vec = self.dense_encoder.model(img_vec)
+        return feature_vec.cpu().numpy()
+    
+    def encode_position(self, cur_time, tot_time, dense_vec):
+        pos = cur_time / tot_time
+        if self.pos_encoder is None:
+            return dense_vec
+        elif self.pos_encoder == 'fractional':
+            return torch.concat((dense_vec, torch.tensor([pos])))
+        elif self.pos_encoder == 'sinusoidal-add':
+            return torch.add(dense_vec, self.pos_vec_lookup[round(pos)])
+        elif self.pos_encoder == 'sinusoidal-concat':
+            return torch.concat((dense_vec, self.pos_vec_lookup[round(pos)]))
+    
+    def feature_vector_dim(self):
+        if self.pos_encoder == 'sinusoidal-add' or self.pos_encoder is None:
+            return self.dense_encoder.dim
+        elif self.pos_encoder == 'sinusoidal-concat':
+            return self.dense_encoder.dim + self.pos_dim
+        elif self.pos_encoder == 'fractional':
+            return self.dense_encoder.dim + 1
+                    
+    def get_full_feature_vectors(self, img_vec, cur_time, tot_time):
+        dense_vecs = self.get_dense_vector(img_vec)
+        return self.encode_position(cur_time, tot_time, dense_vecs)
+
+
+class TrainingDataPreprocessor(object):
+    """
+    Refactor of an early feature extraction code, where we only used CNN vectors
+    """
+    def __init__(self, model_name: str):
         if model_name is None:
-            self.models = [model() for model in backbones.model_map.values()]
+            self.models = [FeatureExtractor(model_name) for model_name in backbones.model_map.keys()]
         else:
             if model_name in backbones.model_map:
-                self.models = [backbones.model_map[model_name]()]
+                self.models = [FeatureExtractor(model_name)]
             else:
                 raise ValueError("No valid model found")
-        print(f'using model(s): {[model.name for model in self.models]}')
+        print(f'using model(s): {[model.dense_encoder.name for model in self.models]}')
 
     def process_video(self, 
                       vid_path: Union[os.PathLike, str], 
@@ -88,28 +168,14 @@ class FeatureExtractor:
             if 'duration' not in frame_metadata:
                 frame_metadata['duration'] = frame.total_time
         
-            for model in self.models:
-                frame_vecs[model.name].append(self.process_frame(frame.image, model))
+            for extractor in self.models:
+                frame_vecs[extractor.dense_encoder.name].append(extractor.get_dense_vector(frame.image))
             frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time"}
             frame_dict['vec_idx'] = i
             frame_metadata["frames"].append(frame_dict)
 
         frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
         return frame_metadata, frame_mats
-
-    def process_frame(self, frame_vec: np.ndarray, model) -> np.ndarray:
-        """Extract the features of a single frame.
-        
-        @param: frame = a frame as a numpy array
-        @returns: a numpy array representing the frame as <model> features"""
-        frame_vec = model.preprocess(frame_vec)
-        frame_vec = frame_vec.unsqueeze(0)
-        if torch.cuda.is_available():
-            frame_vec = frame_vec.to('cuda')
-            model.model.to('cuda')
-        with torch.no_grad():
-            feature_vec = model.model(frame_vec)
-        return feature_vec.cpu().numpy()
 
     def get_stills(self, vid_path: Union[os.PathLike, str], 
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
@@ -126,8 +192,7 @@ class FeatureExtractor:
                                          label=row[2],
                                          subtype_label=row[3],
                                          mod=row[4].lower() == 'true') for row in reader if row[1] == 'true']
-        # mod=True should discard (taken as "unseen")
-        # performace jump from additional batch (from 2nd) 
+        # CSV rows with mod=True should be discarded (taken as "unseen")
         # maybe we can throw away the video with the least (88) frames annotation from B2 to make 20/20 split on dense vs sparse annotation 
 
         # this part is doing the same thing as the get_stills function in getstills.py
@@ -141,8 +206,6 @@ class FeatureExtractor:
         cur_target_frame = 0
         fcount = 0 
         for frame in container.decode(video=0):
-            # if fcount % 10000 == 0:
-            #     print(f'processing frame {fcount}')
             if cur_target_frame == len(frame_list):
                 break
             ftime = int(frame.time * 1000) 
@@ -153,16 +216,10 @@ class FeatureExtractor:
             fcount += 1
 
 
-def get_framenum(frame: AnnotatedImage, fps: float) -> int:
-    """Returns the frame number of the given FrameOfInterest
-    (converts from ms to frame#)"""
-    return int(int(frame.curr_time)/1000 * fps)
-
-
 def main(args):
     in_file = args.input_file
     metadata_file = args.csv_file
-    featurizer = FeatureExtractor(args.model_name)
+    featurizer = TrainingDataPreprocessor(args.model_name)
     print('extractor ready')
     feat_metadata, feat_mats = featurizer.process_video(in_file, metadata_file)
     print('extraction complete')
@@ -189,6 +246,6 @@ if __name__ == "__main__":
                         default=None)
     parser.add_argument("-o", "--outdir",
                         help="directory to save output files",
-                        default="vectorized")
+                        default=Path(__file__).parent / "vectorized")
     clargs = parser.parse_args()
     main(clargs)
