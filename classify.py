@@ -63,7 +63,7 @@ class Classifier:
         print(f'Processing {mp4_file}...')
         logging.info(f'processing {mp4_file}...')
         basename = os.path.splitext(os.path.basename(mp4_file))[0]
-        all_predictions = []
+        predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
         fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
         fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -75,13 +75,12 @@ class Classifier:
                 break
             img = Image.fromarray(image[:,:,::-1])
             features = self.featurizer.get_full_feature_vectors(img, ms, dur)
-            softmax = torch.nn.Softmax()
-            output = self.classifier(features).detach()
-            prediction = softmax(output)
-            top1 = torch.argmax(prediction).item()
-            label = self.labels[self.postbin[top1]] if self.postbin else self.labels[top1]
-            all_predictions.append((ms, label, prediction[top1]))
-        return all_predictions
+            prediction = self.classifier(features).detach()
+            prediction = Prediction(ms, self.labels, prediction)
+            if self.dribble:
+                print(prediction)
+            predictions.append(prediction)
+        return predictions
 
     def extract_timeframes(self, predictions):
         timeframes = self.collect_timeframes(predictions)
@@ -262,7 +261,8 @@ class Prediction:
         self.labels = labels
         self.tensor = prediction
         if data is None:
-            self.data = softmax(self.tensor.detach().numpy())[0].tolist()
+            # TODO: probably use torch.nn.Softmax()
+            self.data = softmax(self.tensor.detach().numpy()).tolist()
         else:
             self.data = data
 
@@ -296,7 +296,7 @@ if __name__ == '__main__':
         predictions = load_predictions(predictions_file, classifier.labels)
     else:
         predictions = classifier.process_video(args.input)
-        save_predictions(predictions, predictions_file)
+        #save_predictions(predictions, predictions_file)
     #print_predictions(predictions, filename='predictions.txt')
 
     timeframes = classifier.collect_timeframes(predictions)
