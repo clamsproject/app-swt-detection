@@ -1,0 +1,28 @@
+model_file: "modeling/models/20231026-164841.kfold_000.pt"
+minimum_score: 1.01
+score_mapping: {0.01: 0, 0.25: 1, 0.50: 2, 0.75: 3, 1.01: 4}
+
+img_enc_name: "vgg16"
+
+num_layers: 3
+dropouts: 0.2
+
+labels: ["slate", "chyron", "credit", "other"]
+  
+# Time unit for output timeframe
+time_unit: 'milliseconds'
+
+# Milliseconds between sampled frames
+sample_rate: 1000
+
+# Minimum score for a frame to be included in a potential timeframe
+minimum_frame_score: 0.01
+
+# Minimum score for a timeframe to be selected
+minimum_timeframe_score: 0.25
+
+# Minimum number of sampled frames required for a timeframe to be included
+minimum_frame_count: 2
+
+# Debugging setting
+dribble: False

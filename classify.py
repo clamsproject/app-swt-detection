@@ -7,71 +7,54 @@ It started diverging from its source very quickly.
 
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
-import json
-import yaml
-import logging
-import argparse
 from operator import itemgetter
 
-import torch
-import numpy as np
 import cv2
+import numpy as np
+import torch
+import yaml
 from PIL import Image
 
-from mmif.utils import video_document_helper as vdh
-
-from modeling import backbones
-
-
-def get_net(in_dim, n_labels, num_layers, dropout=0.0):
-    # Copied from modeling.train
-    # TODO: use the one from the train module, requires creating a proper package
-    dropouts = [dropout] * (num_layers - 1) if isinstance(dropout, (int, float)) else dropout
-    if len(dropouts) + 1 != num_layers:
-        raise ValueError("length of dropout must be equal to num_layers - 1")
-    net = torch.nn.Sequential()
-    for i in range(1, num_layers):
-        neurons = max(128 // i, n_labels)
-        net.add_module(f"fc{i}", torch.nn.Linear(in_dim, neurons))
-        net.add_module(f"relu{i}", torch.nn.ReLU())
-        net.add_module(f"dropout{i}", torch.nn.Dropout(p=dropouts[i - 1]))
-        in_dim = neurons
-    net.add_module("fc_out", torch.nn.Linear(neurons, n_labels))
-    # no softmax here since we're using CE loss which includes it
-    # net.add_module(Softmax(dim=1))
-    return net
+from modeling import train, data_loader, backbones
 
 
 class Classifier:
 
-    def __init__(self, config: dict):
-        # model and model configuration
-        self.model_file = config["model_file"]
-        with open(config["model_config"]) as f:
-            self.model_config = yaml.safe_load(f)
-        # classifier parameters
+    def __init__(self, **config):
+        self.classifier = train.get_net(
+            in_dim=backbones.model_dim_map[config["img_enc_name"]],
+            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]),
+            num_layers=config["num_layers"],
+            dropout=config["dropouts"],
+        )
+        self.classifier.load_state_dict(torch.load(config["model_file"]))
+        self.featurizer = data_loader.FeatureExtractor(
+            img_enc_name=config["img_enc_name"],
+            pos_enc_name=config.get("pos_enc_name", None),
+            pos_enc_dim=config.get("pos_enc_dim", None),
+            max_input_length=config.get("max_input_length", None),
+            pos_unit=config.get("pos_unit", None),
+        )
+        # classification config
+        # self.labels = config["labels"]
+        # not including the "other" label
+        self.labels = tuple(config["labels"][:-1])
+        self.postbin = config.get("postbin", None)
+        
+        # stitcher config
         self.time_unit = config["time_unit"]
         self.sample_rate = config["sample_rate"]
         self.minimum_frame_score = config["minimum_frame_score"]
         self.minimum_timeframe_score = config["minimum_timeframe_score"]
         self.minimum_frame_count = config["minimum_frame_count"]
-        # not including the "other" label
-        self.labels = tuple(self.model_config["labels"][:-1])
-        # debugging parameters
-        self.dribble = config.get("dribble", False)
-        self.load_model()
 
-    def load_model(self):
-        self.model = get_net(
-            self.model_config["in_dim"],
-            len(self.model_config["labels"]),
-            self.model_config["num_layers"],
-            self.model_config["dropout"])
-        self.model.load_state_dict(torch.load(self.model_file))
-        self.model_type = self.model_config["model_type"]
-        self.featurizer = backbones.model_map[self.model_type]()
+        # debugging
+        self.dribble = config.get("dribble", False)
 
     def process_video(self, mp4_file: str):
         """Loops over the frames in a video and for each frame extract the features
@@ -81,30 +64,24 @@ class Classifier:
         logging.info(f'processing {mp4_file}...')
         basename = os.path.splitext(os.path.basename(mp4_file))[0]
         all_predictions = []
-        for n, image in get_frames(mp4_file, self.sample_rate):
+        vidcap = cv2.VideoCapture(mp4_file)
+        fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
+        fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
+        dur = round(fc / fps, 3) * 1000
+        for ms in range(0, sys.maxsize, self.sample_rate):
+            vidcap.set(cv2.CAP_PROP_POS_MSEC, ms)
+            success, image = vidcap.read()
+            if not success:
+                break
             img = Image.fromarray(image[:,:,::-1])
-            features = self.extract_features(img, self.featurizer)
-            prediction = self.model(features)
-            prediction = Prediction(n, self.labels, prediction)
-            if self.dribble:
-                print(f'{n:07d}', prediction)
-            all_predictions.append(prediction)
-        logging.info(f'number of predictions = {len(all_predictions)}')
-        return(all_predictions)
-
-    def extract_features(self, frame_vec: np.ndarray, model: torch.nn.Sequential) -> torch.Tensor:
-        """Extract the features of a single frame. Based on, but not identical to, the
-        process_frame() method of the FeatureExtractor class in data_ingestion.py."""
-        frame_vec = model.preprocess(frame_vec)
-        frame_vec = frame_vec.unsqueeze(0)
-        if torch.cuda.is_available():
-            if self.dribble:
-                print('CUDA is available')
-            frame_vec = frame_vec.to('cuda')
-            model.model.to('cuda')
-        with torch.no_grad():
-            feature_vec = model.model(frame_vec)
-        return feature_vec.cpu()
+            features = self.featurizer.get_full_feature_vectors(img, ms, dur)
+            softmax = torch.nn.Softmax()
+            output = self.classifier(features).detach()
+            prediction = softmax(output)
+            top1 = torch.argmax(prediction).item()
+            label = self.labels[self.postbin[top1]] if self.postbin else self.labels[top1]
+            all_predictions.append((ms, label, prediction[top1]))
+        return all_predictions
 
     def extract_timeframes(self, predictions):
         timeframes = self.collect_timeframes(predictions)
@@ -115,8 +92,8 @@ class Classifier:
 
     def collect_timeframes(self, predictions: list) -> dict:
         """Find sequences of frames for all labels where the score is not 0."""
-        timeframes = { label: [] for label in self.labels}
-        open_frames = { label: [] for label in self.labels}
+        timeframes = {label: [] for label in self.labels}
+        open_frames = {label: [] for label in self.labels}
         for prediction in predictions:
             timepoint = prediction.timepoint
             bins = prediction.data[-1]
@@ -132,6 +109,7 @@ class Classifier:
             if open_frames[label]:
                 timeframes[label].append(open_frames[label])
         return timeframes
+
 
     def collect_timeframes(self, predictions: list) -> dict:
         """Find sequences of frames for all labels where the score is not 0."""
@@ -213,18 +191,6 @@ class Classifier:
             np.save(f"{outdir}/{feat_metadata['guid']}.{name}", vectors)
             outputs = self.model(torch.from_numpy(vectors))
             print(outputs)
-
-
-def get_frames(mp4_file: str, step: int = 1000):
-    """Generator to get frames from an mp4 file. The step parameter defines the number
-    of milliseconds between the frames."""
-    vidcap = cv2.VideoCapture(mp4_file)
-    for n in range(0, sys.maxsize, step):
-        vidcap.set(cv2.CAP_PROP_POS_MSEC, n)
-        success, image = vidcap.read()
-        if not success:
-            break
-        yield n, image
 
 
 def softmax(x):
@@ -312,7 +278,6 @@ class Prediction:
         return [self.timepoint, self.tensor.detach().numpy().tolist(), self.data]
 
 
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -323,7 +288,7 @@ if __name__ == '__main__':
     parser.add_argument("--use-predictions", action='store_true', help=pred_help)
     args = parser.parse_args()
 
-    classifier = Classifier(args.config)
+    classifier = Classifier(**yaml.safe_load(open(args.config)))
 
     input_basename, extension = os.path.splitext(args.input)
     predictions_file = f'{input_basename}.json'
