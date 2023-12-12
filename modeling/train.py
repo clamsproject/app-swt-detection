@@ -19,7 +19,7 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
-from modeling import data_ingestion
+from modeling import data_loader
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -37,8 +37,8 @@ RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
-    def __init__(self, feature_model, labels, vectors):
-        self.feature_model = feature_model
+    def __init__(self, backbone_model_name, labels, vectors):
+        self.img_enc_name = backbone_model_name
         self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
         self.labels = labels
         self.vectors = vectors
@@ -131,7 +131,15 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     return net
 
 
-def split_dataset(indir, train_guids, validation_guids, configs):
+def prepare_datasets(indir, train_guids, validation_guids, configs):
+    """
+    Given a directory of pre-computed dense feature vectors, 
+    prepare the training and validation datasets. The preparation incluses
+    1. positional encodings are applied.
+    2. 'gold' labels are attached to each vector.
+    3. split of vectors into training and validation sets (at video-level, meaning all frames from a video are either in training or validation set).
+    returns training dataset, validation dataset, and the number of labels (after "pre"-binning)
+    """
     train_vectors = []
     train_labels = []
     valid_vectors = []
@@ -141,13 +149,13 @@ def split_dataset(indir, train_guids, validation_guids, configs):
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    logger.warn(configs['positional_encoding'])
+    logger.warn(configs['pos_enc_name'])
         
-    extractor = data_ingestion.FeatureExtractor(
-        dense_encoder_name=configs['backbone_name'],
-        positional_encoder=configs['positional_encoding'],
-        positional_unit=configs['unit_multiplier'] if configs and 'unit_multiplier' in configs else 3600000,
-        positional_embedding_dim=configs['embedding_size'] if 'embedding_size' in configs else 512,
+    extractor = data_loader.FeatureExtractor(
+        img_enc_name=configs['img_enc_name'],
+        pos_enc_name=configs['pos_enc_name'],
+        pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
+        pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
         # for now, hard-coding the longest video length in the annotated dataset 
         # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
         # cpb-aacip-259-4j09zf95	  Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
@@ -157,7 +165,7 @@ def split_dataset(indir, train_guids, validation_guids, configs):
         
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
-        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
+        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['img_enc_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
         total_video_len = labels['duration']
         for i, vec in enumerate(feature_vecs):
@@ -176,8 +184,8 @@ def split_dataset(indir, train_guids, validation_guids, configs):
                     train_vectors.append(vector)
                     train_labels.append(pre_binned_label)
     logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
-    train = SWTDataset(configs['backbone_name'], train_labels, train_vectors)
-    valid = SWTDataset(configs['backbone_name'], valid_labels, valid_vectors)
+    train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
+    valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
     return train, valid, pre_bin_size
 
 
@@ -202,7 +210,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, configs)
+        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
         # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {i} due to lack of data")
@@ -234,7 +242,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
 
 
 def export_config(configs: dict, train_id: str, feat_dim):
-    backbone = configs["backbone_name"]
+    backbone = configs["img_enc_name"]
     config_path = Path(f"{RESULTS_DIR}", f"{backbone}.{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, 'w') as fh:
@@ -326,19 +334,15 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
         path = Path(export_fname)
         path.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(path, 'w', encoding='utf8')
-    export_train_result(out=export_f, predictions=preds, labels=vlabels, labelset=valid_classes, model_name=train_loader.dataset.feature_model)
+    export_train_result(out=export_f, predictions=preds, labels=vlabels,
+                        labelset=valid_classes, img_enc_name=train_loader.dataset.img_enc_name)
     logger.info(f"Exported to {export_f.name}")
             
     return model, p, r, f
 
 
-def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: List[str], model_name: str):
-    """Exports the data into a human readable format.
-    
-    @param: predictions - a list of predicted labels across validation instances
-    @param: labels      - the list of potential labels
-    @param: fname       - name of export file
-
+def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: List[str], img_enc_name: str):
+    """Exports the data into a human-readable format.
     @return: class-based accuracy metrics for each label, organized into a csv.
     """
 
@@ -351,7 +355,7 @@ def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: 
         binary_prec = BinaryPrecision()
         binary_recall = BinaryRecall()
         binary_f1 = BinaryF1Score()
-        label_metrics[label] = {"Model_Name": model_name,
+        label_metrics[label] = {"Model_Name": img_enc_name,
                                 "Label": label,
                                 "Accuracy": binary_acc(pred_labels, true_labels).item(),
                                 "Precision": binary_prec(pred_labels, true_labels).item(),

@@ -1,6 +1,6 @@
 num_epochs: 5
 num_splits: 5
-backbone_name: "convnext_tiny"
+img_enc_name: "convnext_tiny"
 block_guids_train: ["cpb-aacip-254-75r7szdz"]
 block_guids_valid: [
     "cpb-aacip-254-75r7szdz",
@@ -26,9 +26,9 @@ block_guids_valid: [
     "cpb-aacip-512-3f4kk9534t",
   ]
 num_layers: 3
-positional_encoding: "fractional"
-unit_multiplier: 60000
-embedding_size: 512
+pos_enc_name: "sinusoidal-concat"
+pos_unit: 60000
+pos_enc_dim: 512
 dropouts: 0.1
 bins:
   pre:
