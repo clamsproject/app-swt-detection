@@ -21,6 +21,7 @@ from tqdm import tqdm
 
 from modeling import data_loader
 
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -28,7 +29,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-feat_dims = {}
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
@@ -149,18 +149,14 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    logger.warn(configs['pos_enc_name'])
-        
+    logger.warning(configs.get('pos_enc_name'))
+
     extractor = data_loader.FeatureExtractor(
-        img_enc_name=configs['img_enc_name'],
-        pos_enc_name=configs['pos_enc_name'],
+        img_enc_name=configs.get('img_enc_name'),
+        pos_enc_name=configs.get('pos_enc_name'),
         pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
         pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
-        # for now, hard-coding the longest video length in the annotated dataset 
-        # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
-        # cpb-aacip-259-4j09zf95	  Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
-        # 94 mins = 5640 secs = 5640000 ms
-        max_input_length=5640000
+        max_input_length=configs.get('pos_max_input_length')
     )
         
     for j in Path(indir).glob('*.json'):
@@ -193,7 +189,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
-    backbone = configs['backbone_name']
+    backbone = configs['img_enc_name']
     logger.info(f'Using config: {configs}')
     len_val = len(guids) // configs['num_splits']
     val_set_spec = []

@@ -17,7 +17,7 @@ prebin:
   - chyron
   - text-not-chyron
   - person-not-chyron
-  - credits
+  - credit
   - other
 labels: [ "slate", "chyron", "credit", "other" ]
 postbin:
