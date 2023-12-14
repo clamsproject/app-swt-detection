@@ -11,6 +11,7 @@ pos_unit: 60000
 num_layers: 2
 dropouts: 0.2
 
+# prebin should be directly copied from the trainer.yml, leaving "other" out as well!
 prebin: 
   - bars
   - slate
@@ -18,8 +19,9 @@ prebin:
   - text-not-chyron
   - person-not-chyron
   - credit
-  - other
-labels: [ "slate", "chyron", "credit", "other" ]
+# labels should be automatically generated from the trainer.yaml, also leaving "other" out
+labels: [ "slate", "chyron", "credit"]
+# postbin is a dict from prebin index to label index. Also must be auto-generated from trainer.yaml eventually!
 postbin:
   0: 3
   1: 0

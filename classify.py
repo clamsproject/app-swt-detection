@@ -35,15 +35,13 @@ class Classifier:
         )
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
-            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]),
+            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]) + 1,
             num_layers=config["num_layers"],
             dropout=config["dropouts"],
         )
         self.classifier.load_state_dict(torch.load(config["model_file"]))
-        # classification config
-        # self.labels = config["labels"]
-        # not including the "other" label
-        self.labels = tuple(config["labels"][:-1])
+        # the "labels" list from the config file should not include "other" label from the beginning
+        self.labels = tuple(config["labels"])
         self.postbin = config.get("postbin", None)
         
         # stitcher config
