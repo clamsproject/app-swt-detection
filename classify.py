@@ -20,19 +20,12 @@ import torch
 import yaml
 from PIL import Image
 
-from modeling import train, data_loader, backbones
+from modeling import train, data_loader
 
 
 class Classifier:
 
     def __init__(self, **config):
-        self.classifier = train.get_net(
-            in_dim=backbones.model_dim_map[config["img_enc_name"]],
-            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]),
-            num_layers=config["num_layers"],
-            dropout=config["dropouts"],
-        )
-        self.classifier.load_state_dict(torch.load(config["model_file"]))
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=config["img_enc_name"],
             pos_enc_name=config.get("pos_enc_name", None),
@@ -40,6 +33,13 @@ class Classifier:
             max_input_length=config.get("max_input_length", None),
             pos_unit=config.get("pos_unit", None),
         )
+        self.classifier = train.get_net(
+            in_dim=self.featurizer.feature_vector_dim(),
+            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]),
+            num_layers=config["num_layers"],
+            dropout=config["dropouts"],
+        )
+        self.classifier.load_state_dict(torch.load(config["model_file"]))
         # classification config
         # self.labels = config["labels"]
         # not including the "other" label
