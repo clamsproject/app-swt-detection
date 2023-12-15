@@ -26,6 +26,7 @@ Some things to change here:
 import os, json, argparse
 import cv2
 
+import modeling
 
 # Edit this if we use different labels
 LABELS = ('slate', 'chyron', 'credits')
@@ -74,14 +75,14 @@ def visualize_predictions(predictions: list, labels: list, htmlfile: str, video_
         fh.write(f'\n<p>TOTAL PREDICTIONS: {len(predictions)}</p>\n')
         fh.write('<table cellpadding=5 cellspacing=0 border=1>\n')
         fh.write('<tr align="center">\n')
-        #for header in ('anchor',) + labels + ('other', 'img'):
+        #for header in ('anchor',) + labels + (modeling.negative_label, 'img'):
         #    fh.write(f'  <td>{header}</td>\n')
         #fh.write('<tr/>\n')
         lines = 0
         for milliseconds, scores in predictions:
             if lines % 20 == 0:
                 fh.write('<tr align="center">\n')
-                for header in ('anchor',) + labels + ('other', 'img'):
+                for header in ('anchor',) + labels + (modeling.negative_label, 'img'):
                     fh.write(f'  <td>{header}</td>\n')
                 fh.write('<tr/>\n')
             lines += 1

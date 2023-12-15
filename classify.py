@@ -266,8 +266,8 @@ class Prediction:
 
     def __str__(self):
         label_scores = ' '.join(["%.4f" % d for d in self.data[:3]])
-        other_score = self.data[len(self.labels)]
-        return f'<Prediction {self.timepoint:6} {label_scores} {other_score:.4f}>'
+        neg_score = self.data[len(self.labels)]
+        return f'<Prediction {self.timepoint:6} {label_scores} {neg_score:.4f}>'
 
     def score_for_label(self, label: str):
         return self.data[self.labels.index(label)]

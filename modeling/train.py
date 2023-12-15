@@ -189,7 +189,6 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
-    backbone = configs['img_enc_name']
     logger.info(f'Using config: {configs}')
     len_val = len(guids) // configs['num_splits']
     val_set_spec = []
@@ -238,7 +237,6 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
 
 
 def export_config(configs: dict, train_id: str, feat_dim):
-    backbone = configs["img_enc_name"]
     config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, 'w') as fh:
@@ -269,13 +267,13 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdo
     out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def get_valid_labels(config):
+def get_final_label_names(config):
     base = FRAME_TYPES
     if config and "post" in config["bins"]:
         base = list(config["bins"]["post"].keys())
     elif config and "pre" in config["bins"]:
         base = list(config["bins"]["pre"].keys()) 
-    return base + ["other"]
+    return base + [modeling.negative_label]
     
 
 def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_labels, export_fname=None):
@@ -318,7 +316,7 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
         f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
         # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_labels)
 
-        valid_classes = get_valid_labels(configs)
+        final_classes = get_final_label_names(configs)
 
         logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
     time_elapsed = time.time() - since
@@ -331,7 +329,7 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
         path.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(path, 'w', encoding='utf8')
     export_train_result(out=export_f, predictions=preds, labels=vlabels,
-                        labelset=valid_classes, img_enc_name=train_loader.dataset.img_enc_name)
+                        labelset=final_classes, img_enc_name=train_loader.dataset.img_enc_name)
     logger.info(f"Exported to {export_f.name}")
             
     return model, p, r, f
