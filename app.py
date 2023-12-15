@@ -10,21 +10,20 @@ import argparse
 import logging
 from typing import Union
 
+import yaml
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
+from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 
-import classify
-
+from modeling import classify
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, config_file: str):
+    def __init__(self, configs):
         super().__init__()
-        self.classifier = classify.Classifier(config_file)
-
+        self.classifier = classify.Classifier(**configs)
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -41,13 +40,16 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
 
-        # calculate the frame predictions and extract the timeframes
-        predictions = self.classifier.process_video(vd.location)
-        timeframes = self.classifier.extract_timeframes(predictions)
-
         # aad the timeframes to a new view and return the updated Mmif object
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
+        parameters = self.get_configuration(parameters)
+        
+        # calculate the frame predictions and extract the timeframes
+        # use `parameters` as needed as runtime configuration
+        predictions = self.classifier.process_video(vd.location)
+        timeframes = self.classifier.extract_timeframes(predictions)
+
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:
             start, end, score, label = tf
@@ -62,14 +64,14 @@ class SwtDetection(ClamsApp):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="The YAML config file")
-    parser.add_argument("--port", action="store", default="5000", help="set port to listen" )
+    parser.add_argument("-c", "--config", help="The YAML config file", default='modeling/config/classifier.yaml')
+    parser.add_argument("--port", action="store", default="5000", help="set port to listen")
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
-    CONFIGS = parsed_args.config
+    classifier_configs = yaml.safe_load(open(parsed_args.config))
 
-    app = SwtDetection(CONFIGS)
+    app = SwtDetection(classifier_configs)
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
