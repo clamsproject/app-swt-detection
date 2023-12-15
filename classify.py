@@ -232,6 +232,17 @@ def print_timeframes(labels, timeframes):
         print(f'\nNumber of time frames is 0\n')
 
 
+def print_predictions(predictions, filename=None):
+    # Debugging method
+    fh = sys.stdout if filename is None else open(filename, 'w')
+    fh.write('\n        slate  chyron creds  other\n')
+    for prediction in predictions:
+        milliseconds = prediction.timepoint
+        p1, p2, p3, p4 = prediction.data[:4]
+        fh.write(f'{milliseconds:7}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}\n')
+    fh.write(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
+
+
 class Prediction:
 
     """Class to store a prediction from the model. It is meant to simplify the rest
