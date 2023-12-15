@@ -67,7 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
-    classifier_configs = yaml.safe_load(parsed_args.configs)
+    classifier_configs = yaml.safe_load(open(parsed_args.config))
 
     app = SwtDetection(classifier_configs)
 
