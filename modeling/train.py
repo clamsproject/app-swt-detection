@@ -156,7 +156,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         pos_enc_name=configs.get('pos_enc_name'),
         pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
         pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
-        max_input_length=configs.get('pos_max_input_length')
+        max_input_length=configs.get('max_input_length')
     )
         
     for j in Path(indir).glob('*.json'):

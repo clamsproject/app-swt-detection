@@ -38,7 +38,7 @@ pos_enc_dim: 512
 # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
 # cpb-aacip-259-4j09zf95    Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
 # 94 mins = 5640 secs = 5640000 ms
-pos_max_input_length: 5640000
+max_input_length: 5640000
 
 bins:
   pre:
