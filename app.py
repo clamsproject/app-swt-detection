@@ -12,10 +12,9 @@ from typing import Union
 
 import yaml
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, Annotation, Document, AnnotationTypes, DocumentTypes
+from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 
-import classify
-
+from modeling import classify
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
@@ -41,13 +40,16 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
 
-        # calculate the frame predictions and extract the timeframes
-        predictions = self.classifier.process_video(vd.location)
-        timeframes = self.classifier.extract_timeframes(predictions)
-
         # aad the timeframes to a new view and return the updated Mmif object
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
+        parameters = self.get_configuration(parameters)
+        
+        # calculate the frame predictions and extract the timeframes
+        # use `parameters` as needed as runtime configuration
+        predictions = self.classifier.process_video(vd.location)
+        timeframes = self.classifier.extract_timeframes(predictions)
+
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:
             start, end, score, label = tf

@@ -62,7 +62,6 @@ class Classifier:
         an instance of numpy.ndarray."""
         print(f'Processing {mp4_file}...')
         logging.info(f'processing {mp4_file}...')
-        basename = os.path.splitext(os.path.basename(mp4_file))[0]
         predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
         fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
