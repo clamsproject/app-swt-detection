@@ -81,7 +81,7 @@ class FeatureExtractor(object):
         else:
             self.img_encoder: backbones.ExtractorModel = backbones.model_map[img_enc_name]()
         self.pos_encoder = pos_enc_name
-        self.pos_dim = pos_unit
+        self.pos_dim = pos_enc_dim
         if pos_enc_name in ['sinusoidal-add', 'sinusoidal-concat']:
             position_dim = int(max_input_length / pos_unit)
             if position_dim % 2 == 1:

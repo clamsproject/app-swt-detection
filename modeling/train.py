@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import List, IO
+import copy
 
 import numpy as np
 import torch
@@ -19,8 +20,8 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
+import modeling
 from modeling import data_loader
-
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -233,19 +234,16 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     else:
         export_f = sys.stdout
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
-    export_config(configs, train_id, train.feat_dim)
+    export_config(configs, train_id)
 
 
-def export_config(configs: dict, train_id: str, feat_dim):
+def export_config(configs: dict, train_id: str):
     config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    configs_copy = copy.deepcopy(configs)
+    configs_copy['labels'] = get_final_label_names(configs)
     with open(config_path, 'w') as fh:
-        for k, v in configs.items():
-            fh.write(f'{k}: {v}\n\n')
-        fh.write(f'labels: {get_valid_labels(configs)}\n\n')
-        # TODO: keeping this for now because some other downstream code depends
-        # on it, but remove this after the backbone refactoring is merged in
-        fh.write(f'in_dim: {feat_dim}\n\n')
+        yaml.dump(configs_copy, fh, default_flow_style=False)
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):

@@ -26,23 +26,25 @@ from modeling import train, data_loader
 class Classifier:
 
     def __init__(self, **config):
+        model_config = yaml.safe_load(open(config["model_config_file"]))
+        # the "labels" list from the config file should not include "negative" label from the beginning
+        self.labels = train.get_final_label_names(model_config)
         self.featurizer = data_loader.FeatureExtractor(
-            img_enc_name=config["img_enc_name"],
-            pos_enc_name=config.get("pos_enc_name", None),
-            pos_enc_dim=config.get("pos_enc_dim", None),
-            max_input_length=config.get("max_input_length", None),
-            pos_unit=config.get("pos_unit", None),
+            img_enc_name=model_config["img_enc_name"],
+            pos_enc_name=model_config.get("pos_enc_name", None),
+            pos_enc_dim=model_config.get("pos_enc_dim", 0),
+            max_input_length=model_config.get("max_input_length", 0),
+            pos_unit=model_config.get("pos_unit", 0),
         )
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
-            n_labels=len(config['prebin']) if 'prebin' in config else len(config["labels"]) + 1,
-            num_layers=config["num_layers"],
-            dropout=config["dropouts"],
+            n_labels=len(model_config['bins']['pre'].keys()) + 1,
+            num_layers=model_config["num_layers"],
+            dropout=model_config["dropouts"],
         )
         self.classifier.load_state_dict(torch.load(config["model_file"]))
-        # the "labels" list from the config file should not include "other" label from the beginning
-        self.labels = tuple(config["labels"])
-        self.postbin = config.get("postbin", None)
+        # TODO (krim @ 12/14/23): deal with post bin
+        # self.postbin = config.get("postbin", None)
         
         # stitcher config
         self.time_unit = config["time_unit"]
@@ -106,7 +108,6 @@ class Classifier:
             if open_frames[label]:
                 timeframes[label].append(open_frames[label])
         return timeframes
-
 
     def collect_timeframes(self, predictions: list) -> dict:
         """Find sequences of frames for all labels where the score is not 0."""
@@ -210,16 +211,6 @@ def load_predictions(filename: str, labels: list) -> list:
             p = Prediction(n, labels, torch.Tensor(tensor), data=data)
             predictions.append(p)
     return predictions
-
-
-def print_predictions(predictions, filename=None):
-    fh = sys.stdout if filename is None else open(filename, 'w')
-    fh.write('\n        slate  chyron creds  other\n')
-    for prediction in predictions:
-        milliseconds = prediction.timepoint
-        p1, p2, p3, p4 = prediction.data[:4]
-        fh.write(f'{milliseconds:7}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}\n')
-    fh.write(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
 
 
 def print_timeframes(labels, timeframes):
