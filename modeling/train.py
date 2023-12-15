@@ -216,8 +216,8 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{RESULTS_DIR}/{backbone}.{train_id}.kfold_{i:03d}.csv"
-        export_model_file = f"{RESULTS_DIR}/{backbone}.{train_id}.kfold_{i:03d}.pt"
+        export_csv_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt"
         model, p, r, f = train_model(
                 get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
                 loss, device, train_loader, valid_loader, configs, labelset_size,
@@ -228,7 +228,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         r_scores.append(r)
         f_scores.append(f)
     if train_id:
-        p = Path(f'{RESULTS_DIR}/{backbone}.{train_id}.kfold_results.txt')
+        p = Path(f'{RESULTS_DIR}/{train_id}.kfold_results.txt')
         p.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(p, 'w', encoding='utf8')
     else:
@@ -239,7 +239,7 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
 
 def export_config(configs: dict, train_id: str, feat_dim):
     backbone = configs["img_enc_name"]
-    config_path = Path(f"{RESULTS_DIR}", f"{backbone}.{train_id}.kfold_config.yml")
+    config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, 'w') as fh:
         for k, v in configs.items():
@@ -375,8 +375,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.config:
-        k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
+        config = load_config(args.config)
+        k_fold_train(indir=args.indir, configs=config, train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
         import gridsearch
         for config in gridsearch.configs:
-            k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))
+            k_fold_train(indir=args.indir, configs=config, train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
