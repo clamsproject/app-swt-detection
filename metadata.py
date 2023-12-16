@@ -20,7 +20,7 @@ def appmetadata() -> AppMetadata:
     """
     
     metadata = AppMetadata(
-        name="Scene-with-text Detection",
+        name="Scenes-with-text Detection",
         description="Detects scenes with text, like slates, chyrons and credits.",
         app_license="Apache 2.0",
         identifier="swt-detection",
@@ -30,8 +30,15 @@ def appmetadata() -> AppMetadata:
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
     metadata.add_output(AnnotationTypes.TimeFrame)
     
-    #metadata.add_parameter(name='model', description='the model to use, not implemented yet',
-    #                       type='string', default='vgg16')
+    # TODO: defaults are the same as in modeling/config/classifier.yml, which is possibly
+    # not a great idea, should perhaps read defaults from the configuration file.
+    metadata.add_parameter(name='sampleRate', type='integer', default=1000,
+                           description='Milliseconds between sampled frames')
+    metadata.add_parameter(name='minFrameScore', type='number', default=0.25,
+                           description='Minimum score for a timeframe to be included')
+    metadata.add_parameter(name='minFrameCount', type='integer', default=2,
+                           description='Minimum number of sampled frames required for a '
+                                       'timeframe to be included')
 
     return metadata
 

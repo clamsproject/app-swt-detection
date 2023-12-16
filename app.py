@@ -2,7 +2,8 @@
 
 CLAMS app to detect scenes with text.
 
-The kinds of scenes that are recognized include slates, chryons and credits.
+The kinds of scenes that are recognized depend on the model used but typically
+include slates, chryons and credits.
 
 """
 
@@ -40,21 +41,22 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
 
-        # aad the timeframes to a new view and return the updated Mmif object
+        # add the timeframes to a new view and return the updated Mmif object
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
-        # TODO: commented out for now because it broke the app, fix this or
-        # reintroduce the older way of setting parameters.
+
+        # NOTE: commented out for now because it broke the app and I reintroduced
+        # the previous way of setting parameters.
         # parameters = self.get_configuration(parameters)
-        
+
         # calculate the frame predictions and extract the timeframes
         # use `parameters` as needed as runtime configuration
+        self.classifier.set_parameters(parameters)
         predictions = self.classifier.process_video(vd.location)
         timeframes = self.classifier.extract_timeframes(predictions)
 
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:
-            #start, end, score, label = tf
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("start", tf.start)
             timeframe_annotation.add_property("end", tf.end)

@@ -31,6 +31,7 @@ from modeling import train, data_loader, negative_label
 class Classifier:
 
     def __init__(self, **config):
+        self.config = config
         model_config = yaml.safe_load(open(config["model_config_file"]))
         # the "labels" list from the config file should not include "negative" label from the beginning
         self.labels = train.get_final_label_names(model_config)
@@ -50,14 +51,33 @@ class Classifier:
         self.classifier.load_state_dict(torch.load(config["model_file"]))
         # TODO (krim @ 12/14/23): deal with post bin
         # self.postbin = config.get("postbin", None)
-        # stitcher config
-        #self.time_unit = config["time_unit"]
-        self.sample_rate = config["sample_rate"]
-        self.minimum_frame_score = config["minimum_frame_score"]
-        self.minimum_timeframe_score = config["minimum_timeframe_score"]
-        self.minimum_frame_count = config["minimum_frame_count"]
+
+        # configuration settings from the config file
+        self.sample_rate = self.config["sample_rate"]
+        self.minimum_frame_score = self.config["minimum_frame_score"]
+        self.minimum_timeframe_score = self.config["minimum_timeframe_score"]
+        self.minimum_frame_count = self.config["minimum_frame_count"]
         # debugging
-        self.dribble = config.get("dribble", False)
+        self.dribble = False
+
+    def set_parameters(self, parameters):
+        """Take the parameters from the configuration file and update them with
+        parameters handed in by the app if needed. Note that the parameters from
+        the app follow standard camel case while the classifier parameters are
+        python variables."""
+        # NOTE: this was reintroduced because the get_configuration() method in app.py
+        # was broken
+        self.sample_rate = self.config["sample_rate"]
+        self.minimum_frame_score = self.config["minimum_frame_score"]
+        self.minimum_timeframe_score = self.config["minimum_timeframe_score"]
+        self.minimum_frame_count = self.config["minimum_frame_count"]
+        for parameter, value in parameters.items():
+            if parameter == "sampleRate":
+                self.sample_rate = value
+            elif parameter == "minFrameScore":
+                self.minimum_timeframe_score = value
+            elif parameter == "minFrameCount":
+                self.minimum_frame_count = value
 
     def process_video(self, mp4_file: str):
         """Loops over the frames in a video and for each frame extracts the features

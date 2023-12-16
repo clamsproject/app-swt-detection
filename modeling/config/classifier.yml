@@ -12,6 +12,3 @@ minimum_timeframe_score: 0.25
 
 # Minimum number of sampled frames required for a timeframe to be included
 minimum_frame_count: 2
-
-# Debugging setting
-dribble: False
