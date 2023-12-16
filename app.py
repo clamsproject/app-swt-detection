@@ -43,7 +43,9 @@ class SwtDetection(ClamsApp):
         # aad the timeframes to a new view and return the updated Mmif object
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
-        parameters = self.get_configuration(parameters)
+        # TODO: commented out for now because it broke the app, fix this or
+        # reintroduce the older way of setting parameters.
+        # parameters = self.get_configuration(parameters)
         
         # calculate the frame predictions and extract the timeframes
         # use `parameters` as needed as runtime configuration
@@ -52,12 +54,13 @@ class SwtDetection(ClamsApp):
 
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:
-            start, end, score, label = tf
+            #start, end, score, label = tf
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
-            timeframe_annotation.add_property("start", start)
-            timeframe_annotation.add_property("end", end)
-            timeframe_annotation.add_property("frameType", label),
-            timeframe_annotation.add_property("score", score)
+            timeframe_annotation.add_property("start", tf.start)
+            timeframe_annotation.add_property("end", tf.end)
+            timeframe_annotation.add_property("frameType", tf.label),
+            timeframe_annotation.add_property("score", tf.score)
+
         return mmif
 
 

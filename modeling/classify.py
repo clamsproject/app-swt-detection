@@ -1,9 +1,14 @@
 """classify.py
 
-This started out as an exact copy of modeling/classify.py. It was copied because I did
-not want to take the effort to turn the modeling directory into a package.
+Stand-alone classifier script.
 
-It started diverging from its source very quickly.
+Run "python classify.py -h" to see how to run the script.
+
+Note that the Classifier.configure() typically has to be executed each time you
+classify frames from a video. If you don't then parameter settings from a previous
+invocation may seep into the new invocation, that is, once a default configuration
+setting is overwritten then the classifier instance will not revert back to the
+default setting when a new video is processed.
 
 """
 
@@ -20,7 +25,7 @@ import torch
 import yaml
 from PIL import Image
 
-from modeling import train, data_loader
+from modeling import train, data_loader, negative_label
 
 
 class Classifier:
@@ -45,22 +50,21 @@ class Classifier:
         self.classifier.load_state_dict(torch.load(config["model_file"]))
         # TODO (krim @ 12/14/23): deal with post bin
         # self.postbin = config.get("postbin", None)
-        
         # stitcher config
-        self.time_unit = config["time_unit"]
+        #self.time_unit = config["time_unit"]
         self.sample_rate = config["sample_rate"]
         self.minimum_frame_score = config["minimum_frame_score"]
         self.minimum_timeframe_score = config["minimum_timeframe_score"]
         self.minimum_frame_count = config["minimum_frame_count"]
-
         # debugging
         self.dribble = config.get("dribble", False)
 
     def process_video(self, mp4_file: str):
-        """Loops over the frames in a video and for each frame extract the features
-        and apply the model. Returns a list of predictions, where each prediction is
-        an instance of numpy.ndarray."""
-        print(f'Processing {mp4_file}...')
+        """Loops over the frames in a video and for each frame extracts the features
+        and applies the classifier. Returns a list of predictions, where each prediction
+        is an instance of numpy.ndarray."""
+        if self.dribble:
+            print(f'Processing {mp4_file}...')
         logging.info(f'processing {mp4_file}...')
         predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
@@ -83,111 +87,72 @@ class Classifier:
 
     def extract_timeframes(self, predictions):
         timeframes = self.collect_timeframes(predictions)
-        self.compress_timeframes(timeframes)
-        self.filter_timeframes(timeframes)
+        if self.dribble:
+            print_timeframes("Potential timeframes", timeframes)
+        timeframes = self.filter_timeframes(timeframes)
         timeframes = self.remove_overlapping_timeframes(timeframes)
+        if self.dribble:
+            print_timeframes("Selected timeframes", timeframes)
         return timeframes
 
     def collect_timeframes(self, predictions: list) -> dict:
-        """Find sequences of frames for all labels where the score is not 0."""
-        timeframes = {label: [] for label in self.labels}
-        open_frames = {label: [] for label in self.labels}
+        """Find sequences of frames for all labels where the score of each frame
+        is at least the mininum value as defined in self.minimum_frame_score."""
+        timeframes = []
+        open_frames = { label: TimeFrame(label) for label in self.labels}
         for prediction in predictions:
-            timepoint = prediction.timepoint
-            bins = prediction.data[-1]
-            for label, score in bins:
-                if score == 0:
-                    if open_frames[label]:
-                        timeframes[label].append(open_frames[label])
-                    open_frames[label] = []
-                elif score >= 1:
-                    open_frames[label].append((timepoint, score, label))
-        # TODO: this is fragile because it depends on a variable in the loop above
-        for label, score in bins:
-            if open_frames[label]:
-                timeframes[label].append(open_frames[label])
-        return timeframes
-
-    def collect_timeframes(self, predictions: list) -> dict:
-        """Find sequences of frames for all labels where the score is not 0."""
-        timeframes = { label: [] for label in self.labels}
-        open_frames = { label: [] for label in self.labels}
-        for prediction in predictions:
-            #print(prediction)
-            timepoint = prediction.timepoint
             for i, label in enumerate(prediction.labels):
+                if label == negative_label:
+                    continue
                 score = prediction.data[i]
                 if score < self.minimum_frame_score:
                     if open_frames[label]:
-                        timeframes[label].append(open_frames[label])
-                    open_frames[label] = []
+                        timeframes.append(open_frames[label])
+                    open_frames[label] = TimeFrame(label)
                 else:
-                    open_frames[label].append((timepoint, score, label))
+                    open_frames[label].add_point(prediction.timepoint, score)
         for label in self.labels:
             if open_frames[label]:
-                timeframes[label].append(open_frames[label])
+                timeframes.append(open_frames[label])
+        for tf in timeframes:
+            tf.finish()
         return timeframes
 
-    def compress_timeframes(self, timeframes: dict):
-        """Compresses all timeframes from [(t_1, score_1), ...  (t_n, score_n)] into the
-        shorter representation (t_1, t_n, average_score)."""
-        for label in self.labels:
-            frames = timeframes[label]
-            for i in range(len(frames)):
-                start = frames[i][0][0]
-                end = frames[i][-1][0]
-                score = sum([e[1] for e in frames[i]]) / len(frames[i])
-                frames[i] = (start, end, score)
-
-    def filter_timeframes(self, timeframes: dict):
+    def filter_timeframes(self, timeframes: list) -> list:
         """Filter out all timeframes with an average score below the threshold defined
-        in MINIMUM_SCORE."""
-        for label in self.labels:
-            #timeframes[label] = [tf for tf in timeframes[label] if tf[2] > 0.25]
-            timeframes[label] = [tf for tf in timeframes[label] if tf[2] > self.minimum_timeframe_score]
+        in the configuration settings."""
+        # TODO: this now also uses the minimum number of samples, but maybe do this
+        # filtering later in case we want to use short competing timeframes as a way
+        # to determine whther another frame is viable
+        return [tf for tf in timeframes
+                if (tf.score > self.minimum_timeframe_score
+                    and len(tf) >= self.minimum_frame_count)]
 
-    def remove_overlapping_timeframes(self, timeframes: dict) -> list:
-        all_frames = []
-        for label in timeframes:
-            for frame in timeframes[label]:
-                all_frames.append(frame + (label,))
-        all_frames = list(sorted(all_frames, key=itemgetter(2), reverse=True))
+    def remove_overlapping_timeframes(self, timeframes: list) -> list:
+        all_frames = list(sorted(timeframes, key=lambda tf: tf.score, reverse=True))
         outlawed_timepoints = set()
         final_frames = []
         for frame in all_frames:
             if self.is_included(frame, outlawed_timepoints):
                 continue
             final_frames.append(frame)
-            start, end, _, _ = frame
-            for p in range(start, end + self.sample_rate, self.sample_rate):
+            for p in range(frame.start, frame.end + self.sample_rate, self.sample_rate):
                 outlawed_timepoints.add(p)
-        return all_frames
+        return final_frames
 
-    def is_included(self, frame, outlawed_timepoints):
-        start, end, _, _ = frame
-        for i in range(start, end + self.sample_rate, self.sample_rate):
+    def is_included(self, frame, outlawed_timepoints: set):
+        #start, end, _, _ = frame
+        for i in range(frame.start, frame.end + self.sample_rate, self.sample_rate):
             if i in outlawed_timepoints:
                 return True
         return False
 
-    def experiment(self):
-        """This is an old experiment. It was the first one that I could get to work
-        and it was fully based on the code in data_ingestion.py"""
-        outdir = 'vectorized2'
-        featurizer = data_ingestion.FeatureExtractor('vgg16')
-        in_file = 'data/cpb-aacip-690722078b2-shrunk.mp4'
-        #in_file = 'data/cpb-aacip-690722078b2.mp4'
-        metadata_file = 'data/cpb-aacip-690722078b2.csv'
-        feat_metadata, feat_mats = featurizer.process_video(in_file, metadata_file)
-        print('extraction complete')
-        if not os.path.exists(outdir):
-            os.makedirs(outdir, exist_ok=True)
-        for name, vectors in feat_mats.items():
-            with open(f"{outdir}/{feat_metadata['guid']}.json", 'w', encoding='utf8') as f:
-                json.dump(feat_metadata, f)
-            np.save(f"{outdir}/{feat_metadata['guid']}.{name}", vectors)
-            outputs = self.model(torch.from_numpy(vectors))
-            print(outputs)
+    def pp(self):
+        # debugging method
+        print(f"Classifier {self.model_file}")
+        print(f"   sample_rate         = {self.sample_rate}")
+        print(f"   minimum_frame_score = {self.minimum_timeframe_score}")
+        print(f"   minimum_frame_count = {self.minimum_frame_count}")
 
 
 def softmax(x):
@@ -212,25 +177,6 @@ def load_predictions(filename: str, labels: list) -> list:
     return predictions
 
 
-def print_timeframes(labels, timeframes):
-    if timeframes:
-        if type(timeframes) is dict:
-            print(f'\nNumber of time frames is {sum([len(v) for v in timeframes.values()])}\n')
-            for label in labels:
-                for tf in timeframes[label]:
-                    print(label, tf)
-        elif type(timeframes) is list:
-            print(f'\nNumber of time frames is {len(timeframes)}\n')
-            for tf in timeframes:
-                print(tf)
-        
-        else:
-            print("\nWARNING: cannot print timeframes")
-            print(timeframes)
-    else:
-        print(f'\nNumber of time frames is 0\n')
-
-
 def print_predictions(predictions, filename=None):
     # Debugging method
     fh = sys.stdout if filename is None else open(filename, 'w')
@@ -240,6 +186,49 @@ def print_predictions(predictions, filename=None):
         p1, p2, p3, p4 = prediction.data[:4]
         fh.write(f'{milliseconds:7}  {p1:.4f} {p2:.4f} {p3:.4f} {p4:.4f}\n')
     fh.write(f'\nTOTAL PREDICTIONS: {len(predictions)}\n')
+
+
+def print_timeframes(header, timeframes: list):
+    print(f'\n{header} ({len(timeframes)})')
+    for tf in sorted(timeframes, key=lambda tf: tf.start):
+        print(tf)
+
+
+class TimeFrame:
+
+    def __init__(self, label: str):
+        self.label = label
+        self.points = []
+        self.scores = []
+        self.start = None
+        self.end = None
+        self.score = None
+
+    def __len__(self):
+        return len(self.points)
+
+    def __nonzero__(self):
+        return len(self) != 0
+
+    def __str__(self):
+        if self.is_empty():
+            return "<TimePoint empty>"
+        else:
+            return f"<TimeFrame {self.label} {self.points[0]}:{self.points[-1]} score={self.score:0.4f}>"
+
+    def add_point(self, point, score):
+        self.points.append(point)
+        self.scores.append(score)
+
+    def finish(self):
+        """Once all points have been added to a timeframe, use this method to
+        calculate the timeframe score from the points and to set start and end."""
+        self.score = sum(self.scores) / len(self)
+        self.start = self.points[0]
+        self.end = self.points[-1]
+
+    def is_empty(self):
+        return len(self) == 0
 
 
 class Prediction:
@@ -267,7 +256,7 @@ class Prediction:
 
     def __str__(self):
         label_scores = ' '.join(["%.4f" % d for d in self.data[:3]])
-        neg_score = self.data[len(self.labels)]
+        neg_score = self.data[-1]
         return f'<Prediction {self.timepoint:6} {label_scores} {neg_score:.4f}>'
 
     def score_for_label(self, label: str):
@@ -282,12 +271,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     conf_help = "the YAML config file"
     pred_help = "use cached predictions"
-    parser.add_argument("-i", "--input", help="Input video file")
-    parser.add_argument("-c", "--config", default='example-config.yml', help=conf_help)
+    parser.add_argument("-i", "--input", help="input video file")
+    parser.add_argument("-c", "--config", default='modeling/config/classifier.yml', help=conf_help)
     parser.add_argument("--use-predictions", action='store_true', help=pred_help)
+    parser.add_argument("--debug", action='store_true', help="turn on debugging")
     args = parser.parse_args()
 
     classifier = Classifier(**yaml.safe_load(open(args.config)))
+    if args.debug:
+        classifier.dribble = True
 
     input_basename, extension = os.path.splitext(args.input)
     predictions_file = f'{input_basename}.json'
@@ -299,13 +291,11 @@ if __name__ == '__main__':
     #print_predictions(predictions, filename='predictions.txt')
 
     timeframes = classifier.collect_timeframes(predictions)
+    print_timeframes('Collected frames', timeframes)
     
-    classifier.compress_timeframes(timeframes)
-    print_timeframes(classifier.labels, timeframes)
-
     classifier.filter_timeframes(timeframes)
-    print_timeframes(classifier.labels, timeframes)
+    print_timeframes('Filtered frames', timeframes)
 
     timeframes = classifier.remove_overlapping_timeframes(timeframes)
-    print_timeframes(classifier.labels, timeframes)
+    print_timeframes('Final frames', timeframes)
 
