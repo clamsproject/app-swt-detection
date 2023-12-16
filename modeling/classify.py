@@ -33,8 +33,9 @@ class Classifier:
     def __init__(self, **config):
         self.config = config
         model_config = yaml.safe_load(open(config["model_config_file"]))
-        # the "labels" list from the config file should not include "negative" label from the beginning
-        self.labels = train.get_final_label_names(model_config)
+        # the "labels" list from the config file does not include the "negative"
+        # label, but we need it here so we add it
+        self.labels = model_config['labels'] + [negative_label]
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=model_config["img_enc_name"],
             pos_enc_name=model_config.get("pos_enc_name", None),
@@ -85,6 +86,7 @@ class Classifier:
         is an instance of numpy.ndarray."""
         if self.dribble:
             print(f'Processing {mp4_file}...')
+            print(f'Labels: {self.labels}')
         logging.info(f'processing {mp4_file}...')
         predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
@@ -313,7 +315,7 @@ if __name__ == '__main__':
     timeframes = classifier.collect_timeframes(predictions)
     print_timeframes('Collected frames', timeframes)
     
-    classifier.filter_timeframes(timeframes)
+    timeframes = classifier.filter_timeframes(timeframes)
     print_timeframes('Filtered frames', timeframes)
 
     timeframes = classifier.remove_overlapping_timeframes(timeframes)
