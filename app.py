@@ -15,7 +15,7 @@ import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 
-from modeling import classify
+from modeling import classify, stitch
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
@@ -25,6 +25,7 @@ class SwtDetection(ClamsApp):
     def __init__(self, configs):
         super().__init__()
         self.classifier = classify.Classifier(**configs)
+        self.stitcher = stitch.Stitcher(**configs)
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -53,7 +54,7 @@ class SwtDetection(ClamsApp):
         # use `parameters` as needed as runtime configuration
         self.classifier.set_parameters(parameters)
         predictions = self.classifier.process_video(vd.location)
-        timeframes = self.classifier.extract_timeframes(predictions)
+        timeframes = self.stitcher.create_timeframes(predictions)
 
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:

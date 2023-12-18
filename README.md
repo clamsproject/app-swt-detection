@@ -116,9 +116,12 @@ Note that the example MMIF file in `example-mmif.json` depends on there being a 
 
 ### Developer notes
 
-To test the code without running a Flask server use the `test.py` script. 
+To test the code without running a Flask server you can call the classify script directly:
 
 ```bash
-python test.py example-mmif.json out.json example-config.yml
+python -m modeling.classify \
+	--config modeling/config/classifier.yml \
+	--input modeling/data/cpb-aacip-690722078b2-0500-0530.mp4 \
+	--debug
 ```
 
