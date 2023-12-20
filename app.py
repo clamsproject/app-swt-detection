@@ -2,7 +2,8 @@
 
 CLAMS app to detect scenes with text.
 
-The kinds of scenes that are recognized include slates, chryons and credits.
+The kinds of scenes that are recognized depend on the model used but typically
+include slates, chryons and credits.
 
 """
 
@@ -14,7 +15,7 @@ import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 
-from modeling import classify
+from modeling import classify, stitch
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
@@ -24,6 +25,7 @@ class SwtDetection(ClamsApp):
     def __init__(self, configs):
         super().__init__()
         self.classifier = classify.Classifier(**configs)
+        self.stitcher = stitch.Stitcher(**configs)
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -34,30 +36,39 @@ class SwtDetection(ClamsApp):
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._annotate
 
+        parameters = self.get_configuration(**parameters)
+        new_view: View = mmif.new_view()
+        self.sign_view(new_view, parameters)
+
         vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not vds:
-            # TODO: should add warning
+            warning = Warning('There were no video documents referenced in the MMIF file')
+            new_view.metadata.add_warnings(warning)
             return mmif
         vd = vds[0]
 
-        # aad the timeframes to a new view and return the updated Mmif object
-        new_view: View = mmif.new_view()
-        self.sign_view(new_view, parameters)
-        parameters = self.get_configuration(parameters)
-        
-        # calculate the frame predictions and extract the timeframes
-        # use `parameters` as needed as runtime configuration
+        for parameter, value in parameters.items():
+            if parameter == "sampleRate":
+                self.classifier.sample_rate = value
+                self.stitcher.sample_rate = value
+            elif parameter == "minFrameScore":
+                self.stitcher.min_frame_score = value
+            elif parameter == "minTimeframeScore":
+                self.stitcher.min_timeframe_score = value
+            elif parameter == "minFrameCount":
+                self.stitcher.min_frame_count = value
+
         predictions = self.classifier.process_video(vd.location)
-        timeframes = self.classifier.extract_timeframes(predictions)
+        timeframes = self.stitcher.create_timeframes(predictions)
 
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
         for tf in timeframes:
-            start, end, score, label = tf
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
-            timeframe_annotation.add_property("start", start)
-            timeframe_annotation.add_property("end", end)
-            timeframe_annotation.add_property("frameType", label),
-            timeframe_annotation.add_property("score", score)
+            timeframe_annotation.add_property("start", tf.start)
+            timeframe_annotation.add_property("end", tf.end)
+            timeframe_annotation.add_property("frameType", tf.label),
+            timeframe_annotation.add_property("score", tf.score)
+
         return mmif
 
 

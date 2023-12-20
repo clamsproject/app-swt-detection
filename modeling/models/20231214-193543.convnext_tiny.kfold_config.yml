@@ -1,13 +1,13 @@
 bins:
   pre:
+    slate:
+    - S
     chyron:
     - I
     - N
     - Y
     credit:
     - C
-    slate:
-    - S
 block_guids_train:
 - cpb-aacip-254-75r7szdz
 block_guids_valid:
@@ -34,10 +34,6 @@ block_guids_valid:
 - cpb-aacip-512-3f4kk9534t
 dropouts: 0.1
 img_enc_name: convnext_tiny
-labels:
-- slate
-- chyron
-- credit
 num_epochs: 5
 num_layers: 3
 num_splits: 5

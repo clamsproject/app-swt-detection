@@ -241,9 +241,9 @@ def export_config(configs: dict, train_id: str):
     config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
     configs_copy = copy.deepcopy(configs)
-    configs_copy['labels'] = get_final_label_names(configs)
+    #configs_copy['labels'] = get_final_label_names(configs)
     with open(config_path, 'w') as fh:
-        yaml.dump(configs_copy, fh, default_flow_style=False)
+        yaml.dump(configs_copy, fh, default_flow_style=False, sort_keys=False)
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
