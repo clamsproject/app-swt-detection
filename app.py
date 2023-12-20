@@ -36,23 +36,28 @@ class SwtDetection(ClamsApp):
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._annotate
 
-        vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
-        if not vds:
-            # TODO: should add warning
-            return mmif
-        vd = vds[0]
-
-        # add the timeframes to a new view and return the updated Mmif object
+        parameters = self.get_configuration(**parameters)
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
 
-        # NOTE: commented out for now because it broke the app and I reintroduced
-        # the previous way of setting parameters.
-        # parameters = self.get_configuration(parameters)
+        vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
+        if not vds:
+            warning = Warning('There were no video documents referenced in the MMIF file')
+            new_view.metadata.add_warnings(warning)
+            return mmif
+        vd = vds[0]
 
-        # calculate the frame predictions and extract the timeframes
-        # use `parameters` as needed as runtime configuration
-        self.classifier.set_parameters(parameters)
+        for parameter, value in parameters.items():
+            if parameter == "sampleRate":
+                self.classifier.sample_rate = value
+                self.stitcher.sample_rate = value
+            elif parameter == "minFrameScore":
+                self.stitcher.min_frame_score = value
+            elif parameter == "minTimeframeScore":
+                self.stitcher.min_timeframe_score = value
+            elif parameter == "minFrameCount":
+                self.stitcher.min_frame_count = value
+
         predictions = self.classifier.process_video(vd.location)
         timeframes = self.stitcher.create_timeframes(predictions)
 

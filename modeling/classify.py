@@ -1,14 +1,24 @@
-"""classify.py
+"""Classifier module.
 
-Stand-alone classifier script.
+Used by app.py in the parent directory.
 
-Run "python classify.py -h" to see how to run the script.
+See app.py for hints on how to uses this, the main workhorse method is process_video(),
+which takes a video and returns a list of predictions from the image classification model.
 
-Note that the Classifier.configure() typically has to be executed each time you
-classify frames from a video. If you don't then parameter settings from a previous
-invocation may seep into the new invocation, that is, once a default configuration
-setting is overwritten then the classifier instance will not revert back to the
-default setting when a new video is processed.
+For debugging you can run this a standalone script from the parent directory:
+
+$ python -m modeling.classify \
+    --config modeling/config/classifier.yml \
+    --input MP4_FILE \
+    --debug
+
+The above will also use the stitcher in stitch.py.
+
+For help on parameters use:
+
+$ python -m modeling.classify -h
+
+The requirements are the same as the requirements for ../app.py.
 
 """
 
@@ -17,7 +27,6 @@ import json
 import logging
 import os
 import sys
-from operator import itemgetter
 
 import cv2
 import numpy as np
@@ -28,63 +37,55 @@ from PIL import Image
 from modeling import train, data_loader, negative_label, stitch
 
 
-DEBUG = False
-
-
 class Classifier:
 
     def __init__(self, **config):
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
-        # the "labels" list from the config file does not include the "negative"
-        # label, but we need it here so we add it
-        # TODO: do not use labels
-        self.labels = self.model_config['labels'] + [negative_label]
+        self.labels = train.get_final_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
             pos_enc_name=self.model_config.get("pos_enc_name", None),
             pos_enc_dim=self.model_config.get("pos_enc_dim", 0),
             max_input_length=self.model_config.get("max_input_length", 0),
-            pos_unit=self.model_config.get("pos_unit", 0),
-        )
+            pos_unit=self.model_config.get("pos_unit", 0))
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
             n_labels=len(self.model_config['bins']['pre'].keys()) + 1,
             num_layers=self.model_config["num_layers"],
-            dropout=self.model_config["dropouts"],
-        )
+            dropout=self.model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(config["model_file"]))
         # TODO (krim @ 12/14/23): deal with post bin
         # self.postbin = config.get("postbin", None)
-        self.sample_rate = self.config["sample_rate"]
-        self.debug = DEBUG
+        self.debug = False
 
     def __str__(self):
         return (f"<Classifier "
                 + f'img_enc_name="{self.model_config["img_enc_name"]}" '
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
-                + f'sample_rate={self.sample_rate}>')
+                + f'sample_rate={self.get_sample_rate()}>')
 
     def set_parameters(self, parameters):
         """Take the parameters from the configuration file and update them with
         parameters handed in by the app if needed. Note that the parameters from
-        the app follow standard camel case while the classifier parameters are
-        python variables."""
-        # NOTE: this was reintroduced because the get_configuration() method in app.py
-        # was broken
-        self.sample_rate = self.config["sample_rate"]
-        self.minimum_frame_score = self.config["minimum_frame_score"]
-        self.minimum_timeframe_score = self.config["minimum_timeframe_score"]
-        self.minimum_frame_count = self.config["minimum_frame_count"]
+        the app follow use camel case while the classifier parameters here follow
+        python variable conventions."""
+        # TODO: deprecated, keeping it for reference, but will be removed soon
+        self.sample_rate = self.config["sampleRate"]
+        self.min_frame_score = self.config["minFrameScore"]
+        self.min_timeframe_score = self.config["minTimeframeScore"]
+        self.min_frame_count = self.config["minFrameCount"]
         for parameter, value in parameters.items():
             if parameter == "sampleRate":
                 self.sample_rate = value
             elif parameter == "minFrameScore":
-                self.minimum_timeframe_score = value
+                self.min_frame_score = value
+            elif parameter == "minTimeframeScore":
+                self.min_timeframe_score = value
             elif parameter == "minFrameCount":
-                self.minimum_frame_count = value
+                self.min_frame_count = value
 
-    def process_video(self, mp4_file: str):
+    def process_video(self, mp4_file: str) -> list:
         """Loops over the frames in a video and for each frame extracts the features
         and applies the classifier. Returns a list of predictions, where each prediction
         is an instance of numpy.ndarray."""
@@ -111,12 +112,18 @@ class Classifier:
             predictions.append(prediction)
         return predictions
 
+    def get_sample_rate(self) -> int:
+        try:
+            return self.sample_rate
+        except AttributeError:
+            return None
+
     def pp(self):
         # debugging method
         print(f"Classifier {self.model_file}")
         print(f"   sample_rate         = {self.sample_rate}")
-        print(f"   minimum_frame_score = {self.minimum_timeframe_score}")
-        print(f"   minimum_frame_count = {self.minimum_frame_count}")
+        print(f"   min_frame_score = {self.min_timeframe_score}")
+        print(f"   min_frame_count = {self.min_frame_count}")
 
 
 def save_predictions(predictions: list, filename: str):
@@ -150,13 +157,14 @@ def print_predictions(predictions, filename=None):
 
 class Prediction:
 
-    """Class to store a prediction from the model. Runs softmax over the scores in the
-    tensor and can retrieve scores for all labels.
+    """Class to store a prediction from the model. The prediction is stored as a
+    Torch tensor, but also as a list with softmaxed values. Softmaxed scores can
+    be retrieve using the label.
 
-    timepoint  -  the location of the frame, in milliseconds
-    labels     -  labels for the prediction, taken from the model
+    timepoint  -  the location of the frame in the video, in milliseconds
+    labels     -  labels for the prediction, taken from the classifier model
     tensor     -  the tensor that results from running the model on the features
-    data       -  the tensor simplified into a simple list with scores for each label
+    data       -  the tensor simplified into a simple list with softmax scores
 
     """
 

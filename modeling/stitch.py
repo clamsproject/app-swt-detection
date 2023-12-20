@@ -1,27 +1,36 @@
+"""Stitching module
+
+Used by app.py in the parent directory and by the modeling.classify is it is used
+in standalone mode.
+
+See app.py for hints on how to uses this, the main method is create_timeframes(),
+which takes a list of predictions from the classifier and creates TimeFrames.
+
+"""
+
+
 import yaml
-from modeling import negative_label
-
-
-DEBUG = False
+from modeling import train, negative_label
 
 
 class Stitcher:
 
     def __init__(self, **config):
-        self.sample_rate = config.get("sample_rate")
-        self.minimum_frame_score = config.get("minimum_frame_score")
-        self.minimum_timeframe_score = config.get("minimum_timeframe_score")
-        self.minimum_frame_count = config.get("minimum_frame_count")
-        model_config = yaml.safe_load(open(config["model_config_file"]))
-        self.labels = model_config['labels'] + [negative_label]
-        self.debug = DEBUG
+        self.config = config
+        self.model_config = yaml.safe_load(open(config["model_config_file"]))
+        self.sample_rate = config.get("sampleRate")
+        self.min_frame_score = config.get("minFrameScore")
+        self.min_timeframe_score = config.get("minTimeframeScore")
+        self.min_frame_count = config.get("minFrameCount")
+        self.labels = train.get_final_label_names(self.model_config)
+        self.debug = False
 
     def __str__(self):
-        return (f'<Stitcher minimum_frame_score={self.minimum_frame_score} '
-                + f'minimum_timeframe_score={self.minimum_timeframe_score} '
-                + f'minimum_frame_count={self.minimum_frame_count}>')
+        return (f'<Stitcher min_frame_score={self.min_frame_score} '
+                + f'min_timeframe_score={self.min_timeframe_score} '
+                + f'min_frame_count={self.min_frame_count}>')
 
-    def create_timeframes(self, predictions: list):
+    def create_timeframes(self, predictions: list) -> list:
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
@@ -35,7 +44,7 @@ class Stitcher:
 
     def collect_timeframes(self, predictions: list) -> list:
         """Find sequences of frames for all labels where the score of each frame
-        is at least the mininum value as defined in self.minimum_frame_score."""
+        is at least the mininum value as defined in self.min_frame_score."""
         timeframes = []
         open_frames = { label: TimeFrame(label) for label in self.labels}
         for prediction in predictions:
@@ -43,7 +52,7 @@ class Stitcher:
                 if label == negative_label:
                     continue
                 score = prediction.data[i]
-                if score < self.minimum_frame_score:
+                if score < self.min_frame_score:
                     if open_frames[label]:
                         timeframes.append(open_frames[label])
                     open_frames[label] = TimeFrame(label)
@@ -63,8 +72,8 @@ class Stitcher:
         # filtering later in case we want to use short competing timeframes as a way
         # to determine whether another timeframe is viable
         return [tf for tf in timeframes
-                if (tf.score > self.minimum_timeframe_score
-                    and len(tf) >= self.minimum_frame_count)]
+                if (tf.score > self.min_timeframe_score
+                    and len(tf) >= self.min_frame_count)]
 
     def remove_overlapping_timeframes(self, timeframes: list) -> list:
         all_frames = list(sorted(timeframes, key=lambda tf: tf.score, reverse=True))
@@ -78,7 +87,7 @@ class Stitcher:
                 outlawed_timepoints.add(p)
         return final_frames
 
-    def is_included(self, frame, outlawed_timepoints: set):
+    def is_included(self, frame, outlawed_timepoints: set) -> bool:
         for i in range(frame.start, frame.end + self.sample_rate, self.sample_rate):
             if i in outlawed_timepoints:
                 return True
