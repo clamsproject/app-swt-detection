@@ -57,6 +57,7 @@ class Classifier:
         self.classifier.load_state_dict(torch.load(config["model_file"]))
         # TODO (krim @ 12/14/23): deal with post bin
         # self.postbin = config.get("postbin", None)
+        self.sample_rate = self.config.get("sampleRate")
         self.debug = False
 
     def __str__(self):
@@ -64,26 +65,6 @@ class Classifier:
                 + f'img_enc_name="{self.model_config["img_enc_name"]}" '
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
                 + f'sample_rate={self.get_sample_rate()}>')
-
-    def set_parameters(self, parameters):
-        """Take the parameters from the configuration file and update them with
-        parameters handed in by the app if needed. Note that the parameters from
-        the app follow use camel case while the classifier parameters here follow
-        python variable conventions."""
-        # TODO: deprecated, keeping it for reference, but will be removed soon
-        self.sample_rate = self.config["sampleRate"]
-        self.min_frame_score = self.config["minFrameScore"]
-        self.min_timeframe_score = self.config["minTimeframeScore"]
-        self.min_frame_count = self.config["minFrameCount"]
-        for parameter, value in parameters.items():
-            if parameter == "sampleRate":
-                self.sample_rate = value
-            elif parameter == "minFrameScore":
-                self.min_frame_score = value
-            elif parameter == "minTimeframeScore":
-                self.min_timeframe_score = value
-            elif parameter == "minFrameCount":
-                self.min_frame_count = value
 
     def process_video(self, mp4_file: str) -> list:
         """Loops over the frames in a video and for each frame extracts the features
