@@ -3,6 +3,7 @@ import csv
 import json
 import logging
 import platform
+import shutil
 import sys
 import time
 from collections import defaultdict
@@ -186,7 +187,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     return train, valid, pre_bin_size
 
 
-def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def k_fold_train(indir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
@@ -234,16 +235,18 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     else:
         export_f = sys.stdout
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
-    export_config(configs, train_id)
+    export_config(config_file, configs, train_id)
 
 
-def export_config(configs: dict, train_id: str):
+def export_config(config_file: str, configs: dict, train_id: str):
     config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    configs_copy = copy.deepcopy(configs)
-    #configs_copy['labels'] = get_final_label_names(configs)
-    with open(config_path, 'w') as fh:
-        yaml.dump(configs_copy, fh, default_flow_style=False, sort_keys=False)
+    if config_file is None:
+        configs_copy = copy.deepcopy(configs)
+        with open(config_path, 'w') as fh:
+            yaml.dump(configs_copy, fh, default_flow_style=False, sort_keys=False)
+    else:
+        shutil.copyfile(config_file, config_path)
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
@@ -372,8 +375,12 @@ if __name__ == "__main__":
 
     if args.config:
         config = load_config(args.config)
-        k_fold_train(indir=args.indir, configs=config, train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+        k_fold_train(
+            indir=args.indir, config_file=args.config, configs=config,
+            train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
         import gridsearch
         for config in gridsearch.configs:
-            k_fold_train(indir=args.indir, configs=config, train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+            k_fold_train(
+                indir=args.indir, config_file=args.config, configs=config,
+                train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
