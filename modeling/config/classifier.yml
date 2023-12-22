@@ -1,4 +1,4 @@
-model_file: "modeling/models/20231214-191952.convnext_tiny.kfold_000.pt"
+model_file: "modeling/models/20231214-193543.convnext_tiny.kfold_000.pt"
 model_config_file: "modeling/models/20231214-193543.convnext_tiny.kfold_config.yml"
 
 # Milliseconds between sampled frames
