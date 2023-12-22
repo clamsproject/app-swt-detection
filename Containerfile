@@ -24,20 +24,11 @@ RUN apt-get update && apt-get install -y wget
 ################################################################################
 # main app installation
 
-RUN pip install --no-cache-dir torch==2.1.0
-RUN pip install --no-cache-dir torchvision==0.16.0
-RUN pip install --no-cache-dir pyyaml==6.0.1
-
-# Getting the model at build time so we don't need to get it each time we start
-# a container. This is also because without it I ran into "Connection reset by peer"
-# errors once in a while.
-RUN wget https://download.pytorch.org/models/vgg16-397923af.pth
-RUN mkdir /root/.cache/torch /root/.cache/torch/hub /root/.cache/torch/hub/checkpoints
-RUN mv vgg16-397923af.pth /root/.cache/torch/hub/checkpoints
-
 WORKDIR /app
 
 COPY . /app
+RUN pip install -r /app/requirements.txt
+RUN python /app/dl_backbone.py
 
 # default command to run the CLAMS app in a production server 
 CMD ["python3", "app.py", "--production", "-c", "example-config.yml"]
