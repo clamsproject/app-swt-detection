@@ -9,6 +9,7 @@ include slates, chryons and credits.
 
 import argparse
 import logging
+from pathlib import Path
 from typing import Union
 
 import yaml
@@ -18,6 +19,8 @@ from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 from modeling import classify, stitch
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
+
+default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 
 
 class SwtDetection(ClamsApp):
@@ -75,7 +78,7 @@ class SwtDetection(ClamsApp):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="The YAML config file", default='modeling/config/classifier.yaml')
+    parser.add_argument("-c", "--config", help="The YAML config file", default=default_config_fname)
     parser.add_argument("--port", action="store", default="5000", help="set port to listen")
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
