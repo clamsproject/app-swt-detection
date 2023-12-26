@@ -26,10 +26,12 @@ RUN apt-get update && apt-get install -y wget
 
 WORKDIR /app
 
-COPY . /app
-RUN pip install -r /app/requirements.txt
+COPY requirements-app.txt .
+RUN pip install --no-cache-dir -r /app/requirements-app.txt
+
+COPY . .
 RUN python /app/dl_backbone.py
 
 # default command to run the CLAMS app in a production server 
-CMD ["python3", "app.py", "--production", "-c", "example-config.yml"]
+CMD ["python3", "app.py", "--production"]
 ################################################################################

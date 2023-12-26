@@ -21,14 +21,7 @@ The easiest way to get these is to get the Docker [clams-python-opencv4](https:/
 - [https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile)
 - [https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile)
 
-The following Python packages are needed: clams-python, ffmpeg-python, opencv-python-rolling, torch and torchvision:
-
-```bash
-pip install clams-python==1.0.9 ffmpeg-python==0.2.* opencv-python-rolling
-pip install torch==2.1.0 torchvision==0.16.0 pyyaml==6.0.1
-```
-
-The installs in the first line are part of the clams-python-opencv4 image, the torch and torchvision packages need to be installed in addition (see the `Containerfile` specification in this repository, that specification also loads a PyTorch model).
+The following Python packages are needed: clams-python, ffmpeg-python, opencv-python-rolling, torch, torchmetrics, torchvision, av, pyyaml and tqdm. Some of these are installed on the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image and some are listed in `requirements-app.txt`.
 
 
 ### Configurable runtime parameters
