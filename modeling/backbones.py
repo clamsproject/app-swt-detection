@@ -36,6 +36,7 @@ from torchvision.models import vgg19_bn, VGG19_BN_Weights  # VGG19 (Batch Normal
 # Base Class
 class ExtractorModel:
     name: str
+    dim: int
     model: torch.nn.Module
     preprocess: Callable
 
@@ -47,6 +48,7 @@ class ExtractorModel:
 # ConvNext Models
 class ConvnextBaseExtractor(ExtractorModel):
     name = "convnext_base"
+    dim = 1024
 
     def __init__(self):
         self.model = convnext_base(weights=ConvNeXt_Base_Weights.IMAGENET1K_V1)
@@ -56,6 +58,7 @@ class ConvnextBaseExtractor(ExtractorModel):
 
 class ConvnextTinyExtractor(ExtractorModel):
     name = "convnext_tiny"
+    dim = 768
 
     def __init__(self):
         self.model = convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1)
@@ -65,6 +68,7 @@ class ConvnextTinyExtractor(ExtractorModel):
 
 class ConvnextSmallExtractor(ExtractorModel):
     name = "convnext_small"
+    dim = 768
 
     def __init__(self):
         self.model = convnext_small(weights=ConvNeXt_Small_Weights.IMAGENET1K_V1)
@@ -74,6 +78,7 @@ class ConvnextSmallExtractor(ExtractorModel):
 
 class ConvnextLargeExtractor(ExtractorModel):
     name = "convnext_lg"
+    dim = 1536
 
     def __init__(self):
         self.model = convnext_large(weights=ConvNeXt_Large_Weights.IMAGENET1K_V1)
@@ -85,6 +90,7 @@ class ConvnextLargeExtractor(ExtractorModel):
 # DenseNet Models
 class Densenet121Extractor(ExtractorModel):
     name = "densenet121"
+    dim = 1024
 
     def __init__(self):
         self.model = densenet121(weights=DenseNet121_Weights.IMAGENET1K_V1)
@@ -92,8 +98,9 @@ class Densenet121Extractor(ExtractorModel):
         self.preprocess = DenseNet121_Weights.IMAGENET1K_V1.transforms()
 
 
-class Densenet161Extractor():
+class Densenet161Extractor(ExtractorModel):
     name = "densenet161"
+    dim = 2208
 
     def __init__(self):
         self.model = densenet161(weights=DenseNet161_Weights.IMAGENET1K_V1)
@@ -101,8 +108,9 @@ class Densenet161Extractor():
         self.preprocess = DenseNet161_Weights.IMAGENET1K_V1.transforms()
 
 
-class Densenet169Extractor():
+class Densenet169Extractor(ExtractorModel):
     name = "densenet169"
+    dim = 1664
 
     def __init__(self):
         self.model = densenet169(weights=DenseNet169_Weights.IMAGENET1K_V1)
@@ -110,8 +118,9 @@ class Densenet169Extractor():
         self.preprocess = DenseNet169_Weights.IMAGENET1K_V1.transforms()
 
 
-class Densenet201Extractor():
+class Densenet201Extractor(ExtractorModel):
     name = "densenet201"
+    dim = 1920
 
     def __init__(self):
         self.model = densenet201(weights=DenseNet201_Weights.IMAGENET1K_V1)
@@ -123,6 +132,7 @@ class Densenet201Extractor():
 # EfficientNet Models
 class EfficientnetSmallExtractor(ExtractorModel):
     name = "efficientnet_small"
+    dim = 1280
 
     def __init__(self):
         self.model = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.IMAGENET1K_V1)
@@ -132,6 +142,7 @@ class EfficientnetSmallExtractor(ExtractorModel):
 
 class EfficientnetMediumExtractor(ExtractorModel):
     name = "efficientnet_med"
+    dim = 1280
 
     def __init__(self):
         self.model = efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.IMAGENET1K_V1)
@@ -141,6 +152,7 @@ class EfficientnetMediumExtractor(ExtractorModel):
 
 class EfficientnetLargeExtractor(ExtractorModel):
     name = "efficientnet_large"
+    dim = 1280
 
     def __init__(self):
         self.model = efficientnet_v2_l(weights=EfficientNet_V2_L_Weights.IMAGENET1K_V1)
@@ -164,6 +176,7 @@ class InceptionV3Extractor(ExtractorModel):
 
 class Resnet18Extractor(ExtractorModel):
     name = "resnet18"
+    dim = 512
 
     def __init__(self):
         self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
@@ -173,6 +186,7 @@ class Resnet18Extractor(ExtractorModel):
 
 class Resnet50Extractor(ExtractorModel):
     name = "resnet50"
+    dim = 2048
 
     def __init__(self):
         self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
@@ -182,6 +196,7 @@ class Resnet50Extractor(ExtractorModel):
 
 class Resnet101Extractor(ExtractorModel):
     name = "resnet101"
+    dim = 2048
 
     def __init__(self):
         self.model = resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
@@ -191,6 +206,7 @@ class Resnet101Extractor(ExtractorModel):
 
 class Resnet152Extractor(ExtractorModel):
     name = "resnet152"
+    dim = 2048
 
     def __init__(self):
         self.model = resnet152(weights=ResNet152_Weights.IMAGENET1K_V1)
@@ -202,6 +218,7 @@ class Resnet152Extractor(ExtractorModel):
 # VGG Models
 class Vgg16Extractor(ExtractorModel):
     name = "vgg16"
+    dim = 4096
 
     def __init__(self):
         self.model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
@@ -211,6 +228,7 @@ class Vgg16Extractor(ExtractorModel):
 
 class BN_Vgg16Extractor(ExtractorModel):
     name = "bn_vgg16"
+    dim = 4096
 
     def __init__(self):
         self.model = vgg16_bn(weights=VGG16_BN_Weights.IMAGENET1K_V1)
@@ -220,6 +238,7 @@ class BN_Vgg16Extractor(ExtractorModel):
 
 class Vgg19Extractor(ExtractorModel):
     name = "vgg19"
+    dim = 4096
 
     def __init__(self):
         self.model = vgg19(weights=VGG19_Weights.IMAGENET1K_V1)
@@ -229,6 +248,7 @@ class Vgg19Extractor(ExtractorModel):
 
 class BN_VGG19Extractor(ExtractorModel):
     name = "bn_vgg19"
+    dim = 4096
 
     def __init__(self):
         self.model = vgg19_bn(weights=VGG19_BN_Weights.IMAGENET1K_V1)
@@ -240,6 +260,10 @@ class BN_VGG19Extractor(ExtractorModel):
 
 model_map = {
     model.name: model for model
+    in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
+
+model_dim_map = {
+    model.name: model.dim for model
     in sys.modules[__name__].ExtractorModel.__subclasses__() if model.name != 'inceptionv3'}
 
 if __name__ == "__main__":

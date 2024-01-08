@@ -1,0 +1,14 @@
+model_file: "modeling/models/20231214-193543.convnext_tiny.kfold_000.pt"
+model_config_file: "modeling/models/20231214-193543.convnext_tiny.kfold_config.yml"
+
+# Milliseconds between sampled frames
+sampleRate: 1000
+
+# Minimum score for a frame to be included in a potential timeframe
+minFrameScore: 0.01
+
+# Minimum score for a timeframe to be selected
+minTimeframeScore: 0.25
+
+# Minimum number of sampled frames required for a timeframe to be included
+minFrameCount: 2

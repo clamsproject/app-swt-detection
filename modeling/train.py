@@ -3,12 +3,13 @@ import csv
 import json
 import logging
 import platform
+import shutil
 import sys
 import time
 from collections import defaultdict
-from functools import lru_cache
 from pathlib import Path
 from typing import List, IO
+import copy
 
 import numpy as np
 import torch
@@ -20,6 +21,9 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from tqdm import tqdm
 
+import modeling
+from modeling import data_loader
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
@@ -27,35 +31,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-ori_feat_dims = {
-    "convnext_base": 1024,
-    "convnext_tiny": 768,
-    "convnext_small": 768,
-    "convnext_lg": 1536,
-    "densenet121": 1024,
-    "efficientnet_small": 1280,
-    "efficientnet_med": 1280,
-    "efficientnet_large": 1280,
-    "resnet18": 512,
-    "resnet50": 2048,
-    "resnet101": 2048,
-    "resnet152": 2048,
-    "vgg16": 4096,
-    "bn_vgg16": 4096,
-    "vgg19": 4096,
-    "bn_vgg19": 4096,
-}
-feat_dims = {}
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
-RESULTS_DIR = f"results-{platform.node().split('.')[0]}"
+RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
-    def __init__(self, feature_model, labels, vectors):
-        self.feature_model = feature_model
+    def __init__(self, backbone_model_name, labels, vectors):
+        self.img_enc_name = backbone_model_name
         self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
         self.labels = labels
         self.vectors = vectors
@@ -68,28 +53,6 @@ class SWTDataset(Dataset):
     
     def has_data(self):
         return 0 < len(self.vectors) == len(self.labels)
-
-
-def adjust_dims(configs):
-    additional_dim = 0
-    if configs and 'positional_encoding' in configs:
-        if configs['positional_encoding'] == 'fractional':
-            additional_dim = 1
-        elif configs['positional_encoding'] == 'sinusoidal-concat':
-            if 'embedding_size' in configs:
-                additional_dim = configs['embedding_size']
-    global feat_dims
-    feat_dims = {backbone: dim + additional_dim for backbone, dim in ori_feat_dims.items()}
-    return
-
-
-@lru_cache
-def create_sinusoidal_embeddings(n_pos, dim):
-    matrix = torch.zeros(n_pos, dim)
-    position_enc = np.array([[pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)] for pos in range(n_pos)])
-    matrix[:, 0::2] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
-    matrix[:, 1::2] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
-    return matrix
 
 
 def get_guids(data_dir):
@@ -170,63 +133,46 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     return net
 
 
-def split_dataset(indir, train_guids, validation_guids, configs):
+def prepare_datasets(indir, train_guids, validation_guids, configs):
+    """
+    Given a directory of pre-computed dense feature vectors, 
+    prepare the training and validation datasets. The preparation incluses
+    1. positional encodings are applied.
+    2. 'gold' labels are attached to each vector.
+    3. split of vectors into training and validation sets (at video-level, meaning all frames from a video are either in training or validation set).
+    returns training dataset, validation dataset, and the number of labels (after "pre"-binning)
+    """
     train_vectors = []
     train_labels = []
     valid_vectors = []
     valid_labels = []
-    if configs and 'unit_multiplier' in configs:
-        unit = configs['unit_multiplier']
-    else:
-        unit = 3600000
     if configs and 'bins' in configs and 'pre' in configs['bins']:
         pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    logger.warn(configs['positional_encoding'])
-    if configs and 'positional_encoding' in configs and configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
-        # for now, hard-coding the longest video length in the annotated dataset 
-        # $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
-        # cpb-aacip-259-4j09zf95	  Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
-        # 94 miins = 5640 secs = 5640000 ms
-        logger.warn('POSITIONAL ENCODING IS EXPERIMENTAL')
-        max_len = int(5640000 / unit)
-        if max_len % 2 == 1:
-            max_len += 1
-        if configs['positional_encoding'] == 'sinusoidal-add':
-            embedding_dim = feat_dims[configs['backbone_name']]
-        elif 'embedding_size' in configs:
-            embedding_dim = configs['embedding_size']
-        else:
-            embedding_dim = 512
-        logger.info(f'creating positional encoding: {max_len} x {embedding_dim}')
-        positional_encoding = create_sinusoidal_embeddings(max_len, embedding_dim)
+    logger.warning(configs.get('pos_enc_name'))
+
+    extractor = data_loader.FeatureExtractor(
+        img_enc_name=configs.get('img_enc_name'),
+        pos_enc_name=configs.get('pos_enc_name'),
+        pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
+        pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
+        max_input_length=configs.get('max_input_length')
+    )
+        
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
-        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['backbone_name']}.npy")
+        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['img_enc_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
-        # posenced_vecs = []
-        # if configs and 'positional_encoding' in configs:
-        #     if configs['positional_encoding'] == 'fractional':
+        total_video_len = labels['duration']
         for i, vec in enumerate(feature_vecs):
             if not labels['frames'][i]['mod']:  # "transitional" frames
                 valid_vimg += 1
                 pre_binned_label = pre_bin(labels['frames'][i]['label'], configs)
                 vector = torch.from_numpy(vec)
                 position = labels['frames'][i]['curr_time']
-                if configs and 'positional_encoding' in configs:
-                    if configs['positional_encoding'] == 'fractional':
-                        total = labels['duration']
-                        fraction = position / total
-                        vector = torch.concat((vector, torch.tensor([fraction])))
-                    elif configs['positional_encoding'] in ['sinusoidal-add', 'sinusoidal-concat']:
-                        position = round(position/unit)
-                        embedding = positional_encoding[position]
-                        if configs['positional_encoding'] == 'sinusoidal-add':
-                            vector = torch.add(vector, embedding)
-                        else:
-                            vector = torch.concat((vector, embedding))
+                vector = extractor.encode_position(position, total_video_len, vector)
                 if guid in validation_guids:
                     valid_vnum += 1
                     valid_vectors.append(vector)
@@ -236,12 +182,12 @@ def split_dataset(indir, train_guids, validation_guids, configs):
                     train_vectors.append(vector)
                     train_labels.append(pre_binned_label)
     logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
-    train = SWTDataset(configs['backbone_name'], train_labels, train_vectors)
-    valid = SWTDataset(configs['backbone_name'], valid_labels, valid_vectors)
+    train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
+    valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
     return train, valid, pre_bin_size
 
 
-def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def k_fold_train(indir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
@@ -261,7 +207,8 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid, labelset_size = split_dataset(indir, train_guids, validation_guids, configs)
+        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
+        # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {i} due to lack of data")
             continue
@@ -270,12 +217,13 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        model, p, r, f = train_model(get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
-                                     loss, device, 
-                                     train_loader, valid_loader, 
-                                     configs, labelset_size, 
-                                     export_fname=f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv")
-        torch.save(model.state_dict(), f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt")
+        export_csv_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt"
+        model, p, r, f = train_model(
+                get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
+                loss, device, train_loader, valid_loader, configs, labelset_size,
+                export_fname=export_csv_file)
+        torch.save(model.state_dict(), export_model_file)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
@@ -287,14 +235,23 @@ def k_fold_train(indir, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     else:
         export_f = sys.stdout
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
+    export_config(config_file, configs, train_id)
+
+
+def export_config(config_file: str, configs: dict, train_id: str):
+    config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if config_file is None:
+        configs_copy = copy.deepcopy(configs)
+        with open(config_path, 'w') as fh:
+            yaml.dump(configs_copy, fh, default_flow_style=False, sort_keys=False)
+    else:
+        shutil.copyfile(config_file, config_path)
 
 
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
     max_f1_idx = f_scores.index(max(f_scores))
     min_f1_idx = f_scores.index(min(f_scores))
-    out.write(f'K-fold results\n')
-    for k, v in train_spec.items():
-        out.write(f'\t{k}: {v}\n')
     out.write(f'Highest f1 @ {max_f1_idx:03d}\n')
     out.write(f'\t{trial_specs[max_f1_idx]}\n')
     out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
@@ -311,13 +268,13 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdo
     out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def get_valid_labels(config):
+def get_final_label_names(config):
     base = FRAME_TYPES
     if config and "post" in config["bins"]:
         base = list(config["bins"]["post"].keys())
     elif config and "pre" in config["bins"]:
         base = list(config["bins"]["pre"].keys()) 
-    return base + ["none"]
+    return base + [modeling.negative_label]
     
 
 def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_labels, export_fname=None):
@@ -360,7 +317,7 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
         f = metrics.f1_score(preds, vlabels, 'multiclass', num_classes=n_labels, average='macro')
         # m = metrics.confusion_matrix(preds, vlabels, 'multiclass', num_classes=n_labels)
 
-        valid_classes = get_valid_labels(configs)
+        final_classes = get_final_label_names(configs)
 
         logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
     time_elapsed = time.time() - since
@@ -372,19 +329,15 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
         path = Path(export_fname)
         path.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(path, 'w', encoding='utf8')
-    export_train_result(out=export_f, predictions=preds, labels=vlabels, labelset=valid_classes, model_name=train_loader.dataset.feature_model)
+    export_train_result(out=export_f, predictions=preds, labels=vlabels,
+                        labelset=final_classes, img_enc_name=train_loader.dataset.img_enc_name)
     logger.info(f"Exported to {export_f.name}")
             
     return model, p, r, f
 
 
-def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: List[str], model_name: str):
-    """Exports the data into a human readable format.
-    
-    @param: predictions - a list of predicted labels across validation instances
-    @param: labels      - the list of potential labels
-    @param: fname       - name of export file
-
+def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: List[str], img_enc_name: str):
+    """Exports the data into a human-readable format.
     @return: class-based accuracy metrics for each label, organized into a csv.
     """
 
@@ -397,7 +350,7 @@ def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: 
         binary_prec = BinaryPrecision()
         binary_recall = BinaryRecall()
         binary_f1 = BinaryF1Score()
-        label_metrics[label] = {"Model_Name": model_name,
+        label_metrics[label] = {"Model_Name": img_enc_name,
                                 "Label": label,
                                 "Accuracy": binary_acc(pred_labels, true_labels).item(),
                                 "Precision": binary_prec(pred_labels, true_labels).item(),
@@ -411,15 +364,23 @@ def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: 
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("-c", "--config", help="The YAML config file specifying binning strategy", default=None)
+    parser.add_argument("-c", "--config", help="the YAML config file specifying binning strategy", default=None)
+    # Added because I wanted to be able to overrule the RESULTS_DIR with a parameter,
+    # but commented out because I haven't finished that yet. (MV)
+    # parser.add_argument("-r", "--results", metavar="DIR", help="the results directory")
     args = parser.parse_args()
+
     if args.config:
-        adjust_dims(args.config)
-        k_fold_train(indir=args.indir, configs=args.config, train_id=time.strftime("%Y%m%d-%H%M%S"))
+        config = load_config(args.config)
+        k_fold_train(
+            indir=args.indir, config_file=args.config, configs=config,
+            train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
         import gridsearch
         for config in gridsearch.configs:
-            adjust_dims(config)
-            k_fold_train(indir=args.indir, configs=config, train_id=time.strftime("%Y%m%d-%H%M%S"))
+            k_fold_train(
+                indir=args.indir, config_file=args.config, configs=config,
+                train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
