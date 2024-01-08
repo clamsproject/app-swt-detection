@@ -15,13 +15,7 @@ General user instructions for CLAMS apps are available at the [CLAMS Apps docume
 
 The preferred platform is Debian 10.13 or higher, but the code is known to run on MacOSX. GPU is not required but performance will be better with it. The main system packages needed are FFmpeg ([https://ffmpeg.org/](https://ffmpeg.org/)), OpenCV4 ([https://opencv.org/](https://opencv.org/)), and Python 3.8 or higher. 
 
-The easiest way to get these is to get the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image. For more details take a peek at the following container specifications:
-
-- [https://github.com/clamsproject/clams-python/blob/main/container/Containerfile](https://github.com/clamsproject/clams-python/blob/main/container/Containerfile)
-- [https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile)
-- [https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile](https://github.com/clamsproject/clams-python/blob/main/container/opencv4.containerfile)
-
-The following Python packages are needed: clams-python, ffmpeg-python, opencv-python-rolling, torch, torchmetrics, torchvision, av, pyyaml and tqdm. Some of these are installed on the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image and some are listed in `requirements-app.txt`.
+The easiest way to get these is to get the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image. For more details take a peek at the following container specifications for the CLAMS [base]((https://github.com/clamsproject/clams-python/blob/main/container/Containerfile)),  [FFMpeg](https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile) and [OpenCV](https://github.com/clamsproject/clams-python/blob/main/container/ffmpeg.containerfile) containers. Python packages needed are: clams-python, ffmpeg-python, opencv-python-rolling, torch, torchmetrics, torchvision, av, pyyaml and tqdm. Some of these are installed on the Docker [clams-python-opencv4](https://github.com/clamsproject/clams-python/pkgs/container/clams-python-opencv4) base image and some are listed in `requirements-app.txt` in this repository.
 
 
 ### Configurable runtime parameters
@@ -34,18 +28,19 @@ Apps can be configured at request time using [URL query strings](https://en.wiki
 To build the Docker image and run the container
 
 ```bash
-docker build -t app-swt:1.0 -f Containerfile .
-docker run --rm -d -v /Users/Shared/archive/:/data -p 5000:5000 app-swt:1.0
+docker build -t app-swt -f Containerfile .
+docker run --rm -d -v /Users/Shared/archive/:/data -p 5000:5000 app-swt
 ```
 
-Now you can access the app:
+The path `/Users/Shared/archive/` should be edited to match your local configuaration.
+
+Using the app to process a MMIF file:
 
 ```bash
-curl http://localhost:5000?pretty=true
 curl -X POST -d@example-mmif.json http://localhost:5000/
 ```
 
-The first gets you the metadata and the second, which may take a while depending on the size of your video file, returns a MMIF object with timeframes added, for example
+This may take a while depending on the size of the video file embedded in the MMIF file. It should return a MMIF object with timeframes added, for example
 
 ```json
 {
@@ -103,18 +98,3 @@ The first gets you the metadata and the second, which may take a while depending
   ]
 }
 ```
-
-Note that the example MMIF file in `example-mmif.json` depends on there being a video file in `/data/video/`, edit this path as needed.
-
-
-### Developer notes
-
-To test the code without running a Flask server you can call the classify script directly:
-
-```bash
-python -m modeling.classify \
-	--config modeling/config/classifier.yml \
-	--input modeling/data/cpb-aacip-690722078b2-0500-0530.mp4 \
-	--debug
-```
-
