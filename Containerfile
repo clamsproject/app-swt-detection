@@ -19,8 +19,6 @@ ENV CLAMS_APP_VERSION ${CLAMS_APP_VERSION}
 # install more system packages as needed using the apt manager
 ################################################################################
 
-RUN apt-get update && apt-get install -y wget
-
 ################################################################################
 # main app installation
 

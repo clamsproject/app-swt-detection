@@ -76,6 +76,8 @@ class Classifier:
         logging.info(f'processing {mp4_file}...')
         predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
+        if vidcap.isOpened():
+            raise IOError(f'Could not open {mp4_file}')
         fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
         fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
         dur = round(fc / fps, 3) * 1000
