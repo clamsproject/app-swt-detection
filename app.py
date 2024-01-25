@@ -64,7 +64,8 @@ class SwtDetection(ClamsApp):
         predictions = self.classifier.process_video(vd.location)
         timeframes = self.stitcher.create_timeframes(predictions)
 
-        new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
+        new_view.new_contain(
+            AnnotationTypes.TimeFrame, document=vd.id, timeUnit='milliseconds')
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("start", tf.start)
