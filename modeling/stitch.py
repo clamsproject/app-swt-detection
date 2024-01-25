@@ -22,7 +22,10 @@ class Stitcher:
         self.min_frame_score = config.get("minFrameScore")
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
+        self.prebin_labels = train.pre_bin_label_names(self.model_config)
+        self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.labels = train.get_final_label_names(self.model_config)
+        self.use_postbinning = "post" in self.model_config["bins"]
         self.debug = False
 
     def __str__(self):
@@ -31,6 +34,8 @@ class Stitcher:
                 + f'min_frame_count={self.min_frame_count}>')
 
     def create_timeframes(self, predictions: list) -> list:
+        #print('>>> pre ', self.model_config['bins']['pre'])
+        #print('>>> post', self.model_config['bins']['post'])
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
@@ -45,20 +50,30 @@ class Stitcher:
     def collect_timeframes(self, predictions: list) -> list:
         """Find sequences of frames for all labels where the score of each frame
         is at least the mininum value as defined in self.min_frame_score."""
+        labels = self.postbin_labels if self.use_postbinning else self.prebin_labels
+        postbins = self.model_config['bins']['post']
+        if self.debug:
+            print('>>> labels', labels)
         timeframes = []
-        open_frames = { label: TimeFrame(label) for label in self.labels}
+        open_frames = { label: TimeFrame(label) for label in labels}
         for prediction in predictions:
-            for i, label in enumerate(prediction.labels):
+            scores = []
+            for i, label in enumerate(labels):
                 if label == negative_label:
                     continue
-                score = prediction.data[i]
+                if not self.use_postbinning:
+                    score = prediction.data[i]
+                else:
+                    score = prediction.score_for_labels(postbins[label])
+                if self.debug:
+                    print(prediction, f'{score:.4f}  {label}')
                 if score < self.min_frame_score:
                     if open_frames[label]:
                         timeframes.append(open_frames[label])
                     open_frames[label] = TimeFrame(label)
                 else:
                     open_frames[label].add_point(prediction.timepoint, score)
-        for label in self.labels:
+        for label in labels:
             if open_frames[label]:
                 timeframes.append(open_frames[label])
         for tf in timeframes:

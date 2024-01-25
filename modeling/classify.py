@@ -42,7 +42,9 @@ class Classifier:
     def __init__(self, **config):
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
-        self.labels = train.get_final_label_names(self.model_config)
+        self.prebin_labels = train.pre_bin_label_names(self.model_config)
+        self.postbin_labels = train.post_bin_label_names(self.model_config)
+        #self.labels = train.get_final_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
             pos_enc_name=self.model_config.get("pos_enc_name", None),
@@ -72,7 +74,7 @@ class Classifier:
         is an instance of numpy.ndarray."""
         if self.debug:
             print(f'Processing {mp4_file}...')
-            print(f'Labels: {self.labels}')
+            print(f'Labels: {self.prebin_labels}')
         logging.info(f'processing {mp4_file}...')
         predictions = []
         vidcap = cv2.VideoCapture(mp4_file)
@@ -89,7 +91,7 @@ class Classifier:
             img = Image.fromarray(image[:,:,::-1])
             features = self.featurizer.get_full_feature_vectors(img, ms, dur)
             prediction = self.classifier(features).detach()
-            prediction = Prediction(ms, self.labels, prediction)
+            prediction = Prediction(ms, self.prebin_labels, prediction)
             if self.debug:
                 print(prediction)
             predictions.append(prediction)
@@ -149,6 +151,12 @@ class Prediction:
     tensor     -  the tensor that results from running the model on the features
     data       -  the tensor simplified into a simple list with softmax scores
 
+    Note that instances of this class know nothing about binning. The labels that
+    they get handed in are the pre-binning labels and those are the ones that the
+    classifier calculates scores for. To get post-binning score (scores where the 
+    pre-binning scores are summed) use the score_for_labels() method and let the
+    caller figure out what labels are post-binned.
+
     """
 
     def __init__(self, timepoint: int, labels: list,
@@ -169,36 +177,56 @@ class Prediction:
         return f'<Prediction {self.timepoint:6} {label_scores} {neg_score:.4f}>'
 
     def score_for_label(self, label: str):
+        """Return the score for a label."""
         return self.data[self.labels.index(label)]
+
+    def score_for_labels(self, labels: list):
+        """Return the summed score for a list of labels. This is used when the app
+        uses postbinning."""
+        scores = [self.score_for_label(label) for label in labels]
+        return sum(scores)
 
     def as_json(self):
         return [self.timepoint, self.tensor.detach().numpy().tolist(), self.data]
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    default_config = 'modeling/config/classifier.yml'
+    conf_help = "the YAML config file"
+    pred1_help = "use saved predictions"
+    pred2_help = "save predictions"
+    parser.add_argument("--input", help="input video file")
+    parser.add_argument("--config", default=default_config, help=conf_help)
+    parser.add_argument("--use-predictions", action='store_true', help=pred1_help)
+    parser.add_argument("--save-predictions", action='store_true', help=pred2_help)
+    parser.add_argument("--debug", action='store_true', help="turn on debugging")
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    conf_help = "the YAML config file"
-    pred_help = "use cached predictions"
-    parser.add_argument("--input", help="input video file")
-    parser.add_argument("--config", default='modeling/config/classifier.yml', help=conf_help)
-    parser.add_argument("--use-predictions", action='store_true', help=pred_help)
-    parser.add_argument("--debug", action='store_true', help="turn on debugging")
-    args = parser.parse_args()
-
+    args = parse_args()
     configs = yaml.safe_load(open(args.config))
     classifier = Classifier(**configs)
     stitcher = stitch.Stitcher(**configs)
     if args.debug:
         classifier.debug = True
         stitcher.debug = True
-    print(classifier)
-    print(stitcher)
+        print(classifier)
+        print(stitcher)
 
     input_basename, extension = os.path.splitext(args.input)
     predictions_file = f'{input_basename}.json'
     if args.use_predictions:
-        predictions = load_predictions(predictions_file, classifier.labels)
+        predictions = load_predictions(predictions_file, classifier.prebin_labels)
     else:
         predictions = classifier.process_video(args.input)
+        if args.save_predictions:
+            save_predictions(predictions, predictions_file)
+
     timeframes = stitcher.create_timeframes(predictions)
+
+    if not args.debug:
+        for timeframe in timeframes:
+            print(timeframe)
