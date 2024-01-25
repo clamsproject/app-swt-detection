@@ -181,10 +181,11 @@ class Prediction:
         return self.data[self.labels.index(label)]
 
     def score_for_labels(self, labels: list):
-        """Return the summed score for a list of labels. This is used when the app
-        uses postbinning."""
+        """Return the  score for a list of labels. This is used when the SWT app
+        uses postbinning. The score of a list of labels is defined to be the score
+        for the highest scoring label."""
         scores = [self.score_for_label(label) for label in labels]
-        return sum(scores)
+        return max(scores)
 
     def as_json(self):
         return [self.timepoint, self.tensor.detach().numpy().tolist(), self.data]
