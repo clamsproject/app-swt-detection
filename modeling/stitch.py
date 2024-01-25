@@ -9,6 +9,7 @@ which takes a list of predictions from the classifier and creates TimeFrames.
 """
 
 
+import operator
 import yaml
 from modeling import train, negative_label
 
@@ -22,9 +23,9 @@ class Stitcher:
         self.min_frame_score = config.get("minFrameScore")
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
+        self.static_frames = self.config.get("staticFrames")
         self.prebin_labels = train.pre_bin_label_names(self.model_config)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
-        self.labels = train.get_final_label_names(self.model_config)
         self.use_postbinning = "post" in self.model_config["bins"]
         self.debug = False
 
@@ -34,8 +35,6 @@ class Stitcher:
                 + f'min_frame_count={self.min_frame_count}>')
 
     def create_timeframes(self, predictions: list) -> list:
-        #print('>>> pre ', self.model_config['bins']['pre'])
-        #print('>>> post', self.model_config['bins']['post'])
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
@@ -43,6 +42,8 @@ class Stitcher:
         if self.debug:
             print_timeframes('Filtered frames', timeframes)
         timeframes = self.remove_overlapping_timeframes(timeframes)
+        for tf in timeframes:
+            tf.set_representatives()
         if self.debug:
             print_timeframes('Final frames', timeframes)
         return timeframes
@@ -55,7 +56,7 @@ class Stitcher:
         if self.debug:
             print('>>> labels', labels)
         timeframes = []
-        open_frames = { label: TimeFrame(label) for label in labels}
+        open_frames = { label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
             scores = []
             for i, label in enumerate(labels):
@@ -70,7 +71,7 @@ class Stitcher:
                 if score < self.min_frame_score:
                     if open_frames[label]:
                         timeframes.append(open_frames[label])
-                    open_frames[label] = TimeFrame(label)
+                    open_frames[label] = TimeFrame(label, self)
                 else:
                     open_frames[label].add_point(prediction.timepoint, score)
         for label in labels:
@@ -111,10 +112,12 @@ class Stitcher:
 
 class TimeFrame:
 
-    def __init__(self, label: str):
+    def __init__(self, label: str, stitcher: Stitcher):
+        self.static_frames = stitcher.static_frames
         self.label = label
         self.points = []
         self.scores = []
+        self.representatives = []
         self.start = None
         self.end = None
         self.score = None
@@ -144,6 +147,28 @@ class TimeFrame:
 
     def is_empty(self):
         return len(self) == 0
+
+    def set_representatives(self):
+        """Calculate the representative still frames for the time frame, using a
+        couple of simple heuristics and the frame type."""
+        representatives = list(zip(self.points, self.scores))
+        timepoint, max_value = max(representatives, key=operator.itemgetter(1))
+        if self.label in self.static_frames:
+            # for these just pick the one with the highest score
+            self.representatives = [timepoint]
+        else:
+            # throw out the lower values
+            representatives = [(tp, val) for tp, val in representatives if val >= self.score]
+            # pick every third frame, which corresponds roughly to one every five seconds
+            # (expect when all below-average values bundled together at one end)
+            representatives = representatives[0::3]
+            self.representatives = [tp for tp, val in representatives]
+
+    def pp(self):
+        print(self)
+        print('  ', self.points)
+        print('  ', self.scores)
+        print('  ', self.representatives)
 
 
 def print_timeframes(header, timeframes: list):

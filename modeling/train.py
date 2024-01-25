@@ -228,17 +228,11 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
-    #if train_id:
     p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
     p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
     p_results.parent.mkdir(parents=True, exist_ok=True)
-    #    export_f = open(p, 'w', encoding='utf8')
-    #else:
-    #    export_f = sys.stdout
     export_kfold_config(config_file, configs, p_config)
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
-    #export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
-    #export_config(config_file, configs, train_id)
 
 
 def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_id: str):
@@ -253,7 +247,6 @@ def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_
         shutil.copyfile(config_file, outfile)
 
 
-#def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
 def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results, **train_spec):
     with open(p_results, 'w') as out:
         max_f1_idx = f_scores.index(max(f_scores))

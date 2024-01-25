@@ -72,7 +72,9 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property("end", tf.end)
             timeframe_annotation.add_property("frameType", tf.label),
             timeframe_annotation.add_property("score", tf.score)
-
+            timeframe_annotation.add_property("scores", tf.scores)
+            timeframe_annotation.add_property("points", tf.points)
+            timeframe_annotation.add_property("representatives", tf.representatives)
         return mmif
 
 
