@@ -151,7 +151,6 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vimg = valid_vimg = 0
-    logger.warning(configs.get('pos_enc_name'))
 
     extractor = data_loader.FeatureExtractor(
         img_enc_name=configs.get('img_enc_name'),
