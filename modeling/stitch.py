@@ -58,6 +58,8 @@ class Stitcher:
         timeframes = []
         open_frames = { label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
+            if self.debug:
+                print(prediction)
             scores = []
             for i, label in enumerate(labels):
                 if label == negative_label:
@@ -66,8 +68,8 @@ class Stitcher:
                     score = prediction.data[i]
                 else:
                     score = prediction.score_for_labels(postbins[label])
-                if self.debug:
-                    print(prediction, f'{score:.4f}  {label}')
+                #if self.debug:
+                #    print(prediction, f'{score:.4f}  {label}')
                 if score < self.min_frame_score:
                     if open_frames[label]:
                         timeframes.append(open_frames[label])
