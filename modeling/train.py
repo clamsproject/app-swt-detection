@@ -60,7 +60,7 @@ def get_guids(data_dir):
     for j in Path(data_dir).glob('*.json'):
         guid = j.with_suffix("").name
         guids.append(guid)
-    return guids
+    return sorted(guids)
 
 
 def pre_bin(label, specs):
