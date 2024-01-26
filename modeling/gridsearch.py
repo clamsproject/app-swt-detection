@@ -45,26 +45,36 @@ bins = [
 {'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
 # Other binning strategies
 {'pre': {'B': ['B'], 'S': ['S'], 'M': ['M'], 'I': ['I'], 'N': ['N'], 'Y': ['Y'], 'C': ['C']}, 'post': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'logo': ['L'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C'], 'main_title': ['M'], 'copyright': ['R']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'text-not-chyron': ['K', 'G', 'T', 'F'], 'person-not-chyron': ['P'], 'credits': ['C', 'R']}, 'post': {'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+
 {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
 {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
-{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'logo': ['L'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C'], 'main_title': ['M'], 'copyright': ['R']}},
+    
 {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'], 'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']}},
-{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'text-not-chyron': ['K', 'G', 'T', 'F'], 'person-not-chyron': ['P'], 'credits': ['C', 'R']}, 'post': {'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
+{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'], 'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']}},
+    
 {'pre': {'opening': ['B', 'O', 'M', 'L'], 'text': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'I', 'N', 'E', 'Y', 'K', 'T', 'G', 'F'], 'credits': ['C', 'R'], 'warning': ['W']}},
 {'post': {'opening': ['B', 'O', 'M', 'L'], 'text': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'I', 'N', 'E', 'Y', 'K', 'T', 'G', 'F'], 'credits': ['C', 'R'], 'warning': ['W']}},
+    
 {'pre': {'bars': ['O'], 'opening_info': ['B', 'M', 'L'], 'person_identification': ['I', 'N', 'Y', 'P'], 'text_frames': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'K', 'G', 'T', 'F'], 'credits_and_copyright': ['C', 'R'], 'warning': ['W']}},
-{'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'], 'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']}},
+{'post': {'bars': ['O'], 'opening_info': ['B', 'M', 'L'], 'person_identification': ['I', 'N', 'Y', 'P'], 'text_frames': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'K', 'G', 'T', 'F'], 'credits_and_copyright': ['C', 'R'], 'warning': ['W']}},
+    
 {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'], 'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']}},
 {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'], 'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']}},
-{'post': {'bars': ['O'], 'opening_info': ['B', 'M', 'L'], 'person_identification': ['I', 'N', 'Y', 'P'], 'text_frames': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 'K', 'G', 'T', 'F'], 'credits_and_copyright': ['C', 'R'], 'warning': ['W']}},
-{'pre': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyrons': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
-{'post': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyrons': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
+    
+{'pre': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
+{'post': {'bars': ['B'], 'slates': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'warnings': ['W'], 'logos': ['L'], 'openings': ['O', 'M'], 'text_frames': ['E', 'K', 'T', 'G', 'F'], 'person_identification': ['I', 'N', 'Y', 'P'], 'credits_and_copyright': ['C', 'R']}},
+    
 {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'credits': ['C', 'R']}},
 {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'credits': ['C', 'R']}},
-{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'Y', 'K', 'T'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+    
+    
 {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
 {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}},
-{'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G'], 'person-with-text': ['I', 'N', 'E', 'K'], 'other-text': ['T', 'F', 'G', 'Y'], 'person-no-text': ['P'], 'credits': ['C', 'R']}, 'post': {'bars': ['bars'], 'slate': ['slate'], 'person-with-text': ['person-with-text'], 'credits': ['credits']}},
+    
 {'pre': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}},
 {'post': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}},
 # Evaluating individual categories (treating as binary classifier)
