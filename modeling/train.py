@@ -150,7 +150,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
-    train_vnum = train_vimg = valid_vnum = valid_vimg = 0
+    train_vimg = valid_vimg = 0
     logger.warning(configs.get('pos_enc_name'))
 
     extractor = data_loader.FeatureExtractor(
@@ -168,20 +168,19 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         total_video_len = labels['duration']
         for i, vec in enumerate(feature_vecs):
             if not labels['frames'][i]['mod']:  # "transitional" frames
-                valid_vimg += 1
                 pre_binned_label = pre_bin(labels['frames'][i]['label'], configs)
                 vector = torch.from_numpy(vec)
                 position = labels['frames'][i]['curr_time']
                 vector = extractor.encode_position(position, total_video_len, vector)
                 if guid in validation_guids:
-                    valid_vnum += 1
+                    valid_vimg += 1
                     valid_vectors.append(vector)
                     valid_labels.append(pre_binned_label)
                 elif guid in train_guids:
-                    train_vnum += 1
+                    train_vimg += 1
                     train_vectors.append(vector)
                     train_labels.append(pre_binned_label)
-    logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
+    logger.info(f'train: {len(train_guids)} videos, {train_vimg} images, valid: {len(validation_guids)} videos, {valid_vimg} images')
     train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
     return train, valid, pre_bin_size
@@ -379,8 +378,8 @@ if __name__ == "__main__":
             indir=args.indir, config_file=args.config, configs=config,
             train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
-        import gridsearch
-        for config in gridsearch.configs:
+        import modeling.gridsearch
+        for config in modeling.gridsearch.configs:
             k_fold_train(
                 indir=args.indir, config_file=args.config, configs=config,
                 train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
