@@ -58,8 +58,8 @@ class Stitcher:
         timeframes = []
         open_frames = { label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
-            if self.debug:
-                print(prediction)
+            #if self.debug:
+            #    print(prediction)
             scores = []
             for i, label in enumerate(labels):
                 if label == negative_label:

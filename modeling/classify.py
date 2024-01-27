@@ -44,7 +44,6 @@ class Classifier:
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
         self.prebin_labels = train.pre_bin_label_names(self.model_config)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
-        #self.labels = train.get_final_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
             pos_enc_name=self.model_config.get("pos_enc_name", None),
@@ -57,9 +56,9 @@ class Classifier:
             num_layers=self.model_config["num_layers"],
             dropout=self.model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(config["model_file"]))
-        # TODO (krim @ 12/14/23): deal with post bin
-        # self.postbin = config.get("postbin", None)
         self.sample_rate = self.config.get("sampleRate")
+        self.start_at = 0
+        self.stop_at = sys.maxsize
         self.debug = False
 
     def __str__(self):
@@ -84,6 +83,10 @@ class Classifier:
         fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
         dur = round(fc / fps, 3) * 1000
         for ms in range(0, sys.maxsize, self.sample_rate):
+            if ms < self.start_at:
+                continue
+            if ms > self.stop_at:
+                break
             vidcap.set(cv2.CAP_PROP_POS_MSEC, ms)
             success, image = vidcap.read()
             if not success:
@@ -199,10 +202,23 @@ def parse_args():
     pred2_help = "save predictions"
     parser.add_argument("--input", help="input video file")
     parser.add_argument("--config", default=default_config, help=conf_help)
+    parser.add_argument("--start", default=0, help="start N milliseconds into the video")
+    parser.add_argument("--stop", default=None, help="stop N milliseconds into the video")
     parser.add_argument("--use-predictions", action='store_true', help=pred1_help)
     parser.add_argument("--save-predictions", action='store_true', help=pred2_help)
     parser.add_argument("--debug", action='store_true', help="turn on debugging")
     return parser.parse_args()
+
+
+def add_parameters(args: dict, classifier: Classifier, stitcher: stitch.Stitcher):
+    """Add arguments to the classifier and the stitcher."""
+    if args.debug:
+        classifier.debug = True
+        stitcher.debug = True
+    if args.start:
+        classifier.start_at = int(args.start)
+    if args.stop:
+        classifier.stop_at = int(args.stop)
 
 
 if __name__ == '__main__':
@@ -211,9 +227,9 @@ if __name__ == '__main__':
     configs = yaml.safe_load(open(args.config))
     classifier = Classifier(**configs)
     stitcher = stitch.Stitcher(**configs)
+    add_parameters(args, classifier, stitcher)
+
     if args.debug:
-        classifier.debug = True
-        stitcher.debug = True
         print(classifier)
         print(stitcher)
 

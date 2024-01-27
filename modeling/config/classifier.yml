@@ -13,5 +13,6 @@ minTimeframeScore: 0.25
 # Minimum number of sampled frames required for a timeframe to be included
 minFrameCount: 2
 
-# These are time frames that are typically static
+# These are time frames that are typically static (that is, the text does not
+# move around or change as with rolling credits)
 staticFrames: [slate, chyron]

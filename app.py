@@ -51,7 +51,11 @@ class SwtDetection(ClamsApp):
         vd = vds[0]
 
         for parameter, value in parameters.items():
-            if parameter == "sampleRate":
+            if parameter == "startAt":
+                self.classifier.start_at = value
+            elif parameter == "stopAt":
+                self.classifier.stop_at = value
+            elif parameter == "sampleRate":
                 self.classifier.sample_rate = value
                 self.stitcher.sample_rate = value
             elif parameter == "minFrameScore":
