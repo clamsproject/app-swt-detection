@@ -52,7 +52,8 @@ class Stitcher:
         """Find sequences of frames for all labels where the score of each frame
         is at least the mininum value as defined in self.min_frame_score."""
         labels = self.postbin_labels if self.use_postbinning else self.prebin_labels
-        postbins = self.model_config['bins']['post']
+        if self.use_postbinning:
+            postbins = self.model_config['bins']['post']
         if self.debug:
             print('>>> labels', labels)
         timeframes = []

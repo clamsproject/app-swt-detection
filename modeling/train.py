@@ -271,7 +271,11 @@ def pre_bin_label_names(config):
     return list(config["bins"]["pre"].keys()) + [modeling.negative_label]
 
 def post_bin_label_names(config):
-    return list(config["bins"]["post"].keys()) + [modeling.negative_label]
+    post_labels = list(config["bins"].get("post", {}).keys())
+    if post_labels:
+        return post_labels + [modeling.negative_label]
+    else:
+        return pre_bin_label_names(config)
 
 def get_final_label_names(config):
     if config and "post" in config["bins"]:
