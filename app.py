@@ -61,7 +61,7 @@ class SwtDetection(ClamsApp):
             elif parameter == "minFrameCount":
                 self.stitcher.min_frame_count = value
 
-        predictions = self.classifier.process_video(vd.location)
+        predictions = self.classifier.process_video(vd.location_path(nonexist_ok=False))
         timeframes = self.stitcher.create_timeframes(predictions)
 
         new_view.new_contain(AnnotationTypes.TimeFrame, document=vd.id)
