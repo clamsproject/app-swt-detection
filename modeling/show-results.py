@@ -5,6 +5,7 @@ import os
 from collections import defaultdict
 from io import BytesIO
 from itertools import product
+from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -149,14 +150,12 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     del grid[variable]
     del inverse_configs[variable]
     # Form all possible configurations of parameters from grid and store it as a list of dictionary form.
-    configurations_dicts = [dict(zip(grid.keys(), config)) for config in list(product(*grid.values()))]
+    conf_dicts = [dict(zip(grid.keys(), config)) for config in list(product(*grid.values()))]
 
     # Get all the possible lists of pairs(IDs) using inverse_configs dictionary and intersection of them for every configuration.
     pair_list = []
-    for dict_config in configurations_dicts:
-        list_of_sets = []
-        for param_name, val in dict_config.items():
-            list_of_sets.append(inverse_configs[param_name][val])
+    for conf_dict in conf_dicts:
+        list_of_sets = [inverse_configs[param_name][val] for param_name, val in conf_dict.items()]
 
         # Get intersection of sets of IDs for given configurations
         intersection_result = list_of_sets[0]
@@ -188,6 +187,8 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
     fig, ax = plt.subplots(layout='constrained')
+    all_ps = [[] for _ in range(len(list_of_pairs[0]))]
+    all_rs = [[] for _ in range(len(list_of_pairs[0]))]
     for pair in list_of_pairs:
         # re-order the pair to show the variable values in the same order as in the grid
         ordered_pair = [None] * len(variable_values)
@@ -198,10 +199,14 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
         scores = macroavgs[ordered_pair[0]][label_to_show]
         data = defaultdict(list)
         metric_list = list(scores.keys())
-        for exp_id in ordered_pair:
+        for i, exp_id in enumerate(ordered_pair):
             for metric, score in scores.items():
                 if label_to_show in macroavgs[exp_id]:
                     data[exp_id].append(macroavgs[exp_id][label_to_show][metric])
+                    if 'preci' in metric.lower():
+                        all_ps[i].append(macroavgs[exp_id][label_to_show][metric])
+                    if 'recal' in metric.lower():
+                        all_rs[i].append(macroavgs[exp_id][label_to_show][metric])
                 else:
                     data[exp_id].append(0.0)
         data = dict(data)
@@ -243,6 +248,12 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
                 fig.savefig(temp_io_stream, format='png')
                 html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
         plt.cla()
+    for i, var_val in enumerate(variable_values):
+        if interactive_plots:
+            print(f'{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}')
+        else:
+            html += f'<p>{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}</p>'
+    
     if not interactive_plots:
         html += '</body></html>'
         with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
