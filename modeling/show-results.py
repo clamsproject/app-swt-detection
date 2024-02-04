@@ -1,11 +1,14 @@
+import argparse
+import base64
+import csv
 import os
 from collections import defaultdict
-import csv
-import yaml
-import argparse
+from io import BytesIO
 from itertools import product
+
 import matplotlib.pyplot as plt
 import numpy as np
+import yaml
 
 # list of bins
 # Since the bins parameters are too long to print or show on the plot, they are numbered by index.
@@ -79,15 +82,16 @@ def get_configs_and_macroavgs(directory):
 
         # Add overall macro averages for all labels for each set.
         num_classes = len(macro_avg)
-        macro_avg["Overall"] = defaultdict(float)
+        macro_avg["overall"] = defaultdict(float)
         for k, v in macro_avg.items():
-            if k != "Overall":
+            if k != "overall":
                 for metric in v:
-                    macro_avg["Overall"][metric] += v[metric]/num_classes
+                    macro_avg["overall"][metric] += v[metric]/num_classes
 
         macro_avgs[key] = macro_avg
 
     return configs, macro_avgs
+
 
 def get_inverse_configs(configs):
     """
@@ -101,6 +105,7 @@ def get_inverse_configs(configs):
             inverse_dict[k][v].add(key)
 
     return inverse_dict
+
 
 def get_grid(configs):
     """
@@ -117,6 +122,7 @@ def get_grid(configs):
         grid[key] = list(val)
 
     return grid
+
 
 def get_labels(macroavgs):
     """
@@ -163,7 +169,8 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
 
     return pair_list
 
-def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show):
+
+def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show, interactive_plots=True):
     """
     For list of pairs got from get_pairs_to_compare function, compare each pair by plotting bar graphs for given label.
     :param list_of_pairs: got from get_pairs_to_compare function for given variable
@@ -181,8 +188,11 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
     for i in range(len(param_list)):
         param_to_color[str(param_list[i])] = color_list[i]
 
+    html = '<html><head><title>Comparison of pairs</title></head><body>'
+
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
+    fig, ax = plt.subplots(layout='constrained')
     for pair in list_of_pairs:
         scores = macroavgs[pair[0]][label_to_show]
         data = defaultdict(list)
@@ -202,7 +212,6 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
         multiplier = 0
 
         if l != 0:
-            fig, ax = plt.subplots(layout='constrained')
             for id2, scores in data.items():
                 id_variable = str(variable) + ": " + str(configs[id2][variable])
                 offset = width * multiplier
@@ -226,7 +235,17 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
                     transform=ax.transAxes,
                     color='green', fontsize='small')
 
-            plt.show()
+            if interactive_plots:
+                plt.show()
+            else:
+                temp_io_stream = BytesIO()
+                fig.savefig(temp_io_stream, format='png')
+                html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
+        plt.cla()
+    if not interactive_plots:
+        html += '</body></html>'
+        with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
+            f.write(html)
 
 
 def user_input_variable(grid):
@@ -243,6 +262,7 @@ def user_input_variable(grid):
             raise ValueError("Invalid argument for variable. Please enter one of ", list(grid.keys()))
     except ValueError:
         raise argparse.ArgumentTypeError("Invalid argument for variable. Please enter one of ", list(grid.keys()))
+
 
 def user_input_label(label_list):
     """
@@ -265,10 +285,31 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--directory",
+        "directory",
         type=str,
         help="Directory with result and configuration files",
         default="",
+    )
+    parser.add_argument(
+        '-l', '--label',
+        default='overall',
+        action='store',
+        nargs='?',
+        help='Pick a label to compare, default is overall, meaning all labels are plotted'
+    )
+    parser.add_argument(
+        '-k', '--config-key',
+        default=None,
+        action='store',
+        nargs='?',
+        help='Pick a config key to "pin" the comparison to. '
+             'When this is not set, the program runs in "interactive" mode, '
+             'where the user is prompted to pick a key and a label to compare.'
+    )
+    parser.add_argument(
+        '-i', '--interactive-plots',
+        action='store_true',
+        help='Flag to show plots in interactive mode. If not set, the program will save all the plots in a html file.'
     )
 
     args = parser.parse_args()
@@ -278,10 +319,19 @@ if __name__ == '__main__':
     label_list = get_labels(macroavgs)
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
-
-    # Get user inputs and prepare the list of pairs
-    choice_variable = user_input_variable(grid)
-    choice_label = user_input_label(label_list)
+    if args.config_key is None:
+        # Get user inputs and prepare the list of pairs
+        choice_variable = user_input_variable(grid)
+        choice_label = user_input_label(label_list)
+    else:
+        if args.config_key in grid:
+            choice_variable = args.config_key
+        else:
+            raise argparse.ArgumentTypeError("Invalid argument for variable. Please enter one of ", list(grid.keys()))
+        if args.label in label_list:
+            choice_label = args.label
+        else:
+            raise argparse.ArgumentTypeError("Invalid argument for variable. Please enter one of ", label_list)
     list_of_pairs = get_pairs_to_compare(grid.copy(), inverse_configs, choice_variable)
     # Show the comparison results of pairs in bar graphs
-    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label)
+    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label, interactive_plots=args.interactive_plots)
