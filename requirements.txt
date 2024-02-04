@@ -1,4 +1,4 @@
-clams-python==1.0.9
+clams-python==1.1.0
 torch==2.*
 torchvision
 torchmetrics
