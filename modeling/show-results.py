@@ -149,8 +149,7 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     del grid[variable]
     del inverse_configs[variable]
     # Form all possible configurations of parameters from grid and store it as a list of dictionary form.
-    configurations = list(product(*grid.values()))
-    configurations_dicts = [dict(zip(grid.keys(), config)) for config in configurations]
+    configurations_dicts = [dict(zip(grid.keys(), config)) for config in list(product(*grid.values()))]
 
     # Get all the possible lists of pairs(IDs) using inverse_configs dictionary and intersection of them for every configuration.
     pair_list = []
@@ -170,7 +169,7 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     return pair_list
 
 
-def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show, interactive_plots=True):
+def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show, variable_values, interactive_plots=True):
     """
     For list of pairs got from get_pairs_to_compare function, compare each pair by plotting bar graphs for given label.
     :param list_of_pairs: got from get_pairs_to_compare function for given variable
@@ -182,11 +181,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
     """
 
     # Form parameter to color dictionary for consistency in color across all pairs
-    param_list = list(grid[variable])
-    color_list = ['C'+str(i) for i in range(10)]
-    param_to_color = {}
-    for i in range(len(param_list)):
-        param_to_color[str(param_list[i])] = color_list[i]
+    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(grid[variable]))
 
     html = '<html><head><title>Comparison of pairs</title></head><body>'
 
@@ -194,15 +189,21 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
     # and plot a bar graph
     fig, ax = plt.subplots(layout='constrained')
     for pair in list_of_pairs:
-        scores = macroavgs[pair[0]][label_to_show]
+        # re-order the pair to show the variable values in the same order as in the grid
+        ordered_pair = [None] * len(variable_values)
+        for i, value in enumerate(variable_values):
+            for exp_id in pair:
+                if configs[exp_id][variable] == value:
+                    ordered_pair[i] = exp_id
+        scores = macroavgs[ordered_pair[0]][label_to_show]
         data = defaultdict(list)
         metric_list = list(scores.keys())
-        for id in pair:
+        for exp_id in ordered_pair:
             for metric, score in scores.items():
-                if label_to_show in macroavgs[id]:
-                    data[id].append(macroavgs[id][label_to_show][metric])
+                if label_to_show in macroavgs[exp_id]:
+                    data[exp_id].append(macroavgs[exp_id][label_to_show][metric])
                 else:
-                    data[id].append(0.0)
+                    data[exp_id].append(0.0)
         data = dict(data)
 
         # plot a bar graph
@@ -212,10 +213,10 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
         multiplier = 0
 
         if l != 0:
-            for id2, scores in data.items():
-                id_variable = str(variable) + ": " + str(configs[id2][variable])
+            for exp_id, scores in data.items():
+                id_variable = str(variable) + ": " + str(configs[exp_id][variable])
                 offset = width * multiplier
-                rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[id2][variable])])
+                rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[exp_id][variable])])
                 ax.bar_label(rects, fmt='%.6s', fontsize='small')
                 multiplier += 1
 
@@ -226,9 +227,9 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
             ax.legend(loc='upper left', fontsize='small', ncol=l)
             ax.set_ylim(0.0, 1.15)
             # Show information on fixed parameters.
-            configs[id2].pop(variable)
+            configs[exp_id].pop(variable)
             string_configs = ""
-            for k, v in configs[id2].items():
+            for k, v in configs[exp_id].items():
                 string_configs += str(k) + ": " + str(v) + "\n"
             ax.text(0.99, 0.97, string_configs,
                     verticalalignment='bottom', horizontalalignment='right',
@@ -332,6 +333,7 @@ if __name__ == '__main__':
             choice_label = args.label
         else:
             raise argparse.ArgumentTypeError("Invalid argument for variable. Please enter one of ", label_list)
+    variable_values = sorted(grid[choice_variable].copy())
     list_of_pairs = get_pairs_to_compare(grid.copy(), inverse_configs, choice_variable)
     # Show the comparison results of pairs in bar graphs
-    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label, interactive_plots=args.interactive_plots)
+    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label, variable_values, interactive_plots=args.interactive_plots)
