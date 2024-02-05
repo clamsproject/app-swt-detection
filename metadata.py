@@ -29,6 +29,7 @@ def appmetadata() -> AppMetadata:
 
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
     metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
+    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
     
     # TODO: defaults are the same as in modeling/config/classifier.yml, which is possibly
     # not a great idea, should perhaps read defaults from the configuration file. There is
