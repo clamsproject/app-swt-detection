@@ -8,7 +8,7 @@ sampleRate: 1000
 minFrameScore: 0.01
 
 # Minimum score for a timeframe to be selected
-minTimeframeScore: 0.25
+minTimeframeScore: 0.5
 
 # Minimum number of sampled frames required for a timeframe to be included
 minFrameCount: 2

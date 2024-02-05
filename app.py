@@ -67,14 +67,15 @@ class SwtDetection(ClamsApp):
             for prediction in tf.targets:
                 timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
                 prediction.annotation = timepoint_annotation
-                timepoint_annotations.append(timepoint_annotation)
-                classification = [f"{label}:{prediction.score_for_label(label)}"
-                                  for label in prediction.labels]
-                label_with_highest_score = self._label_with_highest_score(classification)
+                scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
+                label = self._label_with_highest_score(prediction.labels, scores)
                 timepoint_annotation.add_property('timePont', prediction.timepoint)
-                timepoint_annotation.add_property('label', label_with_highest_score)
-                timepoint_annotation.add_property('classification', classification)
-            timeframe_annotation.add_property('targets', [tp.id for tp in timepoint_annotations])
+                timepoint_annotation.add_property('label', label)
+                timepoint_annotation.add_property('labels', prediction.labels)
+                timepoint_annotation.add_property('scores', scores)
+                timepoint_annotations.append(timepoint_annotation)
+            timeframe_annotation.add_property(
+                'targets', [tp.id for tp in timepoint_annotations])
             reps = [p.annotation.id for p in tf.representative_predictions()]
             timeframe_annotation.add_property("representatives", reps)
             #print(timeframe_annotation.serialize(pretty=True))
@@ -98,17 +99,13 @@ class SwtDetection(ClamsApp):
             elif parameter == "minFrameCount":
                 self.stitcher.min_frame_count = value
 
-    def _label_with_highest_score(self, classification: list) -> str:
-        highest_score = 0
-        label_with_highest_score = None
-        for classification_pair in classification:
-            lbl, score = classification_pair.split(':')
-            score = float(score)
-            if score > highest_score:
-                highest_score = score
-                label_with_highest_score = lbl
-        return label_with_highest_score
-                
+    def _label_with_highest_score(self, labels: list, scores: list) -> str:
+        """Return the label associated with the highest scores. The score for 
+        labels[i] is scores[i]."""
+        # TODO: now the NEG scores are included, perhaps not do that
+        sorted_scores = list(sorted(zip(scores, labels), reverse=True))
+        return sorted_scores[0][1]
+
 
 
 if __name__ == "__main__":
