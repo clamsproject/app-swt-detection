@@ -59,24 +59,15 @@ class Stitcher:
         timeframes = []
         open_frames = { label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
-            #if self.debug:
-            #    print(prediction)
-            scores = []
-            for i, label in enumerate(labels):
-                if label == negative_label:
-                    continue
-                if not self.use_postbinning:
-                    score = prediction.data[i]
-                else:
-                    score = prediction.score_for_labels(postbins[label])
-                #if self.debug:
-                #    print(prediction, f'{score:.4f}  {label}')
+            for label in [label for label in labels if label != negative_label]:
+                score = self._score_for_label(label, prediction)
                 if score < self.min_frame_score:
-                    if open_frames[label]:
+                    # the second part checks whether there is something in the timeframe
+                    if open_frames[label] and open_frames[label][0]:
                         timeframes.append(open_frames[label])
                     open_frames[label] = TimeFrame(label, self)
                 else:
-                    open_frames[label].add_point(prediction.timepoint, score)
+                    open_frames[label].add_prediction(prediction, score)
         for label in labels:
             if open_frames[label]:
                 timeframes.append(open_frames[label])
@@ -112,11 +103,20 @@ class Stitcher:
                 return True
         return False
 
+    def _score_for_label(self, label: str, prediction):
+        """Return the score for the label, this is somewhat more complicated when
+        postbinning is used."""
+        if not self.use_postbinning:
+            return prediction.score_for_label(label)
+        else:
+            return prediction.score_for_labels(postbins[label])
+
 
 class TimeFrame:
 
     def __init__(self, label: str, stitcher: Stitcher):
         self.static_frames = stitcher.static_frames
+        self.targets = []
         self.label = label
         self.points = []
         self.scores = []
@@ -126,20 +126,33 @@ class TimeFrame:
         self.score = None
 
     def __len__(self):
-        return len(self.points)
+        return len(self.targets)
 
     def __nonzero__(self):
         return len(self) != 0
+
+    def __getitem__(self, item: int):
+        return self.targets[item]
 
     def __str__(self):
         if self.is_empty():
             return "<TimePoint empty>"
         else:
-            return f"<TimeFrame {self.label} {self.points[0]}:{self.points[-1]} score={self.score:0.4f}>"
+            score = -1 if self.score is None else self.score
+            span = f"{self.points[0]}:{self.points[-1]}"
+            return f"<TimeFrame {self.label} {span} score={score:0.4f}>"
 
-    def add_point(self, point, score):
-        self.points.append(point)
+    def pp(self):
+        print(self)
+        for t in self.targets:
+            print('  ', t)
+        print(self.scores)
+
+    def add_prediction(self, prediction, score):
+        self.targets.append(prediction)
+        self.points.append(prediction.timepoint)
         self.scores.append(score)
+        #print(f"{prediction} {score:.4f} ==> {self}")
 
     def finish(self):
         """Once all points have been added to a timeframe, use this method to
@@ -148,8 +161,16 @@ class TimeFrame:
         self.start = self.points[0]
         self.end = self.points[-1]
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
         return len(self) == 0
+
+    def representative_predictions(self) -> list:
+        answer = []
+        for rep in self.representatives:
+            for pred in self.targets:
+                if pred.timepoint == rep:
+                    answer.append(pred)
+        return answer
 
     def set_representatives(self):
         """Calculate the representative still frames for the time frame, using a

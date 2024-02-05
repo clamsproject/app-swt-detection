@@ -149,16 +149,18 @@ class Prediction:
     Torch tensor, but also as a list with softmaxed values. Softmaxed scores can
     be retrieve using the label.
 
-    timepoint  -  the location of the frame in the video, in milliseconds
-    labels     -  labels for the prediction, taken from the classifier model
-    tensor     -  the tensor that results from running the model on the features
-    data       -  the tensor simplified into a simple list with softmax scores
+    timepoint   -  the location of the frame in the video, in milliseconds
+    labels      -  labels for the prediction, taken from the classifier model
+    tensor      -  the tensor that results from running the model on the features
+    data        -  the tensor simplified into a simple list with softmax scores
+    annotation  -  a MMIF annotation associated with the prediction
 
     Note that instances of this class know nothing about binning. The labels that
     they get handed in are the pre-binning labels and those are the ones that the
     classifier calculates scores for. To get post-binning score (scores where the 
     pre-binning scores are summed) use the score_for_labels() method and let the
-    caller figure out what labels are post-binned.
+    caller figure out what labels are post-binned. The annotation variable is not
+    used unless this code is embedded in a CLAMS App.
 
     """
 
@@ -173,6 +175,7 @@ class Prediction:
             self.data = torch.nn.Softmax(dim=0)(self.tensor).detach().numpy().tolist()
         else:
             self.data = data
+        self.annotation = None
 
     def __str__(self):
         label_scores = ' '.join(["%.4f" % d for d in self.data[:3]])
