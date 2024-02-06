@@ -50,7 +50,7 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
 
-        predictions = self.classifier.process_video(vd.location)
+        predictions = self.classifier.process_video(vd.location_path(nonexist_ok=False))
         timeframes = self.stitcher.create_timeframes(predictions)
 
         new_view.new_contain(

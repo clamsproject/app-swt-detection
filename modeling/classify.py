@@ -29,12 +29,11 @@ import os
 import sys
 
 import cv2
-import numpy as np
 import torch
 import yaml
 from PIL import Image
 
-from modeling import train, data_loader, negative_label, stitch
+from modeling import train, data_loader, stitch
 
 
 class Classifier:
@@ -52,7 +51,7 @@ class Classifier:
             pos_unit=self.model_config.get("pos_unit", 0))
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
-            n_labels=len(self.model_config['bins']['pre'].keys()) + 1,
+            n_labels=len(self.model_config['bins']['pre'].keys()) + 1 if 'pre' in self.model_config['bins'] else 23,
             num_layers=self.model_config["num_layers"],
             dropout=self.model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(config["model_file"]))
