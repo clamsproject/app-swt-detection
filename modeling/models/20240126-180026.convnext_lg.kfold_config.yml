@@ -1,13 +1,12 @@
-bins:
-  pre:
-    slate:
-    - S
-    chyron:
-    - I
-    - N
-    - Y
-    credit:
-    - C
+num_splits: 30
+num_epochs: 2
+num_layers: 2
+pos_enc_name: sinusoidal-concat
+max_input_length: 5640000
+pos_unit: 60000
+pos_enc_dim: 512
+dropouts: 0.0
+img_enc_name: convnext_lg
 block_guids_train:
 - cpb-aacip-254-75r7szdz
 block_guids_valid:
@@ -32,12 +31,19 @@ block_guids_valid:
 - cpb-aacip-512-4b2x34nt7g
 - cpb-aacip-512-3n20c4tr34
 - cpb-aacip-512-3f4kk9534t
-dropouts: 0.1
-img_enc_name: convnext_tiny
-num_epochs: 5
-num_layers: 3
-num_splits: 5
-pos_enc_dim: 512
-pos_enc_name: sinusoidal-concat
-max_input_length: 5640000
-pos_unit: 60000
+bins:
+  post:
+    bars:
+    - B
+    slate:
+    - S
+    - S:H
+    - S:C
+    - S:D
+    - S:G
+    chyron:
+    - I
+    - N
+    - Y
+    credits:
+    - C

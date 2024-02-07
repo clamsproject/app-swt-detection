@@ -1,5 +1,5 @@
-model_file: "modeling/models/20231214-193543.convnext_tiny.kfold_000.pt"
-model_config_file: "modeling/models/20231214-193543.convnext_tiny.kfold_config.yml"
+model_file: "modeling/models/20240126-180026.convnext_lg.kfold_000.pt"
+model_config_file: "modeling/models/20240126-180026.convnext_lg.kfold_config.yml"
 
 # Milliseconds between sampled frames
 sampleRate: 1000
@@ -8,7 +8,11 @@ sampleRate: 1000
 minFrameScore: 0.01
 
 # Minimum score for a timeframe to be selected
-minTimeframeScore: 0.25
+minTimeframeScore: 0.5
 
 # Minimum number of sampled frames required for a timeframe to be included
 minFrameCount: 2
+
+# These are time frames that are typically static (that is, the text does not
+# move around or change as with rolling credits)
+staticFrames: [slate, chyron]

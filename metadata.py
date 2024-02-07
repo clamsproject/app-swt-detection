@@ -28,11 +28,23 @@ def appmetadata() -> AppMetadata:
     )
 
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
-    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
-    
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='bars')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='slate')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='chyron')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='credits')
+    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
+
     # TODO: defaults are the same as in modeling/config/classifier.yml, which is possibly
     # not a great idea, should perhaps read defaults from the configuration file. There is
     # also a movement afoot to get rid of the configuration file.
+    metadata.add_parameter(
+        name='startAt', type='integer', default=0,
+        description='Number of milliseconds into the video to start processing')
+    metadata.add_parameter(
+        # 10M ms is almost 3 hours, that should do; this is better than sys.maxint
+        # (also, I tried using default=None, but that made stopAt a required property)
+        name='stopAt', type='integer', default=10000000,
+        description='Number of milliseconds into the video to stop processing')
     metadata.add_parameter(
         name='sampleRate', type='integer', default=1000,
         description='Milliseconds between sampled frames')

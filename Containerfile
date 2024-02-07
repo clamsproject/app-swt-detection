@@ -1,4 +1,4 @@
-FROM ghcr.io/clamsproject/clams-python-opencv4:1.0.9
+FROM ghcr.io/clamsproject/clams-python-opencv4-torch2:1.1.0
 
 # See https://github.com/orgs/clamsproject/packages?tab=packages&q=clams-python for more base images
 # IF you want to automatically publish this image to the clamsproject organization, 
@@ -24,8 +24,8 @@ ENV CLAMS_APP_VERSION ${CLAMS_APP_VERSION}
 
 WORKDIR /app
 
-COPY requirements-app.txt .
-RUN pip install --no-cache-dir -r /app/requirements-app.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . .
 RUN python /app/dl_backbone.py

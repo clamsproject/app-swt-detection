@@ -23,7 +23,7 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Union, Tuple, Dict, ClassVar
+from typing import List, Union, Tuple, Dict, ClassVar, Optional
 
 import av
 import numpy as np
@@ -57,7 +57,7 @@ class AnnotatedImage:
 class FeatureExtractor(object):
     
     img_encoder: backbones.ExtractorModel
-    pos_encoder: str
+    pos_encoder: Optional[str]
     max_input_length: int
     pos_dim: int
     sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
@@ -120,22 +120,22 @@ class FeatureExtractor(object):
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
         img_vec = img_vec.squeeze(0)
-        if self.pos_encoder is None:
-            return img_vec
-        elif self.pos_encoder == 'fractional':
+        if self.pos_encoder == 'fractional':
             return torch.concat((img_vec, torch.tensor([pos])))
         elif self.pos_encoder == 'sinusoidal-add':
             return torch.add(img_vec, self.pos_vec_lookup[round(pos)])
         elif self.pos_encoder == 'sinusoidal-concat':
             return torch.concat((img_vec, self.pos_vec_lookup[round(pos)]))
-    
+        else:
+            return img_vec
+
     def feature_vector_dim(self):
-        if self.pos_encoder == 'sinusoidal-add' or self.pos_encoder is None:
-            return self.img_encoder.dim
-        elif self.pos_encoder == 'sinusoidal-concat':
+        if self.pos_encoder == 'sinusoidal-concat':
             return self.img_encoder.dim + self.pos_dim
         elif self.pos_encoder == 'fractional':
             return self.img_encoder.dim + 1
+        else:
+            return self.img_encoder.dim
                     
     def get_full_feature_vectors(self, raw_img, cur_time, tot_time):
         img_vecs = self.get_img_vector(raw_img, as_numpy=False)

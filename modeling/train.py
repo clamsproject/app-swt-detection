@@ -37,6 +37,13 @@ FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
+# The layers in the underlaying classification, before pre-binning.
+# Should perhaps live in a config file
+RAW_LABELS = [
+    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
+    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R']
+RAW_LABEL_COUNT = len(RAW_LABELS) + 1
+
 
 class SWTDataset(Dataset):
     def __init__(self, backbone_model_name, labels, vectors):
@@ -60,7 +67,7 @@ def get_guids(data_dir):
     for j in Path(data_dir).glob('*.json'):
         guid = j.with_suffix("").name
         guids.append(guid)
-    return guids
+    return sorted(guids)
 
 
 def pre_bin(label, specs):
@@ -150,8 +157,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         pre_bin_size = len(configs['bins']['pre'].keys()) + 1
     else:
         pre_bin_size = len(FRAME_TYPES) + 1
-    train_vnum = train_vimg = valid_vnum = valid_vimg = 0
-    logger.warning(configs.get('pos_enc_name'))
+    train_vimg = valid_vimg = 0
 
     extractor = data_loader.FeatureExtractor(
         img_enc_name=configs.get('img_enc_name'),
@@ -168,26 +174,25 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         total_video_len = labels['duration']
         for i, vec in enumerate(feature_vecs):
             if not labels['frames'][i]['mod']:  # "transitional" frames
-                valid_vimg += 1
                 pre_binned_label = pre_bin(labels['frames'][i]['label'], configs)
                 vector = torch.from_numpy(vec)
                 position = labels['frames'][i]['curr_time']
                 vector = extractor.encode_position(position, total_video_len, vector)
                 if guid in validation_guids:
-                    valid_vnum += 1
+                    valid_vimg += 1
                     valid_vectors.append(vector)
                     valid_labels.append(pre_binned_label)
                 elif guid in train_guids:
-                    train_vnum += 1
+                    train_vimg += 1
                     train_vectors.append(vector)
                     train_labels.append(pre_binned_label)
-    logger.info(f'train: {train_vnum} videos, {train_vimg} images, valid: {valid_vnum} videos, {valid_vimg} images')
+    logger.info(f'train: {len(train_guids)} videos, {train_vimg} images, valid: {len(validation_guids)} videos, {valid_vimg} images')
     train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
     return train, valid, pre_bin_size
 
 
-def k_fold_train(indir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"? 
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
@@ -217,8 +222,8 @@ def k_fold_train(indir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%
         loss = nn.CrossEntropyLoss(reduction="none")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.csv"
-        export_model_file = f"{RESULTS_DIR}/{train_id}.kfold_{i:03d}.pt"
+        export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
         model, p, r, f = train_model(
                 get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
                 loss, device, train_loader, valid_loader, configs, labelset_size,
@@ -228,53 +233,67 @@ def k_fold_train(indir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
-    if train_id:
-        p = Path(f'{RESULTS_DIR}/{train_id}.kfold_results.txt')
-        p.parent.mkdir(parents=True, exist_ok=True)
-        export_f = open(p, 'w', encoding='utf8')
-    else:
-        export_f = sys.stdout
-    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, out=export_f, **configs)
-    export_config(config_file, configs, train_id)
+    p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
+    p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
+    p_results.parent.mkdir(parents=True, exist_ok=True)
+    export_kfold_config(config_file, configs, p_config)
+    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
 
 
-def export_config(config_file: str, configs: dict, train_id: str):
-    config_path = Path(f"{RESULTS_DIR}", f"{train_id}.kfold_config.yml")
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_id: str):
+    #config_path = Path(f"{outdir}", f"{train_id}.kfold_config.yml")
+    #print('>>>', config_path)
+    #config_path.parent.mkdir(parents=True, exist_ok=True)
     if config_file is None:
         configs_copy = copy.deepcopy(configs)
-        with open(config_path, 'w') as fh:
+        with open(outfile, 'w') as fh:
             yaml.dump(configs_copy, fh, default_flow_style=False, sort_keys=False)
     else:
-        shutil.copyfile(config_file, config_path)
+        shutil.copyfile(config_file, outfile)
 
 
-def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, out=sys.stdout, **train_spec):
-    max_f1_idx = f_scores.index(max(f_scores))
-    min_f1_idx = f_scores.index(min(f_scores))
-    out.write(f'Highest f1 @ {max_f1_idx:03d}\n')
-    out.write(f'\t{trial_specs[max_f1_idx]}\n')
-    out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
-    out.write(f'\tprecision = {p_scores[max_f1_idx]}\n')
-    out.write(f'\trecall = {r_scores[max_f1_idx]}\n')
-    out.write(f'Lowest f1 @ {min_f1_idx:03d}\n')
-    out.write(f'\t{trial_specs[min_f1_idx]}\n')
-    out.write(f'\tf-1 = {f_scores[min_f1_idx]}\n')
-    out.write(f'\tprecision = {p_scores[min_f1_idx]}\n')
-    out.write(f'\trecall = {r_scores[min_f1_idx]}\n')
-    out.write('Mean performance\n')
-    out.write(f'\tf-1 = {sum(f_scores) / len(f_scores)}\n')
-    out.write(f'\tprecision = {sum(p_scores) / len(p_scores)}\n')
-    out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
+def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results, **train_spec):
+    with open(p_results, 'w') as out:
+        max_f1_idx = f_scores.index(max(f_scores))
+        min_f1_idx = f_scores.index(min(f_scores))
+        out.write(f'Highest f1 @ {max_f1_idx:03d}\n')
+        out.write(f'\t{trial_specs[max_f1_idx]}\n')
+        out.write(f'\tf-1 = {f_scores[max_f1_idx]}\n')
+        out.write(f'\tprecision = {p_scores[max_f1_idx]}\n')
+        out.write(f'\trecall = {r_scores[max_f1_idx]}\n')
+        out.write(f'Lowest f1 @ {min_f1_idx:03d}\n')
+        out.write(f'\t{trial_specs[min_f1_idx]}\n')
+        out.write(f'\tf-1 = {f_scores[min_f1_idx]}\n')
+        out.write(f'\tprecision = {p_scores[min_f1_idx]}\n')
+        out.write(f'\trecall = {r_scores[min_f1_idx]}\n')
+        out.write('Mean performance\n')
+        out.write(f'\tf-1 = {sum(f_scores) / len(f_scores)}\n')
+        out.write(f'\tprecision = {sum(p_scores) / len(p_scores)}\n')
+        out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
+
+def pre_bin_label_names(config, raw_labels=None):
+    if 'pre' in config["bins"]:
+        return list(config["bins"]["pre"].keys()) + [modeling.negative_label]
+    elif raw_labels is not None:
+        return raw_labels
+    else:
+        return []
+
+def post_bin_label_names(config):
+    post_labels = list(config["bins"].get("post", {}).keys())
+    if post_labels:
+        return post_labels + [modeling.negative_label]
+    else:
+        return pre_bin_label_names(config)
 
 def get_final_label_names(config):
-    base = FRAME_TYPES
     if config and "post" in config["bins"]:
-        base = list(config["bins"]["post"].keys())
+        return post_bin_label_names(config)
     elif config and "pre" in config["bins"]:
-        base = list(config["bins"]["pre"].keys()) 
-    return base + [modeling.negative_label]
+        return pre_bin_label_names(config)
+    else:
+        return FRAME_TYPES + [modeling.negative_label]
     
 
 def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_labels, export_fname=None):
@@ -367,20 +386,18 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("-c", "--config", help="the YAML config file specifying binning strategy", default=None)
-    # Added because I wanted to be able to overrule the RESULTS_DIR with a parameter,
-    # but commented out because I haven't finished that yet. (MV)
-    # parser.add_argument("-r", "--results", metavar="DIR", help="the results directory")
+    parser.add_argument("-c", "--config", metavar='FILE', help="the YAML model config file", default=None)
+    parser.add_argument("-o", "--outdir", metavar='DIR', help="the results directory", default=RESULTS_DIR)
     args = parser.parse_args()
 
     if args.config:
         config = load_config(args.config)
         k_fold_train(
-            indir=args.indir, config_file=args.config, configs=config,
+            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
             train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
-        import gridsearch
-        for config in gridsearch.configs:
+        import modeling.gridsearch
+        for config in modeling.gridsearch.configs:
             k_fold_train(
-                indir=args.indir, config_file=args.config, configs=config,
+                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
                 train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
