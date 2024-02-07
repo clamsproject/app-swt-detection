@@ -40,61 +40,42 @@ Using the app to process a MMIF file:
 curl -X POST -d@example-mmif.json http://localhost:5000/
 ```
 
-This may take a while depending on the size of the video file embedded in the MMIF file. It should return a MMIF object with timeframes added, for example
+This may take a while depending on the size of the video file embedded in the MMIF file. It should return a MMIF object with TimeFrame and TimePoint annotations added.
+
+
+### Output details
+
+A TimeFrame looks as follows (the scores are somewhat condensed for clarity):
 
 ```json
 {
-  "metadata": {
-    "mmif": "http://mmif.clams.ai/0.4.0"
-  },
-  "documents": [
-    {
-      "@type": "http://mmif.clams.ai/0.4.0/vocabulary/VideoDocument",
-      "properties": {
-        "mime": "video/mpeg",
-        "id": "m1",
-        "location": "file:///data/video/cpb-aacip-690722078b2-shrunk.mp4"
-      }
-    }
-  ],
-  "views": [
-    {
-      "id": "v_0",
-      "metadata": {
-        "timestamp": "2023-11-06T20:00:18.311889",
-        "app": "http://apps.clams.ai/swt-detection",
-        "contains": {
-          "http://mmif.clams.ai/vocabulary/TimeFrame/v1": {
-            "document": "m1"
-          }
-        },
-        "parameters": {
-          "pretty": "True"
-        }
-      },
-      "annotations": [
-        {
-          "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
-          "properties": {
-            "start": 30000,
-            "end": 40000,
-            "frameType": "slate",
-            "score": 3.909090909090909,
-            "id": "tf_1"
-          }
-        },
-        {
-          "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
-          "properties": {
-            "start": 56000,
-            "end": 58000,
-            "frameType": "slate",
-            "score": 1.3333333333333333,
-            "id": "tf_2"
-          }
-        }
-      ]
-    }
-  ]
+  "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
+  "properties": {
+    "frameType": "bars",
+    "score": 0.9999,
+    "scores": [0.9998, 0.9999, 0.9998, 0.9999, 0.9999],
+    "targets": ["tp_1", "tp_2", "tp_3", "tp_4", "tp_5"],
+    "representatives": ["tp_2"],
+    "id": "tf_1"
+  }
 }
 ```
+
+The `targets` property containes the identifiers of the TimePoints that are included in the TimeFrame, in `scores` we have the TimePoint scores for the "bars" frame type, in `score` we have the average score for the entire TimeFrame, and in `representatives` we have pointers to TimePoints that are considered representative for thie TimeFrame.
+
+Only TimePoints that are included in a TimeFrame will be in the MMIF output, here is one (heavily condensed for clarity and only showing four of the labels):
+
+```json
+{
+  "@type": "http://mmif.clams.ai/vocabulary/TimePoint/v1",
+  "properties": {
+    "timePont": 0,
+    "label": "B",
+    "labels": ["B", "S", "S:H", "S:C"],
+    "scores": [0.9998, 5.7532e-08, 2.4712e-13, 1.9209e-12],
+    "id": "tp_1"
+  }
+}
+```
+
+The `label` property has the raw label for the TimePoint (which is potentially different from the frameType in the TimeFrame, for one, for the TimeFrame we typically group various raw labels together). In `labels` we have all labels for the TimePoint and in `scores` we have all classifier scores for the labels. 

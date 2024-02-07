@@ -28,10 +28,11 @@ def appmetadata() -> AppMetadata:
     )
 
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
-    metadata.add_output(AnnotationTypes.TimeFrame, frameType='bars')
-    metadata.add_output(AnnotationTypes.TimeFrame, frameType='slate')
-    metadata.add_output(AnnotationTypes.TimeFrame, frameType='chyron')
-    metadata.add_output(AnnotationTypes.TimeFrame, frameType='credits')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='bars')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='slate')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='chyron')
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', frameType='credits')
+    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
 
     # TODO: defaults are the same as in modeling/config/classifier.yml, which is possibly
     # not a great idea, should perhaps read defaults from the configuration file. There is

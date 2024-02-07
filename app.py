@@ -38,7 +38,6 @@ class SwtDetection(ClamsApp):
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
 
-        parameters = self.get_configuration(**parameters)
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
         self._export_parameters(parameters)
