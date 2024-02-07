@@ -24,7 +24,7 @@ class Stitcher:
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
         self.static_frames = self.config.get("staticFrames")
-        self.prebin_labels = train.pre_bin_label_names(self.model_config)
+        self.prebin_labels = train.pre_bin_label_names(self.model_config, train.RAW_LABELS)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.use_postbinning = "post" in self.model_config["bins"]
         self.debug = False
@@ -35,6 +35,9 @@ class Stitcher:
                 + f'min_frame_count={self.min_frame_count}>')
 
     def create_timeframes(self, predictions: list) -> list:
+        if self.debug:
+            print('pre-bin labels', self.prebin_labels)
+            print('post-bin labels', self.postbin_labels)
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
@@ -59,6 +62,8 @@ class Stitcher:
         timeframes = []
         open_frames = { label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
+            if self.debug:
+                print(prediction)
             for label in [label for label in labels if label != negative_label]:
                 score = self._score_for_label(label, prediction)
                 if score < self.min_frame_score:
@@ -109,6 +114,7 @@ class Stitcher:
         if not self.use_postbinning:
             return prediction.score_for_label(label)
         else:
+            postbins = self.model_config['bins']['post']
             return prediction.score_for_labels(postbins[label])
 
 

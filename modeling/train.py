@@ -37,6 +37,13 @@ FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
                "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
+# The layers in the underlaying classification, before pre-binning.
+# Should perhaps live in a config file
+RAW_LABELS = [
+    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
+    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R']
+RAW_LABEL_COUNT = len(RAW_LABELS) + 1
+
 
 class SWTDataset(Dataset):
     def __init__(self, backbone_model_name, labels, vectors):
@@ -265,8 +272,13 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results, *
         out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def pre_bin_label_names(config):
-    return list(config["bins"]["pre"].keys()) + [modeling.negative_label]
+def pre_bin_label_names(config, raw_labels=None):
+    if 'pre' in config["bins"]:
+        return list(config["bins"]["pre"].keys()) + [modeling.negative_label]
+    elif raw_labels is not None:
+        return raw_labels
+    else:
+        return []
 
 def post_bin_label_names(config):
     post_labels = list(config["bins"].get("post", {}).keys())

@@ -36,12 +36,21 @@ from PIL import Image
 from modeling import train, data_loader, stitch
 
 
+# The layers in the underlaying classification, before pre-binning.
+# Should probably live in train.py or perhaps in a config file
+#RAW_LABELS = (
+#    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
+#    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R')
+#RAW_LABEL_COUNT = len(RAW_LABELS) + 1
+
+
+
 class Classifier:
 
     def __init__(self, **config):
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
-        self.prebin_labels = train.pre_bin_label_names(self.model_config)
+        self.prebin_labels = train.pre_bin_label_names(self.model_config, train.RAW_LABELS)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
@@ -49,9 +58,12 @@ class Classifier:
             pos_enc_dim=self.model_config.get("pos_enc_dim", 0),
             max_input_length=self.model_config.get("max_input_length", 0),
             pos_unit=self.model_config.get("pos_unit", 0))
+        label_count = train.RAW_LABEL_COUNT
+        if 'pre' in self.model_config['bins']:
+            label_count = len(self.model_config['bins']['pre'].keys()) + 1
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
-            n_labels=len(self.model_config['bins']['pre'].keys()) + 1 if 'pre' in self.model_config['bins'] else 23,
+            n_labels=label_count,
             num_layers=self.model_config["num_layers"],
             dropout=self.model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(config["model_file"]))
@@ -177,7 +189,8 @@ class Prediction:
         self.annotation = None
 
     def __str__(self):
-        label_scores = ' '.join(["%.4f" % d for d in self.data[:3]])
+        # TODO: this needs to be generalized to any set of labels
+        label_scores = ' '.join(["%.4f" % d for d in self.data[:-1]])
         neg_score = self.data[-1]
         return f'<Prediction {self.timepoint:6} {label_scores} {neg_score:.4f}>'
 
