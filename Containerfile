@@ -24,8 +24,8 @@ ENV CLAMS_APP_VERSION ${CLAMS_APP_VERSION}
 
 WORKDIR /app
 
-COPY requirements-app.txt .
-RUN pip install --no-cache-dir -r /app/requirements-app.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . .
 RUN python /app/dl_backbone.py
