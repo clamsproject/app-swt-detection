@@ -4,6 +4,10 @@ Create an HTML file that visualizes the output of the frame classifier.
 
 Usage:
 
+$ python visualize.py -m <MMIF_FILE>
+
+    MMIF_FILE - An MMIF file that refers to a local MP4 video vile
+
 $ python visualize.py -v <VIDEO_FILE> -p <PREDICTIONS_FILE>
 
     VIDEO_FILE        -  an MP4 video file
@@ -25,12 +29,14 @@ Some things to change here:
 
 import os, json, argparse
 import cv2
-
+from mmif import Mmif, DocumentTypes
 import modeling
+
 
 # Edit this if we use different labels
 LABELS = ('slate', 'chyron', 'credits')
 LABELS = ('bars', 'slate', 'chyron', 'credits', 'copy', 'text', 'person')
+LABELS = ('bars', 'slate', 'chyron', 'credits')
 
 
 STYLESHEET = '''
@@ -122,19 +128,35 @@ def get_color_class(score: float):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", metavar='FILENAME', required=True, help="video file")
-    parser.add_argument("-p", metavar='FILENAME', required=True, help="predictions file")
+    parser.add_argument("-m", metavar='FILENAME', help="MMIF file")
+    parser.add_argument("-v", metavar='FILENAME', help="video file")
+    parser.add_argument("-p", metavar='FILENAME', help="predictions file")
     args = parser.parse_args()
 
-    video_file = args.v
-    predictions_file = args.p
+    if args.m:
 
-    basename = os.path.splitext(os.path.basename(predictions_file))[0]
-    outdir = os.path.join('html', basename)
-    outdir_frames = os.path.join(outdir, 'frames')
-    index_file = os.path.join(outdir, f'index-{"-".join(LABELS)}.html')
-    os.makedirs(outdir_frames, exist_ok=True)
+        # Read the MMIF file and get the video location
+        mmif_obj = Mmif(open(args.m).read())
+        locations = mmif_obj.get_documents_locations(DocumentTypes.VideoDocument)
+        video_location = locations[0]
+        print(video_location)
+        # Get the predictions
+        # Prediction: a pair (milliseconds, scores), scores: a list of probabilities
+        # Read them from all the timepoints in the timeframes
+        for view in mmif_obj.views:
+            for annotation in view.annotations:
+                if 'TimeFrame' in str(annotation.at_type):
+                    print(annotation.properties.get('frameType'))
 
-    predictions = load_predictions(predictions_file)
-    #create_frames(video_file, predictions, outdir_frames)
-    visualize_predictions(predictions, LABELS, index_file, video_file)
+
+    else:
+        video_file = args.v
+        predictions_file = args.p
+        basename = os.path.splitext(os.path.basename(predictions_file))[0]
+        outdir = os.path.join('html', basename)
+        outdir_frames = os.path.join(outdir, 'frames')
+        index_file = os.path.join(outdir, f'index-{"-".join(LABELS)}.html')
+        os.makedirs(outdir_frames, exist_ok=True)
+        predictions = load_predictions(predictions_file)
+        #create_frames(video_file, predictions, outdir_frames)
+        visualize_predictions(predictions, LABELS, index_file, video_file)

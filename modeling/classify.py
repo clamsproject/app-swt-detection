@@ -76,7 +76,7 @@ class Classifier:
         return (f"<Classifier "
                 + f'img_enc_name="{self.model_config["img_enc_name"]}" '
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
-                + f'sample_rate={self.get_sample_rate()}>')
+                + f'sample_rate={self.sample_rate}>')
 
     def process_video(self, mp4_file: str) -> list:
         """Loops over the frames in a video and for each frame extracts the features
@@ -110,12 +110,6 @@ class Classifier:
                 print(prediction)
             predictions.append(prediction)
         return predictions
-
-    def get_sample_rate(self) -> int:
-        try:
-            return self.sample_rate
-        except AttributeError:
-            return None
 
     def pp(self):
         # debugging method
