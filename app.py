@@ -3,7 +3,7 @@
 CLAMS app to detect scenes with text.
 
 The kinds of scenes that are recognized depend on the model used but typically
-include slates, chryons and credits.
+include slates, chyrons and credits.
 
 """
 
@@ -15,6 +15,7 @@ from typing import Union
 import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
+from mmif.utils import video_document_helper as vdh
 
 from modeling import classify, stitch
 
@@ -48,8 +49,9 @@ class SwtDetection(ClamsApp):
             new_view.metadata.add_warnings(warning)
             return mmif
         vd = vds[0]
-
-        predictions = self.classifier.process_video(vd.location_path(nonexist_ok=False))
+        self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
+        vcap = vdh.capture(vd)
+        predictions = self.classifier.process_video(vcap)
         timeframes = self.stitcher.create_timeframes(predictions)
 
         new_view.new_contain(
@@ -98,7 +100,8 @@ class SwtDetection(ClamsApp):
             elif parameter == "minFrameCount":
                 self.stitcher.min_frame_count = value
 
-    def _label_with_highest_score(self, labels: list, scores: list) -> str:
+    @staticmethod
+    def _label_with_highest_score(labels: list, scores: list) -> str:
         """Return the label associated with the highest scores. The score for 
         labels[i] is scores[i]."""
         # TODO: now the NEG scores are included, perhaps not do that

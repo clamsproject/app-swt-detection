@@ -78,18 +78,13 @@ class Classifier:
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
                 + f'sample_rate={self.get_sample_rate()}>')
 
-    def process_video(self, mp4_file: str) -> list:
+    def process_video(self, vidcap: cv2.VideoCapture) -> list:
         """Loops over the frames in a video and for each frame extracts the features
         and applies the classifier. Returns a list of predictions, where each prediction
         is an instance of numpy.ndarray."""
         if self.debug:
-            print(f'Processing {mp4_file}...')
             print(f'Labels: {self.prebin_labels}')
-        logging.info(f'processing {mp4_file}...')
         predictions = []
-        vidcap = cv2.VideoCapture(mp4_file)
-        if not vidcap.isOpened():
-            raise IOError(f'Could not open {mp4_file}')
         fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
         fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
         dur = round(fc / fps, 3) * 1000
@@ -236,6 +231,14 @@ def add_parameters(args: dict, classifier: Classifier, stitcher: stitch.Stitcher
         classifier.stop_at = int(args.stop)
 
 
+def open_mp4_file(mp4_file, verbose=False):
+    if verbose:
+        print(f'Processing {args.input}...')
+    mp4_vidcap = cv2.VideoCapture(mp4_file)
+    if not mp4_vidcap.isOpened():
+        raise IOError(f'Could not open {mp4_file}')
+    return mp4_vidcap
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -247,6 +250,9 @@ if __name__ == '__main__':
     if args.debug:
         print(classifier)
         print(stitcher)
+    mp4_vidcap = open_mp4_file(args.input, args.debug)
+    if not mp4_vidcap.isOpened():
+        raise IOError(f'Could not open {args.input}')
 
     input_basename, extension = os.path.splitext(args.input)
     predictions_file = f'{input_basename}.json'
