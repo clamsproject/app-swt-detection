@@ -239,6 +239,7 @@ def open_mp4_file(mp4_file, verbose=False):
         raise IOError(f'Could not open {mp4_file}')
     return mp4_vidcap
 
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -259,7 +260,7 @@ if __name__ == '__main__':
     if args.use_predictions:
         predictions = load_predictions(predictions_file, classifier.prebin_labels)
     else:
-        predictions = classifier.process_video(args.input)
+        predictions = classifier.process_video(mp4_vidcap)
         if args.save_predictions:
             save_predictions(predictions, predictions_file)
 
