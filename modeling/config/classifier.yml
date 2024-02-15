@@ -15,4 +15,4 @@ minFrameCount: 2
 
 # These are time frames that are typically static (that is, the text does not
 # move around or change as with rolling credits)
-staticFrames: [slate, chyron]
+staticFrames: [bars, slate, chyron]

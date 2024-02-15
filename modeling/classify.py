@@ -36,15 +36,6 @@ from PIL import Image
 from modeling import train, data_loader, stitch
 
 
-# The layers in the underlaying classification, before pre-binning.
-# Should probably live in train.py or perhaps in a config file
-#RAW_LABELS = (
-#    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
-#    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R')
-#RAW_LABEL_COUNT = len(RAW_LABELS) + 1
-
-
-
 class Classifier:
 
     def __init__(self, **config):
@@ -76,7 +67,7 @@ class Classifier:
         return (f"<Classifier "
                 + f'img_enc_name="{self.model_config["img_enc_name"]}" '
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
-                + f'sample_rate={self.get_sample_rate()}>')
+                + f'sample_rate={self.sample_rate}>')
 
     def process_video(self, vidcap: cv2.VideoCapture) -> list:
         """Loops over the frames in a video and for each frame extracts the features
@@ -106,16 +97,10 @@ class Classifier:
             predictions.append(prediction)
         return predictions
 
-    def get_sample_rate(self) -> int:
-        try:
-            return self.sample_rate
-        except AttributeError:
-            return None
-
     def pp(self):
         # debugging method
         print(f"Classifier {self.model_file}")
-        print(f"   sample_rate         = {self.sample_rate}")
+        print(f"   sample_rate     = {self.sample_rate}")
         print(f"   min_frame_score = {self.min_timeframe_score}")
         print(f"   min_frame_count = {self.min_frame_count}")
 

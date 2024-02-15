@@ -70,10 +70,10 @@ class SwtDetection(ClamsApp):
                 prediction.annotation = timepoint_annotation
                 scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
                 label = self._label_with_highest_score(prediction.labels, scores)
+                classification = {l:s for l, s in zip(prediction.labels, scores)}
                 timepoint_annotation.add_property('timePoint', prediction.timepoint)
                 timepoint_annotation.add_property('label', label)
-                timepoint_annotation.add_property('labels', prediction.labels)
-                timepoint_annotation.add_property('scores', scores)
+                timepoint_annotation.add_property('classification', classification)
                 timepoint_annotations.append(timepoint_annotation)
             timeframe_annotation.add_property(
                 'targets', [tp.id for tp in timepoint_annotations])
