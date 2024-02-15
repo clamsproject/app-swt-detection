@@ -255,12 +255,13 @@ $RECYCLE.BIN/
 # MacOS FInder information
 .DS_Store
 
-# Files created by data_ingestion
+# Files created by data_ingestion or visualization
 modeling/features
 modeling/results*/*kfold*pt
 modeling/results*/*kfold*csv
 modeling/results*/*kfold*txt
 modeling/vectorized/*
+modeling/html
 
 # Files used or created by classify.py
 modeling/data/*

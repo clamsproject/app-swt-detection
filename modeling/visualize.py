@@ -21,8 +21,6 @@ Some things to change here:
 
 """
 
-# TODO: this should probably live in the modeling package
-
 
 import os
 import sys

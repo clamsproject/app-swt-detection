@@ -27,8 +27,6 @@ the first.
 
 """
 
-# TODO: this should probably live in the modeling package
-
 
 import os
 import csv
@@ -37,13 +35,13 @@ from mmif import Mmif
 
 
 # MMIF files
-mmif_files = ('ex-aapb-50.json', 'ex-aapb-69.json', 'ex-aapb-75.json')
+mmif_files = ('../ex-aapb-50.json', '../ex-aapb-69.json', '../ex-aapb-75.json')
 
 # Annotation files
 gold_files = (
-    'modeling/annotations-gbh/cpb-aacip-507-028pc2tp2z.csv',
-    'modeling/annotations-gbh/cpb-aacip-690722078b2.csv',
-    'modeling/annotations-gbh/cpb-aacip-75-72b8h82x.csv')
+    'annotations-gbh/cpb-aacip-507-028pc2tp2z.csv',
+    'annotations-gbh/cpb-aacip-690722078b2.csv',
+    'annotations-gbh/cpb-aacip-75-72b8h82x.csv')
 
 # Mappings from raw labels to binned labels
 bin_mappings = {
