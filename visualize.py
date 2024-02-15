@@ -21,6 +21,8 @@ Some things to change here:
 
 """
 
+# TODO: this should probably live in the modeling package
+
 
 import os
 import sys
@@ -37,14 +39,14 @@ from mmif import Mmif, DocumentTypes, Annotation
 CREATE_FRAMES = False
 
 # Edit this if we use different labels
-# TODO: should really come from a config file
+# TODO: this should really come from a config file
 LABELS = ('slate', 'chyron', 'credits')
 LABELS = ('bars', 'slate', 'chyron', 'credits', 'copy', 'text', 'person')
 LABELS = ('bars', 'slate', 'chyron', 'credits')
 
 
 # Mappings from binned labels to raw labels, edit if needed
-# TODO: should really come from a config file
+# TODO: this should also really come from a config file
 BIN_MAPPINGS = {
     'bars': ('B'),
     'slate': ('S', 'S:H', 'S:C', 'S:D', 'S:G'),
@@ -64,7 +66,7 @@ STYLESHEET = '''
 td.popup:hover { z-index: 6; }
 td.popup span { position: absolute; left: -9999px; z-index: 6; }
 /* Need to change this so that the margin is calculated from the number of columns */
-td.popup:hover span { margin-left: 500px; left: 2%; z-index:6; }
+td.popup:hover span { margin-left: 550px; left: 2%; z-index:6; }
 </style>
 '''
 
@@ -105,7 +107,8 @@ def visualize_mmif(mmif: Mmif, timeframes: list, basename: str, htmlfile: str):
             fh.write('<tr align="center">\n')
             _print_header(fh, LABELS)
             for tp in tf:
-                _print_row(fh, tp.start, LABELS, tp.classification)
+                is_representative = True if tp.id in tf.representatives else False
+                _print_row(fh, tp.start, LABELS, tp.classification, is_representative)
             fh.write('</table>\n')
         fh.write('<br/>\n' * 25)
         fh.write('</body>\n')
@@ -134,12 +137,12 @@ def _print_front_matter(fh, title: str):
 
 def _print_header(fh, labels: list):
     fh.write('<tr align="center">\n')
-    for header in ('ms', 'timstamp') + labels + ('img',):
+    for header in ('ms', 'timstamp') + labels + ('rep', 'img'):
         fh.write(f'  <td>{header}</td>\n')
     fh.write('<tr/>\n')
 
 
-def _print_row(fh, milliseconds: int, labels: list, scores: dict):
+def _print_row(fh, milliseconds: int, labels: list, scores: dict, is_representative: bool):
     timestamp = millisecond_to_isoformat(milliseconds)
     fh.write('<tr>\n')
     fh.write(f'  <td align="right" class="anchor">{milliseconds}</td>\n')
@@ -149,6 +152,8 @@ def _print_row(fh, milliseconds: int, labels: list, scores: dict):
         p = scores[lbl]
         url = f"frames/frame-{milliseconds:06}.jpg"
         fh.write(f'  <td align="right" class="{get_color_class(p)}">{p:.4f}</td>\n')
+    checkmark = '&#10003;' if is_representative else '&nbsp;'
+    fh.write(f'  <td align="center" class="anchor">{checkmark}</td>\n')
     onclick = f"window.open('{url}', '_blank')"
     image = f'<img src="{url}" height="24px">'
     image_popup = f'<img src="{url}">'
@@ -174,6 +179,7 @@ class TimeFrameWrapper:
         self.label = timeframe.get_property('frameType')
         self.labels = None
         self.targets = timeframe.get_property('targets')
+        self.representatives = timeframe.get_property('representatives')
         for tp_id in self.targets:
             tp = timepoints.get(tp_id)
             self.timepoints.append(tp)
@@ -183,6 +189,7 @@ class TimeFrameWrapper:
                 self.end = tp.start
             if self.labels is None:
                 self.labels = tuple(tp.raw_labels)
+        #self.fix_representatives()
 
     def __str__(self):
         cls = self.__class__.__name__
@@ -197,6 +204,14 @@ class TimeFrameWrapper:
     def positions(self):
         """Returns the positions (in milliseconds) of all timepoints."""
         return [tp.start for tp in self.timepoints]
+
+    def fix_representatives(self):
+        """This is a hack to deal with a oversight in the configuration, where bars
+        were not added as static timeframes. So we fix that here."""
+        # TODO: remove this asap
+        if self.label == 'bars':
+            tps = sorted(self.timepoints, key=(lambda x: x.classification['bars']))
+            self.representatives = [tps[-1].id]
 
 
 class TimePointWrapper:

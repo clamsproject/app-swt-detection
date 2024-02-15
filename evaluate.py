@@ -27,6 +27,9 @@ the first.
 
 """
 
+# TODO: this should probably live in the modeling package
+
+
 import os
 import csv
 import collections
