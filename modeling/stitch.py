@@ -47,6 +47,7 @@ class Stitcher:
         timeframes = self.remove_overlapping_timeframes(timeframes)
         for tf in timeframes:
             tf.set_representatives()
+        timeframes = list(sorted(timeframes, key=(lambda tf: tf.start)))
         if self.debug:
             print_timeframes('Final frames', timeframes)
         return timeframes
