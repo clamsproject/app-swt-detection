@@ -52,7 +52,7 @@ def appmetadata() -> AppMetadata:
         name='minFrameScore', type='number', default=0.01,
         description='Minimum score for a still frame to be included in a TimeFrame')
     metadata.add_parameter(
-        name='minTimeframeScore', type='number', default=0.25,
+        name='minTimeframeScore', type='number', default=0.50,
         description='Minimum score for a TimeFrame')
     metadata.add_parameter(
         name='minFrameCount', type='integer', default=2,

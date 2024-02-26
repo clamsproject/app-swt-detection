@@ -36,15 +36,6 @@ from PIL import Image
 from modeling import train, data_loader, stitch
 
 
-# The layers in the underlaying classification, before pre-binning.
-# Should probably live in train.py or perhaps in a config file
-#RAW_LABELS = (
-#    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
-#    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R')
-#RAW_LABEL_COUNT = len(RAW_LABELS) + 1
-
-
-
 class Classifier:
 
     def __init__(self, **config):
@@ -76,20 +67,15 @@ class Classifier:
         return (f"<Classifier "
                 + f'img_enc_name="{self.model_config["img_enc_name"]}" '
                 + f'pos_enc_name="{self.model_config["pos_enc_name"]}" '
-                + f'sample_rate={self.get_sample_rate()}>')
+                + f'sample_rate={self.sample_rate}>')
 
-    def process_video(self, mp4_file: str) -> list:
+    def process_video(self, vidcap: cv2.VideoCapture) -> list:
         """Loops over the frames in a video and for each frame extracts the features
         and applies the classifier. Returns a list of predictions, where each prediction
         is an instance of numpy.ndarray."""
         if self.debug:
-            print(f'Processing {mp4_file}...')
             print(f'Labels: {self.prebin_labels}')
-        logging.info(f'processing {mp4_file}...')
         predictions = []
-        vidcap = cv2.VideoCapture(mp4_file)
-        if not vidcap.isOpened():
-            raise IOError(f'Could not open {mp4_file}')
         fps = round(vidcap.get(cv2.CAP_PROP_FPS), 2)
         fc = vidcap.get(cv2.CAP_PROP_FRAME_COUNT)
         dur = round(fc / fps, 3) * 1000
@@ -111,16 +97,10 @@ class Classifier:
             predictions.append(prediction)
         return predictions
 
-    def get_sample_rate(self) -> int:
-        try:
-            return self.sample_rate
-        except AttributeError:
-            return None
-
     def pp(self):
         # debugging method
         print(f"Classifier {self.model_file}")
-        print(f"   sample_rate         = {self.sample_rate}")
+        print(f"   sample_rate     = {self.sample_rate}")
         print(f"   min_frame_score = {self.min_timeframe_score}")
         print(f"   min_frame_count = {self.min_frame_count}")
 
@@ -236,6 +216,15 @@ def add_parameters(args: dict, classifier: Classifier, stitcher: stitch.Stitcher
         classifier.stop_at = int(args.stop)
 
 
+def open_mp4_file(mp4_file, verbose=False):
+    if verbose:
+        print(f'Processing {args.input}...')
+    mp4_vidcap = cv2.VideoCapture(mp4_file)
+    if not mp4_vidcap.isOpened():
+        raise IOError(f'Could not open {mp4_file}')
+    return mp4_vidcap
+
+
 if __name__ == '__main__':
 
     args = parse_args()
@@ -247,13 +236,16 @@ if __name__ == '__main__':
     if args.debug:
         print(classifier)
         print(stitcher)
+    mp4_vidcap = open_mp4_file(args.input, args.debug)
+    if not mp4_vidcap.isOpened():
+        raise IOError(f'Could not open {args.input}')
 
     input_basename, extension = os.path.splitext(args.input)
     predictions_file = f'{input_basename}.json'
     if args.use_predictions:
         predictions = load_predictions(predictions_file, classifier.prebin_labels)
     else:
-        predictions = classifier.process_video(args.input)
+        predictions = classifier.process_video(mp4_vidcap)
         if args.save_predictions:
             save_predictions(predictions, predictions_file)
 

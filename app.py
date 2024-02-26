@@ -3,7 +3,7 @@
 CLAMS app to detect scenes with text.
 
 The kinds of scenes that are recognized depend on the model used but typically
-include slates, chryons and credits.
+include slates, chyrons and credits.
 
 """
 
@@ -15,8 +15,9 @@ from typing import Union
 import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
+from mmif.utils import video_document_helper as vdh
 
-from modeling import classify, stitch
+from modeling import classify, stitch, negative_label
 
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
@@ -48,30 +49,38 @@ class SwtDetection(ClamsApp):
             new_view.metadata.add_warnings(warning)
             return mmif
         vd = vds[0]
-
-        predictions = self.classifier.process_video(vd.location_path(nonexist_ok=False))
+        self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
+        vcap = vdh.capture(vd)
+        predictions = self.classifier.process_video(vcap)
         timeframes = self.stitcher.create_timeframes(predictions)
 
+        labelset = self.classifier.postbin_labels
+        bins = self.classifier.model_config['bins']
+
         new_view.new_contain(
-            AnnotationTypes.TimeFrame, document=vd.id, timeUnit='milliseconds')
+            AnnotationTypes.TimeFrame,
+            document=vd.id, timeUnit='milliseconds', labelset=labelset)
         new_view.new_contain(
-            AnnotationTypes.TimePoint, document=vd.id, timeUnit='milliseconds')
+            AnnotationTypes.TimePoint,
+            document=vd.id, timeUnit='milliseconds', labelset=labelset)
 
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
-            timeframe_annotation.add_property("frameType", tf.label),
-            timeframe_annotation.add_property("score", tf.score)
-            timeframe_annotation.add_property("scores", tf.scores)
+            timeframe_annotation.add_property("label", tf.label),
+            timeframe_annotation.add_property('classification', {tf.label: tf.score})
+            #timeframe_annotation.add_property("score", tf.score)
+            #timeframe_annotation.add_property("scores", tf.scores)
             timepoint_annotations = []
             for prediction in tf.targets:
                 timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
                 prediction.annotation = timepoint_annotation
                 scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
                 label = self._label_with_highest_score(prediction.labels, scores)
-                timepoint_annotation.add_property('timePont', prediction.timepoint)
+                classification = {l:s for l, s in zip(prediction.labels, scores)}
+                classification = self._transform(classification, bins)
+                timepoint_annotation.add_property('timePoint', prediction.timepoint)
                 timepoint_annotation.add_property('label', label)
-                timepoint_annotation.add_property('labels', prediction.labels)
-                timepoint_annotation.add_property('scores', scores)
+                timepoint_annotation.add_property('classification', classification)
                 timepoint_annotations.append(timepoint_annotation)
             timeframe_annotation.add_property(
                 'targets', [tp.id for tp in timepoint_annotations])
@@ -98,13 +107,25 @@ class SwtDetection(ClamsApp):
             elif parameter == "minFrameCount":
                 self.stitcher.min_frame_count = value
 
-    def _label_with_highest_score(self, labels: list, scores: list) -> str:
+    @staticmethod
+    def _label_with_highest_score(labels: list, scores: list) -> str:
         """Return the label associated with the highest scores. The score for 
         labels[i] is scores[i]."""
         # TODO: now the NEG scores are included, perhaps not do that
         sorted_scores = list(sorted(zip(scores, labels), reverse=True))
         return sorted_scores[0][1]
 
+    @staticmethod
+    def _transform(classification: dict, bins: dict):
+        """Take the raw classification and turn it into a classification of user
+        labels. Also includes modeling.negative_label."""
+        # TODO: this may not work when there is pre-binning
+        transformed = {}
+        for postlabel in bins['post'].keys():
+            score = sum([classification[lbl] for lbl in bins['post'][postlabel]])
+            transformed[postlabel] = score
+        transformed[negative_label] = 1 - sum(transformed.values())
+        return transformed
 
 
 if __name__ == "__main__":
