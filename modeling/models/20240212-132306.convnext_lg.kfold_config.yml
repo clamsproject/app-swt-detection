@@ -1,0 +1,70 @@
+num_epochs: 2
+num_splits: 15
+
+img_enc_name: "convnext_lg"
+
+block_guids_train: ["cpb-aacip-254-75r7szdz"]
+block_guids_valid: [
+    "cpb-aacip-254-75r7szdz",
+    "cpb-aacip-259-4j09zf95",
+    "cpb-aacip-526-hd7np1xn78",
+    "cpb-aacip-75-72b8h82x",
+    "cpb-aacip-fe9efa663c6",
+    "cpb-aacip-f5847a01db5",
+    "cpb-aacip-f2a88c88d9d",
+    "cpb-aacip-ec590a6761d",
+    "cpb-aacip-c7c64922fcd",
+    "cpb-aacip-f3fa7215348",
+    "cpb-aacip-f13ae523e20",
+    "cpb-aacip-e7a25f07d35",
+    "cpb-aacip-ce6d5e4bd7f",
+    "cpb-aacip-690722078b2",
+    "cpb-aacip-e649135e6ec",
+    "cpb-aacip-15-93gxdjk6",
+    "cpb-aacip-512-4f1mg7h078",
+    "cpb-aacip-512-4m9183583s",
+    "cpb-aacip-512-4b2x34nt7g",
+    "cpb-aacip-512-3n20c4tr34",
+    "cpb-aacip-512-3f4kk9534t",
+  ]
+
+num_layers: 3
+dropouts: 0.1
+
+pos_enc_name: "sinusoidal-concat"
+pos_unit: 60000
+pos_enc_dim: 512
+# for now, hard-coding the longest video length in the annotated dataset 
+# $ for m in /llc_data/clams/swt-gbh/**/*.mp4; do printf "%s %s\n" "$(basename $m .mp4)" "$(ffmpeg -i $m 2>&1 | grep Duration: )"; done | sort -k 3 -r | head -n 1
+# cpb-aacip-259-4j09zf95    Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
+# 94 mins = 5640 secs = 5640000 ms
+max_input_length: 5640000
+
+bins:
+  post:
+    bars:
+      - "B"
+    slate:
+      - "S"
+      - "S:H"
+      - "S:C"
+      - "S:D"
+      - "S:G"
+    other_opening:
+      - "W"
+      - "L"
+      - "O"
+      - "M"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
+      - "R"
+    other_text:
+      - "E"
+      - "K"
+      - "G"
+      - 'T'
+      - 'F'
