@@ -16,3 +16,6 @@ minFrameCount: 2
 # These are time frames that are typically static (that is, the text does not
 # move around or change as with rolling credits)
 staticFrames: [bars, slate, chyron]
+
+# Set to False to turn off the stitcher
+useStitcher: True

@@ -65,6 +65,9 @@ def appmetadata() -> AppMetadata:
         default=pathlib.Path(preconf['model_file']).stem,
         choices=[m.stem for m in available_models],
         description='model name to use for classification')
+    metadata.add_parameter(
+        name='useStitcher', type='boolean', default=True,
+        description='Use the stitcher after classifying the TimePoints')
 
     return metadata
 
