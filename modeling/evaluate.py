@@ -38,10 +38,22 @@ from mmif import Mmif
 mmif_files = ('../ex-aapb-50.json', '../ex-aapb-69.json', '../ex-aapb-75.json')
 
 # Annotation files
-gold_files = (
-    'annotations-gbh/cpb-aacip-507-028pc2tp2z.csv',
-    'annotations-gbh/cpb-aacip-690722078b2.csv',
-    'annotations-gbh/cpb-aacip-75-72b8h82x.csv')
+gold_files_urls = (
+        'https://raw.githubusercontent.com/clamsproject/aapb-annotations/f73163c/scene-recognition/231002-aapb-collaboration-27-a/cpb-aacip-507-028pc2tp2z.csv',
+        'https://raw.githubusercontent.com/clamsproject/aapb-annotations/f73163c/scene-recognition/231002-aapb-collaboration-27-b/cpb-aacip-690722078b2.csv',
+        'https://raw.githubusercontent.com/clamsproject/aapb-annotations/f73163c/scene-recognition/231002-aapb-collaboration-27-b/cpb-aacip-75-72b8h82x.csv')
+
+# import tempfile and create a temporary directory
+import urllib.request
+import tempfile
+
+gold_files = []
+tmpdir = tempfile.TemporaryDirectory()
+# download the files
+for url in gold_files_urls:
+    filename = os.path.join(tmpdir.name, os.path.basename(url))
+    urllib.request.urlretrieve(url, filename)
+    gold_files.append(filename)
 
 # Mappings from raw labels to binned labels
 bin_mappings = {
@@ -177,4 +189,4 @@ if __name__ == '__main__':
         total += results[2]
     print(f'Pre stitching:  {pre_correct / total:.2f}')
     print(f'Post stitching: {post_correct / total:.2f}\n')
-    
+    tmpdir.cleanup()
