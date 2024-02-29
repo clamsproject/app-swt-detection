@@ -3,6 +3,5 @@ import yaml
 import app
 import modeling.backbones as backbones
 
-train_config_fname = yaml.safe_load(open(app.default_config_fname))['model_config_file']
-backbone_name = yaml.safe_load(open(train_config_fname))['img_enc_name']
-backbones.model_map[backbone_name]()
+for config_fname in app.default_model_storage.glob('*.yml'):
+    backbones.model_map[yaml.safe_load(open(config_fname))['img_enc_name']]()

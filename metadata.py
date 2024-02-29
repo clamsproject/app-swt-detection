@@ -2,11 +2,14 @@
 Metadata for the Scenes-with-text app.
 
 """
+import pathlib
 
-from mmif import DocumentTypes, AnnotationTypes
-
+import yaml
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
+from mmif import DocumentTypes, AnnotationTypes
+from app import default_model_storage, default_config_fname
+
 
 
 def appmetadata() -> AppMetadata:
@@ -18,6 +21,8 @@ def appmetadata() -> AppMetadata:
     
     :return: AppMetadata object holding all necessary information.
     """
+    preconf = yaml.safe_load(open(default_config_fname))
+    available_models = default_model_storage.glob('*.pt')
 
     metadata = AppMetadata(
         name="Scenes-with-text Detection",
@@ -55,6 +60,11 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='minFrameCount', type='integer', default=2,
         description='Minimum number of sampled frames required for a TimeFrame')
+    metadata.add_parameter(
+        name='modelName', type='string', 
+        default=pathlib.Path(preconf['model_file']).stem,
+        choices=[m.stem for m in available_models],
+        description='model name to use for classification')
 
     return metadata
 
