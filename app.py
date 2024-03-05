@@ -22,14 +22,19 @@ from modeling import classify, stitch, negative_label
 logging.basicConfig(filename='swt.log', level=logging.DEBUG)
 
 default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
+default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, configs):
+    def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
         super().__init__()
-        self.classifier = classify.Classifier(**configs)
-        self.stitcher = stitch.Stitcher(**configs)
+        self.preconf = yaml.safe_load(open(preconf_fname))
+        # self.logger.addHandler(logging.StreamHandler())
+        if log_to_file:
+            fh = logging.FileHandler('swt.log')
+            fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.logger.addHandler(fh)
 
     def _appmetadata(self):
         # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
@@ -38,10 +43,20 @@ class SwtDetection(ClamsApp):
         pass
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
+        # possible bug here, as the configuration will be updated with the parameters that's not defined in the 
+        # app metadata, but passed at the run time.
+        configs = {**self.preconf, **parameters}
+        if 'modelName' in parameters:
+            configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
+            # model files from k-fold training have the fold number as three-digit suffix, trim it
+            configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
+        self.logger.info(f"Initiating classifier with {configs['model_file']}")
+        self.classifier = classify.Classifier(**configs)
+        self.stitcher = stitch.Stitcher(**configs)
 
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
-        self._export_parameters(parameters)
+        self.logger.info('Minimum time frame score: %s', self.stitcher.min_timeframe_score)
 
         vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not vds:
@@ -88,23 +103,6 @@ class SwtDetection(ClamsApp):
 
         return mmif
 
-    def _export_parameters(self, parameters: dict):
-        """Export the parameters to the Classifier and Stitcher instances."""
-        for parameter, value in parameters.items():
-            if parameter == "startAt":
-                self.classifier.start_at = value
-            elif parameter == "stopAt":
-                self.classifier.stop_at = value
-            elif parameter == "sampleRate":
-                self.classifier.sample_rate = value
-                self.stitcher.sample_rate = value
-            elif parameter == "minFrameScore":
-                self.stitcher.min_frame_score = value
-            elif parameter == "minTimeframeScore":
-                self.stitcher.min_timeframe_score = value
-            elif parameter == "minFrameCount":
-                self.stitcher.min_frame_count = value
-
     @staticmethod
     def _transform(classification: dict, bins: dict):
         """Take the raw classification and turn it into a classification of user
@@ -126,9 +124,8 @@ if __name__ == "__main__":
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
 
     parsed_args = parser.parse_args()
-    classifier_configs = yaml.safe_load(open(parsed_args.config))
 
-    app = SwtDetection(classifier_configs)
+    app = SwtDetection(preconf_fname=parsed_args.config, log_to_file=False)
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
