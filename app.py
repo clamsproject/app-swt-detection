@@ -7,6 +7,7 @@ include slates, chyrons and credits.
 
 """
 
+import time
 import argparse
 import logging
 from pathlib import Path
@@ -19,8 +20,6 @@ from mmif.utils import video_document_helper as vdh
 
 from modeling import classify, stitch, negative_label
 
-logging.basicConfig(filename='swt.log', level=logging.DEBUG)
-
 default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
@@ -30,9 +29,8 @@ class SwtDetection(ClamsApp):
     def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
         super().__init__()
         self.preconf = yaml.safe_load(open(preconf_fname))
-        # self.logger.addHandler(logging.StreamHandler())
         if log_to_file:
-            fh = logging.FileHandler('swt.log')
+            fh = logging.FileHandler(f'{self.__class__.__name__}.log')
             fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
             self.logger.addHandler(fh)
 
@@ -50,9 +48,14 @@ class SwtDetection(ClamsApp):
             configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
             # model files from k-fold training have the fold number as three-digit suffix, trim it
             configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
+        t = time.perf_counter()
         self.logger.info(f"Initiating classifier with {configs['model_file']}")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            configs['logger_name'] = self.logger.name
         self.classifier = classify.Classifier(**configs)
         self.stitcher = stitch.Stitcher(**configs)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Classifier initiation took {time.perf_counter() - t} seconds")
 
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
@@ -66,7 +69,10 @@ class SwtDetection(ClamsApp):
         vd = vds[0]
         self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
         vcap = vdh.capture(vd)
+        t = time.perf_counter()
         predictions = self.classifier.process_video(vcap)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         timeframes = self.stitcher.create_timeframes(predictions)
 
         labelset = self.classifier.postbin_labels
@@ -99,7 +105,6 @@ class SwtDetection(ClamsApp):
                 'targets', [tp.id for tp in timepoint_annotations])
             reps = [p.annotation.id for p in tf.representative_predictions()]
             timeframe_annotation.add_property("representatives", reps)
-            #print(timeframe_annotation.serialize(pretty=True))
 
         return mmif
 
