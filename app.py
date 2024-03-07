@@ -68,58 +68,38 @@ class SwtDetection(ClamsApp):
         vcap = vdh.capture(vd)
 
         predictions = self.classifier.process_video(vcap)
+        
+        tp_labelset = train.RAW_LABELS
+        new_view.new_contain(AnnotationTypes.TimePoint, 
+                             document=vd.id, timeUnit='milliseconds', labelset=tp_labelset)
 
-        if self.use_stitcher:
+        for prediction in predictions:
+            timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
+            prediction.annotation = timepoint_annotation
+            scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
+            classification = {l: s for l, s in zip(prediction.labels, scores)}
+            label = max(classification, key=classification.get)
+            timepoint_annotation.add_property('timePoint', prediction.timepoint)
+            timepoint_annotation.add_property('label', label)
+            timepoint_annotation.add_property('classification', classification)
 
-            labelset = self.classifier.postbin_labels
-            bins = self.classifier.model_config['bins']
-            new_view.new_contain(
-                AnnotationTypes.TimeFrame,
-                document=vd.id, timeUnit='milliseconds', labelset=labelset)
-            new_view.new_contain(
-                AnnotationTypes.TimePoint,
-                document=vd.id, timeUnit='milliseconds', labelset=labelset)
+        if not configs.get('useStitcher'):
+            return mmif
 
-            timeframes = self.stitcher.create_timeframes(predictions)
-            for tf in timeframes:
-                timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
-                timeframe_annotation.add_property("label", tf.label),
-                timeframe_annotation.add_property('classification', {tf.label: tf.score})
-                timepoint_annotations = []
-                for prediction in tf.targets:
-                    timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
-                    prediction.annotation = timepoint_annotation
-                    scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-                    classification = {l:s for l, s in zip(prediction.labels, scores)}
-                    classification = self._transform(classification, bins)
-                    label = max(classification, key=classification.get)
-                    timepoint_annotation.add_property('timePoint', prediction.timepoint)
-                    timepoint_annotation.add_property('label', label)
-                    timepoint_annotation.add_property('classification', classification)
-                    timepoint_annotations.append(timepoint_annotation)
-                timeframe_annotation.add_property(
-                    'targets', [tp.id for tp in timepoint_annotations])
-                reps = [p.annotation.id for p in tf.representative_predictions()]
-                timeframe_annotation.add_property("representatives", reps)
-                #print(timeframe_annotation.serialize(pretty=True))
+        labelset = self.classifier.postbin_labels
+        bins = self.classifier.model_config['bins']
+        new_view.new_contain(
+            AnnotationTypes.TimePoint,
+            document=vd.id, timeUnit='milliseconds', labelset=labelset)
 
-        else:
-
-            raw_labelset = train.RAW_LABELS
-            new_view.new_contain(
-                AnnotationTypes.TimePoint,
-                document=vd.id, timeUnit='milliseconds', labelset=raw_labelset)
-
-            for prediction in predictions:
-                timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
-                prediction.annotation = timepoint_annotation
-                scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-                classification = {l:s for l, s in zip(prediction.labels, scores)}
-                label = max(classification, key=classification.get)
-                timepoint_annotation.add_property('timePoint', prediction.timepoint)
-                timepoint_annotation.add_property('label', label)
-                timepoint_annotation.add_property('classification', classification)
-
+        timeframes = self.stitcher.create_timeframes(predictions)
+        for tf in timeframes:
+            timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
+            timeframe_annotation.add_property("label", tf.label),
+            timeframe_annotation.add_property('classification', {tf.label: tf.score})
+            timeframe_annotation.add_property('targets', [target.annotation.id for target in tf.targets])
+            timeframe_annotation.add_property("representatives",
+                                              [p.annotation.id for p in tf.representative_predictions()])
         return mmif
 
 
