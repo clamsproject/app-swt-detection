@@ -31,10 +31,9 @@ def appmetadata() -> AppMetadata:
         url="https://github.com/clamsproject/app-swt-detection"
     )
 
-    labels = ['bars', 'slate', 'chyron', 'credits', 'NEG']
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
-    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds', labelset=labels)
-    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds', labelset=labels)
+    metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
+    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
 
     metadata.add_parameter(
         name='startAt', type='integer', default=0,
