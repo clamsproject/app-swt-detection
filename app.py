@@ -46,6 +46,8 @@ class SwtDetection(ClamsApp):
         # possible bug here, as the configuration will be updated with the parameters that's not defined in the 
         # app metadata, but passed at the run time.
         configs = {**self.preconf, **parameters}
+        for k, v in configs.items():
+            self.logger.debug(f"Final Configuraion: {k} :: {v}")
         if 'modelName' in parameters:
             configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
             # model files from k-fold training have the fold number as three-digit suffix, trim it
