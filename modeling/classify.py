@@ -22,6 +22,7 @@ The requirements are the same as the requirements for ../app.py.
 
 """
 
+import time
 import argparse
 import json
 import logging
@@ -62,6 +63,7 @@ class Classifier:
         self.start_at = 0
         self.stop_at = sys.maxsize
         self.debug = False
+        self.logger = logging.getLogger(config.get('logger_name', self.__class__.__name__))
 
     def __str__(self):
         return (f"<Classifier "
@@ -73,6 +75,10 @@ class Classifier:
         """Loops over the frames in a video and for each frame extracts the features
         and applies the classifier. Returns a list of predictions, where each prediction
         is an instance of numpy.ndarray."""
+        featurizing_time = 0
+        classifier_time = 0
+        extract_time = 0
+        seek_time = 0
         if self.debug:
             print(f'Labels: {self.prebin_labels}')
         predictions = []
@@ -84,17 +90,33 @@ class Classifier:
                 continue
             if ms > self.stop_at:
                 break
+            t = time.perf_counter()
             vidcap.set(cv2.CAP_PROP_POS_MSEC, ms)
+            if self.logger.isEnabledFor(logging.DEBUG):
+                seek_time += time.perf_counter() - t
+            t = time.perf_counter()
             success, image = vidcap.read()
+            if self.logger.isEnabledFor(logging.DEBUG):
+                extract_time += time.perf_counter() - t
             if not success:
                 break
             img = Image.fromarray(image[:,:,::-1])
+            t = time.perf_counter()
             features = self.featurizer.get_full_feature_vectors(img, ms, dur)
+            if self.logger.isEnabledFor(logging.DEBUG):
+                featurizing_time += time.perf_counter() - t
+            t = time.perf_counter()
             prediction = self.classifier(features).detach()
             prediction = Prediction(ms, self.prebin_labels, prediction)
+            if self.logger.isEnabledFor(logging.DEBUG):
+                classifier_time += time.perf_counter() - t
             if self.debug:
                 print(prediction)
             predictions.append(prediction)
+        self.logger.debug(f'Featurizing time: {featurizing_time:.2f} seconds\n')
+        self.logger.debug(f'Classifier time: {classifier_time:.2f} seconds\n')
+        self.logger.debug(f'Extract time: {extract_time:.2f} seconds\n')
+        self.logger.debug(f'Seeking time: {seek_time:.2f} seconds\n')
         return predictions
 
     def pp(self):
@@ -205,7 +227,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def add_parameters(args: dict, classifier: Classifier, stitcher: stitch.Stitcher):
+def add_parameters(args: argparse.Namespace, classifier: Classifier, stitcher: stitch.Stitcher):
     """Add arguments to the classifier and the stitcher."""
     if args.debug:
         classifier.debug = True
