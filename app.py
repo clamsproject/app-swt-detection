@@ -18,7 +18,7 @@ from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 from mmif.utils import video_document_helper as vdh
 
-from modeling import classify, stitch, negative_label
+from modeling import classify, stitch, negative_label, train
 
 default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
@@ -44,6 +44,8 @@ class SwtDetection(ClamsApp):
         # possible bug here, as the configuration will be updated with the parameters that's not defined in the 
         # app metadata, but passed at the run time.
         configs = {**self.preconf, **parameters}
+        for k, v in configs.items():
+            self.logger.debug(f"Final Configuraion: {k} :: {v}")
         if 'modelName' in parameters:
             configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
             # model files from k-fold training have the fold number as three-digit suffix, trim it
@@ -73,40 +75,40 @@ class SwtDetection(ClamsApp):
         predictions = self.classifier.process_video(vcap)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
-        timeframes = self.stitcher.create_timeframes(predictions)
+        
+        tp_labelset = train.RAW_LABELS
+        new_view.new_contain(AnnotationTypes.TimePoint, 
+                             document=vd.id, timeUnit='milliseconds', labelset=tp_labelset)
+
+        for prediction in predictions:
+            timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
+            prediction.annotation = timepoint_annotation
+            scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
+            classification = {l: s for l, s in zip(prediction.labels, scores)}
+            label = max(classification, key=classification.get)
+            timepoint_annotation.add_property('timePoint', prediction.timepoint)
+            timepoint_annotation.add_property('label', label)
+            timepoint_annotation.add_property('classification', classification)
+
+        if not configs.get('useStitcher'):
+            return mmif
 
         labelset = self.classifier.postbin_labels
         bins = self.classifier.model_config['bins']
-
-        new_view.new_contain(
-            AnnotationTypes.TimeFrame,
-            document=vd.id, timeUnit='milliseconds', labelset=labelset)
         new_view.new_contain(
             AnnotationTypes.TimePoint,
             document=vd.id, timeUnit='milliseconds', labelset=labelset)
 
+        timeframes = self.stitcher.create_timeframes(predictions)
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("label", tf.label),
             timeframe_annotation.add_property('classification', {tf.label: tf.score})
-            timepoint_annotations = []
-            for prediction in tf.targets:
-                timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
-                prediction.annotation = timepoint_annotation
-                scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-                classification = {l:s for l, s in zip(prediction.labels, scores)}
-                classification = self._transform(classification, bins)
-                label = max(classification, key=classification.get)
-                timepoint_annotation.add_property('timePoint', prediction.timepoint)
-                timepoint_annotation.add_property('label', label)
-                timepoint_annotation.add_property('classification', classification)
-                timepoint_annotations.append(timepoint_annotation)
-            timeframe_annotation.add_property(
-                'targets', [tp.id for tp in timepoint_annotations])
-            reps = [p.annotation.id for p in tf.representative_predictions()]
-            timeframe_annotation.add_property("representatives", reps)
-
+            timeframe_annotation.add_property('targets', [target.annotation.id for target in tf.targets])
+            timeframe_annotation.add_property("representatives",
+                                              [p.annotation.id for p in tf.representative_predictions()])
         return mmif
+
 
     @staticmethod
     def _transform(classification: dict, bins: dict):

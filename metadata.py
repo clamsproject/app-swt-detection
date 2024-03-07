@@ -11,7 +11,6 @@ from mmif import DocumentTypes, AnnotationTypes
 from app import default_model_storage, default_config_fname
 
 
-
 def appmetadata() -> AppMetadata:
     """
     Function to set app-metadata values and return it as an ``AppMetadata`` obj.
@@ -36,9 +35,6 @@ def appmetadata() -> AppMetadata:
     metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
     metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
 
-    # TODO: defaults are the same as in modeling/config/classifier.yml, which is possibly
-    # not a great idea, should perhaps read defaults from the configuration file. There is
-    # also a movement afoot to get rid of the configuration file.
     metadata.add_parameter(
         name='startAt', type='integer', default=0,
         description='Number of milliseconds into the video to start processing')
@@ -48,22 +44,25 @@ def appmetadata() -> AppMetadata:
         name='stopAt', type='integer', default=10000000,
         description='Number of milliseconds into the video to stop processing')
     metadata.add_parameter(
-        name='sampleRate', type='integer', default=1000,
+        name='sampleRate', type='integer', default=preconf['sampleRate'],
         description='Milliseconds between sampled frames')
     metadata.add_parameter(
-        name='minFrameScore', type='number', default=0.01,
+        name='minFrameScore', type='number', default=preconf['minFrameScore'],
         description='Minimum score for a still frame to be included in a TimeFrame')
     metadata.add_parameter(
-        name='minTimeframeScore', type='number', default=0.50,
+        name='minTimeframeScore', type='number', default=preconf['minTimeframeScore'],
         description='Minimum score for a TimeFrame')
     metadata.add_parameter(
-        name='minFrameCount', type='integer', default=2,
+        name='minFrameCount', type='integer', default=preconf['minFrameCount'],
         description='Minimum number of sampled frames required for a TimeFrame')
     metadata.add_parameter(
         name='modelName', type='string', 
         default=pathlib.Path(preconf['model_file']).stem,
         choices=[m.stem for m in available_models],
         description='model name to use for classification')
+    metadata.add_parameter(
+        name='useStitcher', type='boolean', default=preconf['useStitcher'],
+        description='Use the stitcher after classifying the TimePoints')
 
     return metadata
 
