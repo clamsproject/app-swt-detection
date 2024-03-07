@@ -34,7 +34,7 @@ import torch
 import yaml
 from PIL import Image
 
-from modeling import train, data_loader, stitch
+from modeling import train, data_loader, stitch, FRAME_TYPES
 
 
 class Classifier:
@@ -42,7 +42,7 @@ class Classifier:
     def __init__(self, **config):
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
-        self.prebin_labels = train.pre_bin_label_names(self.model_config, train.RAW_LABELS)
+        self.prebin_labels = train.pre_bin_label_names(self.model_config, FRAME_TYPES)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
@@ -50,7 +50,7 @@ class Classifier:
             pos_enc_dim=self.model_config.get("pos_enc_dim", 0),
             max_input_length=self.model_config.get("max_input_length", 0),
             pos_unit=self.model_config.get("pos_unit", 0))
-        label_count = train.RAW_LABEL_COUNT
+        label_count = len(FRAME_TYPES) + 1
         if 'pre' in self.model_config['bins']:
             label_count = len(self.model_config['bins']['pre'].keys()) + 1
         self.classifier = train.get_net(

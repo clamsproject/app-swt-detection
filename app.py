@@ -18,7 +18,7 @@ from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 from mmif.utils import video_document_helper as vdh
 
-from modeling import classify, stitch, negative_label, train
+from modeling import classify, stitch, negative_label, FRAME_TYPES
 
 default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
@@ -76,7 +76,7 @@ class SwtDetection(ClamsApp):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
-        tp_labelset = train.RAW_LABELS
+        tp_labelset = FRAME_TYPES
         new_view.new_contain(AnnotationTypes.TimePoint, 
                              document=vd.id, timeUnit='milliseconds', labelset=tp_labelset)
 

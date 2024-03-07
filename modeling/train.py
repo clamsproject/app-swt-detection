@@ -22,7 +22,7 @@ from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryR
 from tqdm import tqdm
 
 import modeling
-from modeling import data_loader
+from modeling import data_loader, FRAME_TYPES
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -31,18 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
-# full typology from https://github.com/clamsproject/app-swt-detection/issues/1
-FRAME_TYPES = ["B", "S", "S:H", "S:C", "S:D", "S:B", "S:G", "W", "L", "O",
-               "M", "I", "N", "E", "P", "Y", "K", "G", "T", "F", "C", "R"]
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
-
-# The layers in the underlaying classification, before pre-binning.
-# Should perhaps live in a config file
-RAW_LABELS = [
-    'B', 'S', 'S:H', 'S:C', 'S:D', 'S:B', 'S:G', 
-    'W', 'L', 'O', 'M', 'I', 'N', 'E', 'P', 'Y', 'K', 'G', 'T', 'F', 'C', 'R']
-RAW_LABEL_COUNT = len(RAW_LABELS) + 1
 
 
 class SWTDataset(Dataset):

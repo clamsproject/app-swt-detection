@@ -9,6 +9,7 @@ from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
 from app import default_model_storage, default_config_fname
+from modeling import FRAME_TYPES
 
 
 def appmetadata() -> AppMetadata:
@@ -33,7 +34,8 @@ def appmetadata() -> AppMetadata:
 
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
     metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
-    metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
+    metadata.add_output(AnnotationTypes.TimePoint, 
+                        timeUnit='milliseconds', labelset=FRAME_TYPES)
 
     metadata.add_parameter(
         name='startAt', type='integer', default=0,
