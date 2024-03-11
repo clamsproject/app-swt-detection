@@ -24,6 +24,32 @@ default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
+def _extract_frames_as_images(video_document, framenums, as_PIL: bool = False):
+    """
+    ``extract_frames_as_images`` in mmif.utils.video_document_helper is using a slower
+    iteration over the framenums. This method is a faster alternative, and monkeypatches the one in the SDK.
+    """
+    if as_PIL:
+        from PIL import Image
+    frames = []
+    video = vdh.capture(video_document)
+    cur_f = 0
+    while True:
+        if not framenums or cur_f > video_document.get_property(vdh.FRAMECOUNT_DOCPROP_KEY):
+            break
+        ret, frame = video.read()
+        if not ret:
+            break
+        if cur_f == framenums[0]:
+            frames.append(Image.fromarray(frame[:, :, ::-1]) if as_PIL else frame)
+            framenums.pop(0)
+        cur_f += 1
+    return frames
+
+
+vdh.extract_frames_as_images = _extract_frames_as_images
+
+
 class SwtDetection(ClamsApp):
 
     def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
