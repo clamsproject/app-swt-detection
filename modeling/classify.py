@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import sys
+from typing import List
 
 import cv2
 import torch
@@ -60,8 +61,8 @@ class Classifier:
             dropout=self.model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(config["model_file"]))
         self.sample_rate = self.config.get("sampleRate")
-        self.start_at = 0
-        self.stop_at = sys.maxsize
+        self.start_at = config.get("startAt", 0)
+        self.stop_at = config.get('stopAt', sys.maxsize)
         self.debug = False
         self.logger = logging.getLogger(config.get('logger_name', self.__class__.__name__))
 
@@ -72,9 +73,12 @@ class Classifier:
                 + f'sample_rate={self.sample_rate}>')
 
     def process_video(self, vidcap: cv2.VideoCapture) -> list:
-        """Loops over the frames in a video and for each frame extracts the features
+        """
+        Image classification for a video without MMIF SDK helpers, for standalone mode without MMIF/CLAMS involved
+        Loops over the frames in a video and for each frame extracts the features
         and applies the classifier. Returns a list of predictions, where each prediction
-        is an instance of numpy.ndarray."""
+        is an instance of numpy.ndarray.
+        """
         featurizing_time = 0
         classifier_time = 0
         extract_time = 0
@@ -100,7 +104,7 @@ class Classifier:
                 extract_time += time.perf_counter() - t
             if not success:
                 break
-            img = Image.fromarray(image[:,:,::-1])
+            img = Image.fromarray(image[:, :, ::-1])
             t = time.perf_counter()
             features = self.featurizer.get_full_feature_vectors(img, ms, dur)
             if self.logger.isEnabledFor(logging.DEBUG):
@@ -117,6 +121,29 @@ class Classifier:
         self.logger.debug(f'Classifier time: {classifier_time:.2f} seconds\n')
         self.logger.debug(f'Extract time: {extract_time:.2f} seconds\n')
         self.logger.debug(f'Seeking time: {seek_time:.2f} seconds\n')
+        return predictions
+
+    def classify_images(self, images: List[Image.Image], positions: List[int], final_pos: int) -> list:
+        """
+        Image classification for a set of extract images (in PIL.Image format). 
+        Useful with using ``mmif.utils.video_document_handler.extract_frames_as_images()``
+        """
+        predictions = []
+        featurizing_time = 0
+        classifier_time = 0
+        for pos, img in zip(positions, images):
+            t = time.perf_counter()
+            features = self.featurizer.get_full_feature_vectors(img, pos, final_pos)
+            if self.logger.isEnabledFor(logging.DEBUG):
+                featurizing_time += time.perf_counter() - t
+            t = time.perf_counter()
+            prediction = self.classifier(features).detach()
+            prediction = Prediction(pos, self.prebin_labels, prediction)
+            if self.logger.isEnabledFor(logging.DEBUG):
+                classifier_time += time.perf_counter() - t
+            predictions.append(prediction)
+        self.logger.debug(f'Featurizing time: {featurizing_time:.2f} seconds\n')
+        self.logger.debug(f'Classifier time: {classifier_time:.2f} seconds\n')
         return predictions
 
     def pp(self):

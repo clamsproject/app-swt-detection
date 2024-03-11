@@ -70,9 +70,22 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
         self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
+        # opening here will add all basic metadata props to the document
         vcap = vdh.capture(vd)
+        sframe, eframe, srate = [vdh.millisecond_to_framenum(vd, p) for p in 
+                                 [configs['startAt'], configs['stopAt'], configs['sampleRate']]]
+        if eframe < sframe or vd.get_property('frameCount') < sframe:
+            raise ValueError(f"Invalid frame range: {sframe} - {eframe} (total frame count: {vd.get_property('frameCount')})")
+        if eframe > vd.get_property('frameCount'):
+            eframe = int(vd.get_property('frameCount'))
+        sampled = vdh.sample_frames(sframe, eframe, srate)
+        self.logger.info(f'Sampled {len(sampled)} frames btw {sframe} - {eframe} ms (every{srate} ms)')
         t = time.perf_counter()
-        predictions = self.classifier.process_video(vcap)
+        positions = [vdh.framenum_to_millisecond(vd, sample) for sample in sampled]
+        extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
+        self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
+        predictions = self.classifier.classify_images(extracted, positions, 
+                                                      vdh.framenum_to_millisecond(vd, vd.get_property('frameCount')))
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
@@ -108,7 +121,6 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property("representatives",
                                               [p.annotation.id for p in tf.representative_predictions()])
         return mmif
-
 
     @staticmethod
     def _transform(classification: dict, bins: dict):
