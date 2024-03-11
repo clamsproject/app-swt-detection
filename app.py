@@ -24,6 +24,32 @@ default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
+def _extract_frames_as_images(video_document, framenums, as_PIL: bool = False):
+    """
+    ``extract_frames_as_images`` in mmif.utils.video_document_helper is using a slower
+    iteration over the framenums. This method is a faster alternative, and monkeypatches the one in the SDK.
+    """
+    if as_PIL:
+        from PIL import Image
+    frames = []
+    video = vdh.capture(video_document)
+    cur_f = 0
+    while True:
+        if not framenums or cur_f > video_document.get_property(vdh.FRAMECOUNT_DOCPROP_KEY):
+            break
+        ret, frame = video.read()
+        if not ret:
+            break
+        if cur_f == framenums[0]:
+            frames.append(Image.fromarray(frame[:, :, ::-1]) if as_PIL else frame)
+            framenums.pop(0)
+        cur_f += 1
+    return frames
+
+
+vdh.extract_frames_as_images = _extract_frames_as_images
+
+
 class SwtDetection(ClamsApp):
 
     def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
@@ -70,9 +96,24 @@ class SwtDetection(ClamsApp):
             return mmif
         vd = vds[0]
         self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
+        # opening here will add all basic metadata props to the document
         vcap = vdh.capture(vd)
+        total_frames = vd.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
+        total_ms = int(vdh.framenum_to_millisecond(vd, total_frames))
+        sframe, eframe, srate = [vdh.millisecond_to_framenum(vd, p) for p in 
+                                 [configs['startAt'], configs['stopAt'], configs['sampleRate']]]
+        if eframe < sframe or vd.get_property('frameCount') < sframe:
+            raise ValueError(f"Invalid frame range: {sframe} - {eframe} (total frame count: {vd.get_property('frameCount')})")
+        if eframe > vd.get_property('frameCount'):
+            eframe = int(vd.get_property('frameCount'))
+        sampled = vdh.sample_frames(sframe, eframe, srate)
+        self.logger.info(f'Sampled {len(sampled)} frames btw {sframe} - {eframe} ms (every{srate} ms)')
         t = time.perf_counter()
-        predictions = self.classifier.process_video(vcap)
+        positions = [int(vdh.framenum_to_millisecond(vd, sample)) for sample in sampled]
+        extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
+        
+        self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
+        predictions = self.classifier.classify_images(extracted, positions, total_ms)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
@@ -108,7 +149,6 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property("representatives",
                                               [p.annotation.id for p in tf.representative_predictions()])
         return mmif
-
 
     @staticmethod
     def _transform(classification: dict, bins: dict):
