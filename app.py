@@ -117,9 +117,8 @@ class SwtDetection(ClamsApp):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
-        tp_labelset = FRAME_TYPES
         new_view.new_contain(AnnotationTypes.TimePoint, 
-                             document=vd.id, timeUnit='milliseconds', labelset=tp_labelset)
+                             document=vd.id, timeUnit='milliseconds', labelset=self.classifier.postbin_labels)
 
         for prediction in predictions:
             timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)

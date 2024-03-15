@@ -265,9 +265,10 @@ def pre_bin_label_names(config, raw_labels=None):
     if 'pre' in config["bins"]:
         return list(config["bins"]["pre"].keys()) + [modeling.negative_label]
     elif raw_labels is not None:
-        return raw_labels
+        return raw_labels + [modeling.negative_label]
     else:
         return []
+
 
 def post_bin_label_names(config):
     post_labels = list(config["bins"].get("post", {}).keys())
@@ -275,6 +276,7 @@ def post_bin_label_names(config):
         return post_labels + [modeling.negative_label]
     else:
         return pre_bin_label_names(config)
+
 
 def get_final_label_names(config):
     if config and "post" in config["bins"]:
@@ -346,7 +348,6 @@ def train_model(model, loss_fn, device, train_loader, valid_loader, configs, n_l
 
 def export_train_result(out: IO, predictions: Tensor, labels: Tensor, labelset: List[str], img_enc_name: str):
     """Exports the data into a human-readable format.
-    @return: class-based accuracy metrics for each label, organized into a csv.
     """
 
     label_metrics = defaultdict(dict)
