@@ -61,7 +61,7 @@ class Stitcher:
         if self.debug:
             print('>>> labels', labels)
         timeframes = []
-        open_frames = { label: TimeFrame(label, self) for label in labels}
+        open_frames = {label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
             if self.debug:
                 print(prediction)
