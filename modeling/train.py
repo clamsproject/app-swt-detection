@@ -234,14 +234,6 @@ def pretraining_binned_label(config):
     return modeling.FRAME_TYPES + [modeling.negative_label]
 
 
-def post_bin_label_names(config):
-    post_labels = list(config["bins"].get("post", {}).keys())
-    if post_labels:
-        return post_labels + [modeling.negative_label]
-    else:
-        return pretraining_binned_label(config)
-
-
 def train_model(model, loss_fn, device, train_loader, configs):
     since = time.perf_counter()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)

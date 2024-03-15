@@ -39,32 +39,3 @@ pos_enc_dim: 512
 # cpb-aacip-259-4j09zf95    Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
 # 94 mins = 5640 secs = 5640000 ms
 max_input_length: 5640000
-
-bins:
-  post:
-    bars:
-      - "B"
-    slate:
-      - "S"
-      - "S:H"
-      - "S:C"
-      - "S:D"
-      - "S:G"
-    other_opening:
-      - "W"
-      - "L"
-      - "O"
-      - "M"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
-      - "R"
-    other_text:
-      - "E"
-      - "K"
-      - "G"
-      - 'T'
-      - 'F'

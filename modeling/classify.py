@@ -44,7 +44,6 @@ class Classifier:
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
         self.prebin_labels = train.pretraining_binned_label(self.model_config)
-        self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],
             pos_enc_name=self.model_config.get("pos_enc_name", None),
@@ -52,8 +51,8 @@ class Classifier:
             max_input_length=self.model_config.get("max_input_length", 0),
             pos_unit=self.model_config.get("pos_unit", 0))
         label_count = len(FRAME_TYPES) + 1
-        if 'pre' in self.model_config['bins']:
-            label_count = len(self.model_config['bins']['pre'].keys()) + 1
+        if 'bins' in self.model_config:
+            label_count = len(self.model_config['pre'].keys()) + 1
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
             n_labels=label_count,
