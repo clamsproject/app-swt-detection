@@ -43,7 +43,7 @@ class Classifier:
     def __init__(self, **config):
         self.config = config
         self.model_config = yaml.safe_load(open(config["model_config_file"]))
-        self.prebin_labels = train.pre_bin_label_names(self.model_config, FRAME_TYPES)
+        self.prebin_labels = train.pretraining_binned_label(self.model_config)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=self.model_config["img_enc_name"],

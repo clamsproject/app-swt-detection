@@ -10,8 +10,10 @@ which takes a list of predictions from the classifier and creates TimeFrames.
 
 
 import operator
+
 import yaml
-from modeling import train, negative_label, FRAME_TYPES
+
+from modeling import train, negative_label
 
 
 class Stitcher:
@@ -24,7 +26,7 @@ class Stitcher:
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
         self.static_frames = self.config.get("staticFrames")
-        self.prebin_labels = train.pre_bin_label_names(self.model_config, FRAME_TYPES)
+        self.prebin_labels = train.pretraining_binned_label(self.model_config)
         self.postbin_labels = train.post_bin_label_names(self.model_config)
         self.use_postbinning = "post" in self.model_config["bins"]
         self.debug = False

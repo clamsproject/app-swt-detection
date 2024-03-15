@@ -41,12 +41,11 @@ pos_enc_dim: 512
 max_input_length: 5640000
 
 bins:
-  pre:
-    slate:
-      - "S"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
+  slate:
+    - "S"
+  chyron:
+    - "I"
+    - "N"
+    - "Y"
+  credit:
+    - "C"
