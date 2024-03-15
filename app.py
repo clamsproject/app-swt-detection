@@ -133,12 +133,6 @@ class SwtDetection(ClamsApp):
         if not configs.get('useStitcher'):
             return mmif
 
-        labelset = self.classifier.postbin_labels
-        bins = self.classifier.model_config['bins']
-        new_view.new_contain(
-            AnnotationTypes.TimePoint,
-            document=vd.id, timeUnit='milliseconds', labelset=labelset)
-
         timeframes = self.stitcher.create_timeframes(predictions)
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
