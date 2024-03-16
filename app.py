@@ -121,7 +121,7 @@ class SwtDetection(ClamsApp):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
         new_view.new_contain(AnnotationTypes.TimePoint,
-                             document=vd.id, timeUnit='milliseconds', labelset=self.stitcher.stitch_label)
+                             document=vd.id, timeUnit='milliseconds', labelset=FRAME_TYPES + [negative_label])
 
         for prediction in predictions:
             timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
@@ -136,6 +136,8 @@ class SwtDetection(ClamsApp):
         if not configs.get('useStitcher'):
             return mmif
 
+        new_view.new_contain(AnnotationTypes.TimeFrame,
+                             document=vd.id, timeUnit='milliseconds', labelset=list(self.stitcher.stitch_label.keys()))
         timeframes = self.stitcher.create_timeframes(predictions)
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
