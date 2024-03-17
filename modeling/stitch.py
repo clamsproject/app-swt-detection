@@ -10,8 +10,10 @@ which takes a list of predictions from the classifier and creates TimeFrames.
 
 
 import operator
+
 import yaml
-from modeling import train, negative_label, FRAME_TYPES
+
+from modeling import train, negative_label
 
 
 class Stitcher:
@@ -24,9 +26,8 @@ class Stitcher:
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
         self.static_frames = self.config.get("staticFrames")
-        self.prebin_labels = train.pre_bin_label_names(self.model_config, FRAME_TYPES)
-        self.postbin_labels = train.post_bin_label_names(self.model_config)
-        self.use_postbinning = "post" in self.model_config["bins"]
+        self.model_label = train.pretraining_binned_label(self.model_config)
+        self.stitch_label = config.get("postbin")
         self.debug = False
 
     def __str__(self):
@@ -36,8 +37,8 @@ class Stitcher:
 
     def create_timeframes(self, predictions: list) -> list:
         if self.debug:
-            print('pre-bin labels', self.prebin_labels)
-            print('post-bin labels', self.postbin_labels)
+            print('TimePoint labels', self.model_label)
+            print('TimeFrame labels', list(self.stitch_label.keys()))
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
@@ -55,9 +56,7 @@ class Stitcher:
     def collect_timeframes(self, predictions: list) -> list:
         """Find sequences of frames for all labels where the score of each frame
         is at least the mininum value as defined in self.min_frame_score."""
-        labels = self.postbin_labels if self.use_postbinning else self.prebin_labels
-        if self.use_postbinning:
-            postbins = self.model_config['bins']['post']
+        labels = self.stitch_label if self.stitch_label is not None else self.model_label
         if self.debug:
             print('>>> labels', labels)
         timeframes = []
@@ -112,11 +111,10 @@ class Stitcher:
     def _score_for_label(self, label: str, prediction):
         """Return the score for the label, this is somewhat more complicated when
         postbinning is used."""
-        if not self.use_postbinning:
+        if self.stitch_label is None:
             return prediction.score_for_label(label)
         else:
-            postbins = self.model_config['bins']['post']
-            return prediction.score_for_labels(postbins[label])
+            return prediction.score_for_labels(self.stitch_label[label])
 
 
 class TimeFrame:

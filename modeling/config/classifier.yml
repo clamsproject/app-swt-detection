@@ -19,3 +19,76 @@ staticFrames: [bars, slate, chyron]
 
 # Set to False to turn off the stitcher
 useStitcher: True
+
+postbins:
+  20240126-180026.convnext_lg.kfold_000:
+    bars:
+      - B
+    slate:
+      - S
+      - S:H
+      - S:C
+      - S:D
+      - S:G
+    chyron:
+      - I
+      - N
+      - Y
+    credits:
+      - C
+  20240212-131937.convnext_tiny.kfold_000: 
+    bars:
+      - "B"
+    slate:
+      - "S"
+      - "S:H"
+      - "S:C"
+      - "S:D"
+      - "S:G"
+    other_opening:
+      - "W"
+      - "L"
+      - "O"
+      - "M"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
+      - "R"
+    other_text:
+      - "E"
+      - "K"
+      - "G"
+      - 'T'
+      - 'F'
+  20240212-132306.convnext_lg.kfold_000:
+    bars:
+      - "B"
+    slate:
+      - "S"
+      - "S:H"
+      - "S:C"
+      - "S:D"
+      - "S:G"
+    other_opening:
+      - "W"
+      - "L"
+      - "O"
+      - "M"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
+      - "R"
+    other_text:
+      - "E"
+      - "K"
+      - "G"
+      - 'T'
+      - 'F'
+    
+      

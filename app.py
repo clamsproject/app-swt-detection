@@ -76,6 +76,9 @@ class SwtDetection(ClamsApp):
             configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
             # model files from k-fold training have the fold number as three-digit suffix, trim it
             configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
+            # TODO (krim @ 2024-03-14): make this into a runtime parameter once 
+            #  https://github.com/clamsproject/clams-python/issues/197 is resolved
+            configs['postbin'] = configs['postbins'].get(parameters['modelName'], None)
         t = time.perf_counter()
         self.logger.info(f"Initiating classifier with {configs['model_file']}")
         if self.logger.isEnabledFor(logging.DEBUG):
@@ -117,8 +120,8 @@ class SwtDetection(ClamsApp):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
-        new_view.new_contain(AnnotationTypes.TimePoint, 
-                             document=vd.id, timeUnit='milliseconds', labelset=self.classifier.postbin_labels)
+        new_view.new_contain(AnnotationTypes.TimePoint,
+                             document=vd.id, timeUnit='milliseconds', labelset=FRAME_TYPES + [negative_label])
 
         for prediction in predictions:
             timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
@@ -133,12 +136,8 @@ class SwtDetection(ClamsApp):
         if not configs.get('useStitcher'):
             return mmif
 
-        labelset = self.classifier.postbin_labels
-        bins = self.classifier.model_config['bins']
-        new_view.new_contain(
-            AnnotationTypes.TimePoint,
-            document=vd.id, timeUnit='milliseconds', labelset=labelset)
-
+        new_view.new_contain(AnnotationTypes.TimeFrame,
+                             document=vd.id, timeUnit='milliseconds', labelset=list(self.stitcher.stitch_label.keys()))
         timeframes = self.stitcher.create_timeframes(predictions)
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
@@ -148,18 +147,6 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property("representatives",
                                               [p.annotation.id for p in tf.representative_predictions()])
         return mmif
-
-    @staticmethod
-    def _transform(classification: dict, bins: dict):
-        """Take the raw classification and turn it into a classification of user
-        labels. Also includes modeling.negative_label."""
-        # TODO: this may not work when there is pre-binning
-        transformed = {}
-        for postlabel in bins['post'].keys():
-            score = sum([classification[lbl] for lbl in bins['post'][postlabel]])
-            transformed[postlabel] = score
-        transformed[negative_label] = 1 - sum(transformed.values())
-        return transformed
 
 
 if __name__ == "__main__":
