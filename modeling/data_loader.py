@@ -123,19 +123,19 @@ class FeatureExtractor(object):
         self.__class__.sinusoidal_embeddings[(n_pos, dim)] = matrix
         return matrix
 
-    def get_batch_sinusoidal(self, batch_pos, dim):
+    def get_batch_sinusoidal_embeddings(self, batch_posns, dim):
         position_enc = np.array(
             [
                 [pos / np.power(10000, 2 * (j // 2) / dim) for j in range(dim)]
-                for pos in batch_pos
+                for pos in batch_posns
             ]
         )
-        matrix = torch.zeros(len(batch_pos), dim)
+        matrix = torch.zeros(len(batch_posns), dim)
         matrix[:, 0::2] = torch.FloatTensor(np.sin(position_enc[:, 0::2]))
         matrix[:, 1::2] = torch.FloatTensor(np.cos(position_enc[:, 1::2]))
 
-        # for i, pos in enumerate(batch_pos):
-        # self.__class__.sinusoidal_embeddings[(pos, dim)] = matrix
+        for i, pos in enumerate(batch_posns):
+            self.__class__.sinusoidal_embeddings[(pos, dim)] = matrix
 
     def get_img_vector(self, raw_img, as_numpy=True):
         img_vec = self.img_encoder.preprocess(raw_img)
@@ -169,19 +169,14 @@ class FeatureExtractor(object):
             img_batch = torch.from_numpy(img_batch)
         img_batch = img_batch.squeeze(-1)  # (batch_size, 4096)
         positions = [round(time / tot_time) for time in cur_times]
-
-        match self.pos_encoder:
-            case "fractional":
-                return torch.concat((img_batch, torch.tensor(positions)))
-
-            case "sinusoidal-add":
-                return torch.add(img_batch, self.pos_batch_lookup(positions))
-
-            case "sinusoidal-concat":
-                return torch.concat(img_batch, self.pos_batch_lookup(positions))
-
-            case _:
-                return img_batch
+        if self.pos_encoder == "fractional":
+            return torch.concat((img_batch, torch.tensor(positions)))
+        elif self.pos_encoder == "sinusoidal-add":
+            return torch.add(img_batch, self.pos_batch_lookup(positions))
+        elif self.pos_encoder == "sinusoidal-concat":
+            return torch.concat(img_batch, self.pos_batch_lookup(positions))
+        else:
+            return img_batch
 
     def feature_vector_dim(self):
         if self.pos_encoder == "sinusoidal-concat":
@@ -232,28 +227,49 @@ class TrainingDataPreprocessor(object):
         @returns: A list of metadata dictionaries and associated feature matrix"""
 
         frame_metadata = {"frames": []}
-        frame_vecs = defaultdict(list)
+        # frame_vecs = defaultdict(list)
+        frame_vecs = defaultdict(torch.tensor)
         print(f"processing video: {vid_path}")
-        for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):
-            if "guid" not in frame_metadata:
-                frame_metadata["guid"] = frame.guid
-            if "duration" not in frame_metadata:
-                frame_metadata["duration"] = frame.total_time
 
-            for extractor in self.models:
-                frame_vecs[extractor.img_encoder.name].append(
-                    extractor.get_img_vector(frame.image, as_numpy=True)
-                )
-            frame_dict = {
-                k: v
-                for k, v in frame.__dict__.items()
-                if k != "image" and k != "guid" and k != "total_time"
-            }
-            frame_dict["vec_idx"] = i
-            frame_metadata["frames"].append(frame_dict)
+        # REVIEW batch work ========================|
+        path_stills = self.get_stills(vid_path, csv_path)
+        for extractor in self.models:
+            frame_vecs[
+                extractor.img_encoder.name
+            ] = extractor.get_batch_feature_vectors(path_stills)
 
-        frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
-        return frame_metadata, frame_mats
+        frame_metadata["guid"] = [frame.guid for frame in path_stills]
+        frame_metadata["duration"] = [frame.total_time for frame in path_stills]
+        frame_metadata["frames"] = [
+            {field: metadata for field, metadata in frame.__dict__.items()}
+            for frame in path_stills
+        ]
+        return frame_metadata, frame_vecs
+        # end REVIEW ========================|
+
+        ########################################################################
+        # for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):#
+        #     if "guid" not in frame_metadata:                                 #
+        #         frame_metadata["guid"] = frame.guid                          #
+        #     if "duration" not in frame_metadata:                             #
+        #         frame_metadata["duration"] = frame.total_time                #
+        #                                                                      #
+        #     for extractor in self.models:                                    #
+        #         frame_vecs[extractor.img_encoder.name].append(               #
+        #             extractor.get_img_vector(frame.image, as_numpy=True)     #
+        #         )                                                            #
+        #     frame_dict = {                                                   #
+        #         k: v                                                         #
+        #         for k, v in frame.__dict__.items()                           #
+        #         if k != "image" and k != "guid" and k != "total_time"        #
+        #     }                                                                #
+        #     frame_dict["vec_idx"] = i                                        #
+        #     frame_metadata["frames"].append(frame_dict)                      #
+        #                                                                      #
+        # frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}        #
+        #                                                                      #
+        # return frame_metadata, frame_mats                                    #
+        ########################################################################
 
     def get_stills(
         self, vid_path: Union[os.PathLike, str], csv_path: Union[os.PathLike, str]
