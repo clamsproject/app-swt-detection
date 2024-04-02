@@ -1,4 +1,4 @@
-FROM ghcr.io/clamsproject/clams-python-opencv4-torch2:1.1.0
+FROM ghcr.io/clamsproject/clams-python-opencv4-torch2:1.1.6
 
 # See https://github.com/orgs/clamsproject/packages?tab=packages&q=clams-python for more base images
 # IF you want to automatically publish this image to the clamsproject organization, 

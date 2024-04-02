@@ -101,16 +101,14 @@ class SwtDetection(ClamsApp):
         self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
         # opening here will add all basic metadata props to the document
         vcap = vdh.capture(vd)
+        fps = vd.get_property('fps')
         total_frames = vd.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
         total_ms = int(vdh.framenum_to_millisecond(vd, total_frames))
-        sframe, eframe, srate = [vdh.millisecond_to_framenum(vd, p) for p in 
-                                 [configs['startAt'], configs['stopAt'], configs['sampleRate']]]
-        if eframe < sframe or vd.get_property('frameCount') < sframe:
-            raise ValueError(f"Invalid frame range: {sframe} - {eframe} (total frame count: {vd.get_property('frameCount')})")
-        if eframe > vd.get_property('frameCount'):
-            eframe = int(vd.get_property('frameCount'))
-        sampled = vdh.sample_frames(sframe, eframe, srate)
-        self.logger.info(f'Sampled {len(sampled)} frames btw {sframe} - {eframe} ms (every{srate} ms)')
+        start_ms = max(0, configs['startAt'])
+        final_ms = min(total_ms, configs['stopAt'])
+        sframe, eframe = [vdh.millisecond_to_framenum(vd, p) for p in [start_ms, final_ms]]
+        sampled = vdh.sample_frames(sframe, eframe, configs['sampleRate'] / 1000 * fps)
+        self.logger.info(f'Sampled {len(sampled)} frames btw {start_ms} - {final_ms} ms (every {configs["sampleRate"]} ms)')
         t = time.perf_counter()
         positions = [int(vdh.framenum_to_millisecond(vd, sample)) for sample in sampled]
         extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
