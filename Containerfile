@@ -1,4 +1,4 @@
-FROM ghcr.io/clamsproject/clams-python:1.1.5
+FROM ghcr.io/clamsproject/clams-python:1.1.6
 ################################################################################
 # DO NOT EDIT THIS SECTION
 ARG CLAMS_APP_VERSION
