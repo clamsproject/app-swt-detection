@@ -23,8 +23,9 @@ class SimpleTimepointsStitcher(ClamsApp):
         Reference implementation of the sequence stitching algorithm, replicating "stitcher" in 
         https://apps.clams.ai/swt-detection/v4.2/
         """
-        
-        tps = list(mmif.get_view_contains(AnnotationTypes.TimePoint).get_annotations(AnnotationTypes.TimePoint))
+
+        tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
+        tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
         
         # first, figure out time point sampling rate by looking at the first three annotations
         # why 3? just as a sanity check
@@ -32,8 +33,12 @@ class SimpleTimepointsStitcher(ClamsApp):
             return vdh.convert_timepoint(mmif, tp, 'milliseconds')
         if len(tps) < 3:
             raise ValueError("At least 3 TimePoint annotations are required to stitch.")
+        # 1 frame = ? milliseconds
         tp_sampling_rate = get_timpoint_ms(tps[1]) - get_timpoint_ms(tps[0])
-        if tp_sampling_rate != get_timpoint_ms(tps[2]) - get_timpoint_ms(tps[1]):
+        tolerance = 1000 / mmif.get_document_by_id(tps[0].get_property('document')).get_property('fps')
+        self.logger.debug(f"TimePoint sampling rate 0-1: {tp_sampling_rate}")
+        self.logger.debug(f"TimePoint sampling rate 1-2: {get_timpoint_ms(tps[2]) - get_timpoint_ms(tps[1])}")
+        if tp_sampling_rate - (get_timpoint_ms(tps[2]) - get_timpoint_ms(tps[1])) > tolerance:
             raise ValueError("TimePoint annotations are not uniformly sampled.")
 
         # next, validate labels in the input annotations
@@ -68,7 +73,7 @@ class SimpleTimepointsStitcher(ClamsApp):
                     tf = v.new_annotation(AnnotationTypes.TimeFrame)
                     # tf.add_property('labelset', list(label_remapper.values()))
                     tf.add_property('classification', {label: tf_score})
-                    tf.add_property('targets', [a.id for a in tps[positive_interval[0]:positive_interval[1]]])
+                    tf.add_property('targets', [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]])
                     tf.add_property('representatives', [tps[rep_idx].id])
         return mmif
 
