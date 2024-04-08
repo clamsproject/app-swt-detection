@@ -82,8 +82,9 @@ class FeatureExtractor(object):
             self.img_encoder: backbones.ExtractorModel = backbones.model_map[img_enc_name]()
         self.pos_encoder = pos_enc_name
         self.pos_dim = pos_enc_dim
+        self.pos_unit = pos_unit
         if pos_enc_name in ['sinusoidal-add', 'sinusoidal-concat']:
-            position_dim = int(max_input_length / pos_unit)
+            position_dim = int(max_input_length / self.pos_unit)
             if position_dim % 2 == 1:
                 position_dim += 1
             if pos_enc_name == 'sinusoidal-concat':
@@ -116,16 +117,17 @@ class FeatureExtractor(object):
             return feature_vec.cpu()
     
     def encode_position(self, cur_time, tot_time, img_vec):
-        pos = cur_time / tot_time
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
         img_vec = img_vec.squeeze(0)
         if self.pos_encoder == 'fractional':
-            return torch.concat((img_vec, torch.tensor([pos])))
+            pos = cur_time / tot_time
+            pos_vec = torch.tensor([pos]).to(img_vec.dtype)
+            return torch.concat((img_vec, pos_vec))
         elif self.pos_encoder == 'sinusoidal-add':
-            return torch.add(img_vec, self.pos_vec_lookup[round(pos)])
+            return torch.add(img_vec, self.pos_vec_lookup[(cur_time / self.pos_unit).round()])
         elif self.pos_encoder == 'sinusoidal-concat':
-            return torch.concat((img_vec, self.pos_vec_lookup[round(pos)]))
+            return torch.concat((img_vec, self.pos_vec_lookup[(cur_time / self.pos_unit).round()]))
         else:
             return img_vec
 
