@@ -24,32 +24,6 @@ default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
-def _extract_frames_as_images(video_document, framenums, as_PIL: bool = False):
-    """
-    ``extract_frames_as_images`` in mmif.utils.video_document_helper is using a slower
-    iteration over the framenums. This method is a faster alternative, and monkeypatches the one in the SDK.
-    """
-    if as_PIL:
-        from PIL import Image
-    frames = []
-    video = vdh.capture(video_document)
-    cur_f = 0
-    while True:
-        if not framenums or cur_f > video_document.get_property(vdh.FRAMECOUNT_DOCPROP_KEY):
-            break
-        ret, frame = video.read()
-        if not ret:
-            break
-        if cur_f == framenums[0]:
-            frames.append(Image.fromarray(frame[:, :, ::-1]) if as_PIL else frame)
-            framenums.pop(0)
-        cur_f += 1
-    return frames
-
-
-vdh.extract_frames_as_images = _extract_frames_as_images
-
-
 class SwtDetection(ClamsApp):
 
     def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
@@ -83,14 +57,14 @@ class SwtDetection(ClamsApp):
         self.logger.info(f"Initiating classifier with {configs['model_file']}")
         if self.logger.isEnabledFor(logging.DEBUG):
             configs['logger_name'] = self.logger.name
-        self.classifier = classify.Classifier(**configs)
-        self.stitcher = stitch.Stitcher(**configs)
+        classifier = classify.Classifier(**configs)
+        stitcher = stitch.Stitcher(**configs)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t} seconds")
 
         new_view: View = mmif.new_view()
         self.sign_view(new_view, parameters)
-        self.logger.info('Minimum time frame score: %s', self.stitcher.min_timeframe_score)
+        self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
 
         vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not vds:
@@ -114,7 +88,7 @@ class SwtDetection(ClamsApp):
         extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
         
         self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
-        predictions = self.classifier.classify_images(extracted, positions, total_ms)
+        predictions = classifier.classify_images(extracted, positions, total_ms)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
         
@@ -135,8 +109,8 @@ class SwtDetection(ClamsApp):
             return mmif
 
         new_view.new_contain(AnnotationTypes.TimeFrame,
-                             document=vd.id, timeUnit='milliseconds', labelset=list(self.stitcher.stitch_label.keys()))
-        timeframes = self.stitcher.create_timeframes(predictions)
+                             document=vd.id, timeUnit='milliseconds', labelset=list(stitcher.stitch_label.keys()))
+        timeframes = stitcher.create_timeframes(predictions)
         for tf in timeframes:
             timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("label", tf.label),
