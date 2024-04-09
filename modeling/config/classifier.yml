@@ -1,5 +1,5 @@
-model_file: "modeling/models/20240126-180026.convnext_lg.kfold_000.pt"
-model_config_file: "modeling/models/20240126-180026.convnext_lg.kfold_config.yml"
+model_file: "modeling/models/20240409-091401.convnext_lg.kfold_013.pt"
+model_config_file: "modeling/models/20240409-091401.convnext_lg.kfold_config.yml"
 
 # Milliseconds between sampled frames
 sampleRate: 1000
@@ -90,5 +90,57 @@ postbins:
       - "G"
       - 'T'
       - 'F'
-    
-      
+  20240409-091401.convnext_lg.kfold_013:
+    bars:
+      - "B"
+    slate:
+      - "S"
+      - "S:H"
+      - "S:C"
+      - "S:D"
+      - "S:G"
+    other_opening:
+      - "W"
+      - "L"
+      - "O"
+      - "M"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
+      - "R"
+    other_text:
+      - "E"
+      - "K"
+      - "G"
+      - 'T'
+      - 'F'
+  20240409-093229.convnext_tiny.kfold_012:
+    bars:
+      - "B"
+    slate:
+      - "S"
+      - "S:H"
+      - "S:C"
+      - "S:D"
+      - "S:G"
+    other_opening:
+      - "W"
+      - "L"
+      - "O"
+      - "M"
+    chyron:
+      - "I"
+      - "N"
+      - "Y"
+    credit:
+      - "C"
+      - "R"
+    other_text:
+      - "E"
+      - "K"
+      - "G"
+      - 'T'
+      - 'F'

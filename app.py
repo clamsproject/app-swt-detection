@@ -35,14 +35,11 @@ class SwtDetection(ClamsApp):
             self.logger.addHandler(fh)
 
     def _appmetadata(self):
-        # see https://sdk.clams.ai/autodoc/clams.app.html#clams.app.ClamsApp._load_appmetadata
-        # Also check out ``metadata.py`` in this directory. 
-        # When using the ``metadata.py`` leave this do-nothing "pass" method here. 
+        # using metadata.py
         pass
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
-        # possible bug here, as the configuration will be updated with the parameters that's not defined in the 
-        # app metadata, but passed at the run time.
+        # parameter here is "refined" dict, so hopefully its values are properly validated and casted at this point. 
         configs = {**self.preconf, **parameters}
         for k, v in configs.items():
             self.logger.debug(f"Final Configuraion: {k} :: {v}")
@@ -88,6 +85,7 @@ class SwtDetection(ClamsApp):
         extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
         
         self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
+        # the last `total_ms` (as a fixed value) only works since the app is processing only one video at a time 
         predictions = classifier.classify_images(extracted, positions, total_ms)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
