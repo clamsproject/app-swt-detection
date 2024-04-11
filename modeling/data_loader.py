@@ -125,9 +125,9 @@ class FeatureExtractor(object):
             pos_vec = torch.tensor([pos]).to(img_vec.dtype)
             return torch.concat((img_vec, pos_vec))
         elif self.pos_encoder == 'sinusoidal-add':
-            return torch.add(img_vec, self.pos_vec_lookup[(cur_time / self.pos_unit).round()])
+            return torch.add(img_vec, self.pos_vec_lookup[round(cur_time / self.pos_unit)])
         elif self.pos_encoder == 'sinusoidal-concat':
-            return torch.concat((img_vec, self.pos_vec_lookup[(cur_time / self.pos_unit).round()]))
+            return torch.concat((img_vec, self.pos_vec_lookup[round(cur_time / self.pos_unit)]))
         else:
             return img_vec
 
