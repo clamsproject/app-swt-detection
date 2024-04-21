@@ -23,6 +23,8 @@ class SimpleTimepointsStitcher(ClamsApp):
         Reference implementation of the sequence stitching algorithm, replicating "stitcher" in 
         https://apps.clams.ai/swt-detection/v4.2/
         """
+        self.logger.info(f"Annotating with parameters: {parameters}")
+        self.logger.info(f"{[p for p in self.metadata.parameters if p.name == 'labelMap']}")
 
         tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
         tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
@@ -72,6 +74,7 @@ class SimpleTimepointsStitcher(ClamsApp):
                 if tf_score > parameters['minTFScore']:
                     tf = v.new_annotation(AnnotationTypes.TimeFrame)
                     # tf.add_property('labelset', list(label_remapper.values()))
+                    tf.add_property('label', label)
                     tf.add_property('classification', {label: tf_score})
                     tf.add_property('targets', [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]])
                     tf.add_property('representatives', [tps[rep_idx].id])
