@@ -14,133 +14,32 @@ minTimeframeScore: 0.5
 minFrameCount: 2
 
 # These are time frames that are typically static (that is, the text does not
-# move around or change as with rolling credits)
+# move around or change as with rolling credits). These are frame names after
+# the label mapping.
 staticFrames: [bars, slate, chyron]
 
 # Set to False to turn off the stitcher
 useStitcher: True
 
-postbins:
-  20240126-180026.convnext_lg.kfold_000:
-    bars:
-      - B
-    slate:
-      - S
-      - S:H
-      - S:C
-      - S:D
-      - S:G
-    chyron:
-      - I
-      - N
-      - Y
-    credits:
-      - C
-  20240212-131937.convnext_tiny.kfold_000: 
-    bars:
-      - "B"
-    slate:
-      - "S"
-      - "S:H"
-      - "S:C"
-      - "S:D"
-      - "S:G"
-    other_opening:
-      - "W"
-      - "L"
-      - "O"
-      - "M"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
-      - "R"
-    other_text:
-      - "E"
-      - "K"
-      - "G"
-      - 'T'
-      - 'F'
-  20240212-132306.convnext_lg.kfold_000:
-    bars:
-      - "B"
-    slate:
-      - "S"
-      - "S:H"
-      - "S:C"
-      - "S:D"
-      - "S:G"
-    other_opening:
-      - "W"
-      - "L"
-      - "O"
-      - "M"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
-      - "R"
-    other_text:
-      - "E"
-      - "K"
-      - "G"
-      - 'T'
-      - 'F'
-  20240409-091401.convnext_lg.kfold_013:
-    bars:
-      - "B"
-    slate:
-      - "S"
-      - "S:H"
-      - "S:C"
-      - "S:D"
-      - "S:G"
-    other_opening:
-      - "W"
-      - "L"
-      - "O"
-      - "M"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
-      - "R"
-    other_text:
-      - "E"
-      - "K"
-      - "G"
-      - 'T'
-      - 'F'
-  20240409-093229.convnext_tiny.kfold_012:
-    bars:
-      - "B"
-    slate:
-      - "S"
-      - "S:H"
-      - "S:C"
-      - "S:D"
-      - "S:G"
-    other_opening:
-      - "W"
-      - "L"
-      - "O"
-      - "M"
-    chyron:
-      - "I"
-      - "N"
-      - "Y"
-    credit:
-      - "C"
-      - "R"
-    other_text:
-      - "E"
-      - "K"
-      - "G"
-      - 'T'
-      - 'F'
+# Default label mapping
+labelMapping:
+  B: bars
+  S: slate
+  S:H: slate
+  S:C: slate
+  S:D: slate
+  S:G: slate
+  W: other_opening
+  L: other_opening
+  O: other_opening
+  M: other_opening
+  I: chyron
+  N: chyron
+  Y: chyron
+  C: credit
+  R: credit
+  E: other_text
+  K: other_text
+  G: other_text
+  T: other_text
+  F: other_text

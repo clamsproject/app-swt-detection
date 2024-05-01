@@ -1,9 +1,9 @@
 """Stitching module
 
-Used by app.py in the parent directory and by the modeling.classify is it is used
+Used by app.py in the parent directory and by modeling.classify if it is used
 in standalone mode.
 
-See app.py for hints on how to uses this, the main method is create_timeframes(),
+See app.py for hints on how to use this, the main method is create_timeframes(),
 which takes a list of predictions from the classifier and creates TimeFrames.
 
 """

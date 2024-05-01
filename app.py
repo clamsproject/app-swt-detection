@@ -39,21 +39,23 @@ class SwtDetection(ClamsApp):
         pass
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
-        # parameter here is "refined" dict, so hopefully its values are properly validated and casted at this point. 
+        # parameter here is "refined" dict, so hopefully its values are properly validated
+        # and casted at this point. 
         configs = {**self.preconf, **parameters}
+        configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
+        # model files from k-fold training have the fold number as three-digit suffix, trim it
+        configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
+        set_postbin(configs, parameters)
         for k, v in configs.items():
-            self.logger.debug(f"Final Configuraion: {k} :: {v}")
-        if 'modelName' in parameters:
-            configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
-            # model files from k-fold training have the fold number as three-digit suffix, trim it
-            configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
-            # TODO (krim @ 2024-03-14): make this into a runtime parameter once 
-            #  https://github.com/clamsproject/clams-python/issues/197 is resolved
-            configs['postbin'] = configs['postbins'].get(parameters['modelName'], None)
+            self.logger.debug(f"Final Configuration: {k} :: {v}")
+
         t = time.perf_counter()
         self.logger.info(f"Initiating classifier with {configs['model_file']}")
         if self.logger.isEnabledFor(logging.DEBUG):
             configs['logger_name'] = self.logger.name
+
+        #exit()
+
         classifier = classify.Classifier(**configs)
         stitcher = stitch.Stitcher(**configs)
         if self.logger.isEnabledFor(logging.DEBUG):
@@ -117,6 +119,48 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property("representatives",
                                               [p.annotation.id for p in tf.representative_predictions()])
         return mmif
+
+
+def set_postbin(configs: dict, parameters: dict):
+    """
+    Set the postbin property of the the configs configuration dictionary, using the
+    label mapping parameters if there are any, otherwise using the label mapping from
+    the default configuration file.
+
+    This should set the postbin property to something like 
+
+        {'bars': ['B'],
+         'chyron': ['I', 'N', 'Y'],
+         'credit': ['C', 'R'],
+         'other_opening': ['W', 'L', 'O', 'M'],
+         'other_text': ['E', 'K', 'G', 'T', 'F'],
+         'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G']}
+
+    Note that the labels cannot have colons in them, but historically we did have
+    colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
+    have mappings like S:H:slate. This here assumes the mapping is S_H:slate and
+    that the underscore is replaced with a colon. This is not good if we intend
+    there to be and underscore.
+    """
+
+    if parameters['map']:
+        postbin = invert_mappings(parameters['map'])
+    else:
+        postbin = invert_mappings(configs['labelMapping'])
+    configs['postbin'] = postbin
+
+
+def invert_mappings(mappings: dict) -> dict:
+    inverted_mappings = {}
+    for in_label, out_label in mappings.items():
+        in_label = restore_colon(in_label)
+        inverted_mappings.setdefault(out_label, []).append(in_label)
+    return inverted_mappings
+
+
+def restore_colon(label_in: str) -> str:
+    """Replace an underscore with a colon."""
+    return label_in.replace('_', ':')
 
 
 if __name__ == "__main__":

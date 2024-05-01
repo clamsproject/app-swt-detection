@@ -2,9 +2,11 @@
 Metadata for the Scenes-with-text app.
 
 """
-import pathlib
 
+import pathlib
+import sys
 import yaml
+
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
@@ -41,9 +43,7 @@ def appmetadata() -> AppMetadata:
         name='startAt', type='integer', default=0,
         description='Number of milliseconds into the video to start processing')
     metadata.add_parameter(
-        # 10M ms is almost 3 hours, that should do; this is better than sys.maxint
-        # (also, I tried using default=None, but that made stopAt a required property)
-        name='stopAt', type='integer', default=10000000,
+        name='stopAt', type='integer', default=sys.maxsize,
         description='Number of milliseconds into the video to stop processing')
     metadata.add_parameter(
         name='sampleRate', type='integer', default=preconf['sampleRate'],
@@ -65,6 +65,15 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=preconf['useStitcher'],
         description='Use the stitcher after classifying the TimePoints')
+    metadata.add_parameter(
+        name='map', type='map', default=[],
+        description=(
+            'Mapping of a label in the input annotations to a new label. Must be formatted as '
+            '"IN_LABEL:OUT_LABEL" (with a colon). To pass multiple mappings, use this parameter '
+            'multiple times. By default, all the input labels are passed as is, including any '
+            '"negative" labels (with default value being no remapping at all). However, when '
+            'at least one label is remapped, all the other "unset" labels are discarded as '
+            'a negative label("-").'))
 
     return metadata
 
