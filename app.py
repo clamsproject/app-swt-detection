@@ -78,8 +78,7 @@ class SwtDetection(ClamsApp):
     def _configure_model(self):
         model_name = self.parameters["modelName"]
         self.configs['model_file'] = default_model_storage / f'{model_name}.pt'
-        # model files from k-fold training have the fold number as three-digit suffix, trim it
-        self.configs['model_config_file'] = default_model_storage / f'{model_name[:-4]}_config.yml'
+        self.configs['model_config_file'] = default_model_storage / f'{model_name}.yml'
 
     def _configure_postbin(self):
         """

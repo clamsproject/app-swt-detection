@@ -1,5 +1,5 @@
-model_file: "modeling/models/20240409-091401.convnext_lg.kfold_013.pt"
-model_config_file: "modeling/models/20240409-091401.convnext_lg.kfold_config.yml"
+model_file: "modeling/models/20240409-091401.convnext_lg.pt"
+model_config_file: "modeling/models/20240409-091401.convnext_lg.yml"
 
 # Milliseconds between sampled frames
 sampleRate: 1000
