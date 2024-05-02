@@ -66,14 +66,17 @@ def appmetadata() -> AppMetadata:
         name='useStitcher', type='boolean', default=preconf['useStitcher'],
         description='Use the stitcher after classifying the TimePoints')
     metadata.add_parameter(
-        name='map', type='map', default=[],
+        # TODO: do we want to use the old default labelMap from the configuration here or
+        # do we truly want an empty mapping and use the pass-through, as hinted at in the
+        # description (which is now not in sync with the code).
+        name='map', type='map', default=preconf['labelMap'],
         description=(
             'Mapping of a label in the input annotations to a new label. Must be formatted as '
-            '"IN_LABEL:OUT_LABEL" (with a colon). To pass multiple mappings, use this parameter '
+            'IN_LABEL:OUT_LABEL (with a colon). To pass multiple mappings, use this parameter '
             'multiple times. By default, all the input labels are passed as is, including any '
-            '"negative" labels (with default value being no remapping at all). However, when '
+            'negative labels (with default value being no remapping at all). However, when '
             'at least one label is remapped, all the other "unset" labels are discarded as '
-            'a negative label("-").'))
+            'a negative label.'))
 
     return metadata
 

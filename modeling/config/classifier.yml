@@ -21,25 +21,12 @@ staticFrames: [bars, slate, chyron]
 # Set to False to turn off the stitcher
 useStitcher: True
 
-# Default label mapping
-labelMapping:
-  B: bars
-  S: slate
-  S:H: slate
-  S:C: slate
-  S:D: slate
-  S:G: slate
-  W: other_opening
-  L: other_opening
-  O: other_opening
-  M: other_opening
-  I: chyron
-  N: chyron
-  Y: chyron
-  C: credit
-  R: credit
-  E: other_text
-  K: other_text
-  G: other_text
-  T: other_text
-  F: other_text
+# This was the most frequent label mapping the previous configuration file,
+# which had default mappings for each model.
+labelMap: [
+    "B:bars",
+    "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
+    "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening",
+    "I:chyron", "N:chyron", "Y:chyron",
+    "C:credit", "R:credit",
+    "E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text" ]

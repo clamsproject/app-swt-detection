@@ -97,14 +97,32 @@ class SwtDetection(ClamsApp):
 
         Note that the labels cannot have colons in them, but historically we did have
         colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
-        have mappings like S:H:slate. This here assumes the mapping is S_H:slate and
+        have mappings like S:H:slate. This here assumes the mapping is S-H:slate and
         that the underscore is replaced with a colon. This is not good if we intend
-        there to be and underscore.
+        there to be a dash.
         """
-        if self.parameters['map']:
-            postbin = invert_mappings(self.parameters['map'])
-        else:
-            postbin = invert_mappings(self.configs['labelMapping'])
+        # TODO: this is ugly, but I do not know a better way yet. The default value
+        # of the map parameter in metadata.py is an empty list. If the user sets those
+        # parameters during invocation (for example "?map=S:slate&map=B:bar") then in
+        # the user parameters we have ['S:slate', 'B:bar'] for map and in the refined
+        # parameters we get {'S': 'slate', 'B': 'bar'}. If the user adds no map
+        # parameters then there is no map value in the user parameters and the value
+        # is [] in the refined  parameters (which is a bit inconsistent).
+        # Two experiments:
+        # 1. What if I set the default to a list like ['S:slate', 'B:bar']?
+        #    Then the map value in refined parameters is that same list, which means
+        #    that I have to turn it into a dictionary before I hand it off.
+        # 2. What if I set the default to a dictionary like {'S': 'slate', 'B': 'bar'}?
+        #    Then the map value in the refined parameters is a list with one element,
+        #    which is the wanted dictionary as a string: ["{'S': 'slate', 'B': 'bar'}"]
+        if type(self.parameters['map']) is list:
+            newmap = {}
+            for kv in self.parameters['map']:
+                k, v = kv.split(':')
+                newmap[k] = v
+            self.parameters['map'] = newmap
+            self.configs['map'] = newmap
+        postbin = invert_mappings(self.parameters['map'])
         self.configs['postbin'] = postbin
 
     def _extract_images(self, video):
@@ -179,6 +197,8 @@ class SwtDetection(ClamsApp):
 
 
 def invert_mappings(mappings: dict) -> dict:
+    print('-'*80)
+    print(mappings)
     inverted_mappings = {}
     for in_label, out_label in mappings.items():
         in_label = restore_colon(in_label)
@@ -187,8 +207,8 @@ def invert_mappings(mappings: dict) -> dict:
 
 
 def restore_colon(label_in: str) -> str:
-    """Replace an underscore with a colon."""
-    return label_in.replace('_', ':')
+    """Replace a dash with a colon."""
+    return label_in.replace('-', ':')
 
 
 def open_video(video):
