@@ -39,64 +39,118 @@ class SwtDetection(ClamsApp):
         pass
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
-        # parameter here is "refined" dict, so hopefully its values are properly validated
-        # and casted at this point. 
-        configs = {**self.preconf, **parameters}
-        configs['model_file'] = default_model_storage / f'{parameters["modelName"]}.pt'
-        # model files from k-fold training have the fold number as three-digit suffix, trim it
-        configs['model_config_file'] = default_model_storage / f'{parameters["modelName"][:-4]}_config.yml'
-        set_postbin(configs, parameters)
-        for k, v in configs.items():
+        # parameters here is a "refined" dict, so hopefully its values are properly
+        # validated and casted at this point. 
+        self.parameters = parameters
+        self.configs = {**self.preconf, **parameters}
+        self._configure_model()
+        self._configure_postbin()
+        for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
 
-        t = time.perf_counter()
-        self.logger.info(f"Initiating classifier with {configs['model_file']}")
-        if self.logger.isEnabledFor(logging.DEBUG):
-            configs['logger_name'] = self.logger.name
-
-        #exit()
-
-        classifier = classify.Classifier(**configs)
-        stitcher = stitch.Stitcher(**configs)
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Classifier initiation took {time.perf_counter() - t} seconds")
-
-        new_view: View = mmif.new_view()
-        self.sign_view(new_view, parameters)
-        self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
-
-        vds = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
-        if not vds:
+        videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
+        if not videos:
             warning = Warning('There were no video documents referenced in the MMIF file')
-            new_view.metadata.add_warnings(warning)
+            classifier_view.metadata.add_warnings(warning)
             return mmif
-        vd = vds[0]
-        self.logger.info(f"Processing video {vd.id} at {vd.location_path()}")
-        # opening here will add all basic metadata props to the document
-        vcap = vdh.capture(vd)
-        fps = vd.get_property('fps')
-        total_frames = vd.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
-        total_ms = int(vdh.framenum_to_millisecond(vd, total_frames))
-        start_ms = max(0, configs['startAt'])
-        final_ms = min(total_ms, configs['stopAt'])
-        sframe, eframe = [vdh.millisecond_to_framenum(vd, p) for p in [start_ms, final_ms]]
-        sampled = vdh.sample_frames(sframe, eframe, configs['sampleRate'] / 1000 * fps)
-        self.logger.info(f'Sampled {len(sampled)} frames btw {start_ms} - {final_ms} ms (every {configs["sampleRate"]} ms)')
+        video = videos[0]
+        self.logger.info(f"Processing video {video.id} at {video.location_path()}")
+
+        extracted, positions, total_ms = self._extract_images(video)
+
+        predictions = self._classify(extracted, positions, total_ms)
+        at_types = [AnnotationTypes.TimePoint]
+        labels = FRAME_TYPES + [negative_label]
+        classifier_view = self._new_view(at_types, video, labels, mmif)
+        self._add_classifier_results_to_view(predictions, classifier_view)
+
+        if self.configs.get('useStitcher'):
+            stitcher = stitch.Stitcher(**self.configs)
+            self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
+            timeframes = stitcher.create_timeframes(predictions)
+            at_types = [AnnotationTypes.TimePoint, AnnotationTypes.TimeFrame]
+            labels = list(self.configs['postbin'].keys())
+            stitcher_view = self._new_view(at_types, video, labels, mmif)
+            self._add_stitcher_results_to_view(timeframes, stitcher_view)
+
+        return mmif
+
+    def _configure_model(self):
+        model_name = self.parameters["modelName"]
+        self.configs['model_file'] = default_model_storage / f'{model_name}.pt'
+        # model files from k-fold training have the fold number as three-digit suffix, trim it
+        self.configs['model_config_file'] = default_model_storage / f'{model_name[:-4]}_config.yml'
+
+    def _configure_postbin(self):
+        """
+        Set the postbin property of the the configs configuration dictionary, using the
+        label mapping parameters if there are any, otherwise using the label mapping from
+        the default configuration file.
+
+        This should set the postbin property to something like 
+
+            {'bars': ['B'],
+             'chyron': ['I', 'N', 'Y'],
+             'credit': ['C', 'R'],
+             'other_opening': ['W', 'L', 'O', 'M'],
+             'other_text': ['E', 'K', 'G', 'T', 'F'],
+             'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G']}
+
+        Note that the labels cannot have colons in them, but historically we did have
+        colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
+        have mappings like S:H:slate. This here assumes the mapping is S_H:slate and
+        that the underscore is replaced with a colon. This is not good if we intend
+        there to be and underscore.
+        """
+        if self.parameters['map']:
+            postbin = invert_mappings(self.parameters['map'])
+        else:
+            postbin = invert_mappings(self.configs['labelMapping'])
+        self.configs['postbin'] = postbin
+
+    def _extract_images(self, video):
+        open_video(video)
+        fps = video.get_property('fps')
+        total_frames = video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
+        total_ms = int(vdh.framenum_to_millisecond(video, total_frames))
+        start_ms = max(0, self.configs['startAt'])
+        final_ms = min(total_ms, self.configs['stopAt'])
+        sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
+        sampled = vdh.sample_frames(sframe, eframe, self.configs['sampleRate'] / 1000 * fps)
+        self.logger.info(f'Sampled {len(sampled)} frames ' +
+                         f'btw {start_ms} - {final_ms} ms (every {self.configs["sampleRate"]} ms)')
         t = time.perf_counter()
-        positions = [int(vdh.framenum_to_millisecond(vd, sample)) for sample in sampled]
-        extracted = vdh.extract_frames_as_images(vd, sampled, as_PIL=True)
-        
+        positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in sampled]
+        extracted = vdh.extract_frames_as_images(video, sampled, as_PIL=True)
         self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
-        # the last `total_ms` (as a fixed value) only works since the app is processing only one video at a time 
+        # the last `total_ms` (as a fixed value) only works since the app is processing only
+        # one video at a time     
+        return extracted, positions, total_ms
+
+    def _classify(self, extracted: list, positions: list, total_ms: int):
+        t = time.perf_counter()
+        self.logger.info(f"Initiating classifier with {self.configs['model_file']}")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.configs['logger_name'] = self.logger.name
+        classifier = classify.Classifier(**self.configs)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         predictions = classifier.classify_images(extracted, positions, total_ms)
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Processing took {time.perf_counter() - t} seconds")
-        
-        new_view.new_contain(AnnotationTypes.TimePoint,
-                             document=vd.id, timeUnit='milliseconds', labelset=FRAME_TYPES + [negative_label])
+            self.logger.debug(f"Processing took {time.perf_counter() - t:.2f} seconds")
+        return predictions
 
+    def _new_view(self, annotation_types: list, video, labels: list, mmif):
+        view: View = mmif.new_view()
+        self.sign_view(view, self.parameters)
+        for annotation_type in annotation_types:
+            view.new_contain(
+                annotation_type, document=video.id, timeUnit='milliseconds', labelset=labels)
+        return view
+
+    def _add_classifier_results_to_view(self, predictions: list, view: View):
         for prediction in predictions:
-            timepoint_annotation = new_view.new_annotation(AnnotationTypes.TimePoint)
+            timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
             prediction.annotation = timepoint_annotation
             scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
             classification = {l: s for l, s in zip(prediction.labels, scores)}
@@ -105,49 +159,24 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('label', label)
             timepoint_annotation.add_property('classification', classification)
 
-        if not configs.get('useStitcher'):
-            return mmif
-
-        new_view.new_contain(AnnotationTypes.TimeFrame,
-                             document=vd.id, timeUnit='milliseconds', labelset=list(stitcher.stitch_label.keys()))
-        timeframes = stitcher.create_timeframes(predictions)
+    def _add_stitcher_results_to_view(self, timeframes: list, view: View):
         for tf in timeframes:
-            timeframe_annotation = new_view.new_annotation(AnnotationTypes.TimeFrame)
+            timeframe_annotation = view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("label", tf.label),
             timeframe_annotation.add_property('classification', {tf.label: tf.score})
             timeframe_annotation.add_property('targets', [target.annotation.id for target in tf.targets])
             timeframe_annotation.add_property("representatives",
                                               [p.annotation.id for p in tf.representative_predictions()])
-        return mmif
-
-
-def set_postbin(configs: dict, parameters: dict):
-    """
-    Set the postbin property of the the configs configuration dictionary, using the
-    label mapping parameters if there are any, otherwise using the label mapping from
-    the default configuration file.
-
-    This should set the postbin property to something like 
-
-        {'bars': ['B'],
-         'chyron': ['I', 'N', 'Y'],
-         'credit': ['C', 'R'],
-         'other_opening': ['W', 'L', 'O', 'M'],
-         'other_text': ['E', 'K', 'G', 'T', 'F'],
-         'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G']}
-
-    Note that the labels cannot have colons in them, but historically we did have
-    colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
-    have mappings like S:H:slate. This here assumes the mapping is S_H:slate and
-    that the underscore is replaced with a colon. This is not good if we intend
-    there to be and underscore.
-    """
-
-    if parameters['map']:
-        postbin = invert_mappings(parameters['map'])
-    else:
-        postbin = invert_mappings(configs['labelMapping'])
-    configs['postbin'] = postbin
+            for prediction in tf.targets:
+                timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
+                prediction.annotation = timepoint_annotation
+                scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
+                classification = {l:s for l, s in zip(prediction.labels, scores)}
+                classification = transform(classification, self.configs['postbin'])
+                label = max(classification, key=classification.get)
+                timepoint_annotation.add_property('timePoint', prediction.timepoint)
+                timepoint_annotation.add_property('label', label)
+                timepoint_annotation.add_property('classification', classification)
 
 
 def invert_mappings(mappings: dict) -> dict:
@@ -161,6 +190,22 @@ def invert_mappings(mappings: dict) -> dict:
 def restore_colon(label_in: str) -> str:
     """Replace an underscore with a colon."""
     return label_in.replace('_', ':')
+
+
+def open_video(video):
+    """Open the video using the video_document_helper MMIF utility. This is done
+    for the side effect of adding basic metadata properties to the video document."""
+    vdh.capture(video)
+
+
+def transform(classification: dict, postbin: dict):
+    """Transform a classification using basic prelables into a classification with
+    post labels only."""
+    transformed = {}
+    for postlabel, prelabels in postbin.items():
+        transformed[postlabel] = sum([classification[lbl] for lbl in prelabels])
+    return transformed
+        
 
 
 if __name__ == "__main__":

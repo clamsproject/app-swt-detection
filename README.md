@@ -3,7 +3,7 @@
 
 ## Description
 
-Proof of concept prototype for an app that extracts scenes with textual content. The default model included in the app extracts slates, chyrons and credits.
+This app extracts scenes with textual content. It has two parts: (1) a classifier that labels timepoints with categories from a basic set of about two dozen types, and (2) a stitcher that pulls timepoints together into time frames of certain types. For the second part the basic categories can be combined into a less fine-grained set.
 
 
 ## User instructions
@@ -61,7 +61,7 @@ A TimeFrame looks as follows (the scores are somewhat condensed for clarity):
 }
 ```
 
-The `targets` property containes the identifiers of the TimePoints that are included in the TimeFrame, in `scores` we have the TimePoint scores for the "bars" frame type, in `score` we have the average score for the entire TimeFrame, and in `representatives` we have pointers to TimePoints that are considered representative for thie TimeFrame.
+The `targets` property contains the identifiers of the TimePoints that are included in the TimeFrame, in `scores` we have the TimePoint scores for the "bars" frame type, in `score` we have the average score for the entire TimeFrame, and in `representatives` we have pointers to TimePoints that are considered representative for thie TimeFrame.
 
 Only TimePoints that are included in a TimeFrame will be in the MMIF output, here is one (heavily condensed for clarity and only showing four of the labels):
 
