@@ -44,6 +44,8 @@ class SwtDetection(ClamsApp):
         self._configure_postbin()
         for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
+        tp_labels = FRAME_TYPES + [negative_label]
+        tf_labels = list(self.configs['postbin'].keys())
 
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
@@ -55,20 +57,22 @@ class SwtDetection(ClamsApp):
 
         extracted, positions, total_ms = self._extract_images(video)
 
-        predictions = self._classify(extracted, positions, total_ms)
-        at_types = [AnnotationTypes.TimePoint]
-        labels = FRAME_TYPES + [negative_label]
-        classifier_view = self._new_view(at_types, video, labels, mmif)
-        self._add_classifier_results_to_view(predictions, classifier_view)
+        swt_view: View = mmif.new_view()
+        self.sign_view(swt_view, self.configs)
+        swt_view.new_contain(
+            AnnotationTypes.TimePoint,
+            document=video.id, timeUnit='milliseconds', labelset=tp_labels)
 
+        predictions = self._classify(extracted, positions, total_ms)
+        self._add_classifier_results_to_view(predictions, swt_view)
         if self.configs.get('useStitcher'):
+            swt_view.new_contain(
+                AnnotationTypes.TimeFrame,
+                document=video.id, timeUnit='milliseconds', labelset=tf_labels)
             stitcher = stitch.Stitcher(**self.configs)
             self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
             timeframes = stitcher.create_timeframes(predictions)
-            at_types = [AnnotationTypes.TimePoint, AnnotationTypes.TimeFrame]
-            labels = list(self.configs['postbin'].keys())
-            stitcher_view = self._new_view(at_types, video, labels, mmif)
-            self._add_stitcher_results_to_view(timeframes, stitcher_view)
+            self._add_stitcher_results_to_view(timeframes, swt_view)
 
         return mmif
 
@@ -143,14 +147,6 @@ class SwtDetection(ClamsApp):
             self.logger.debug(f"Processing took {time.perf_counter() - t:.2f} seconds")
         return predictions
 
-    def _new_view(self, annotation_types: list, video, labels: list, mmif):
-        view: View = mmif.new_view()
-        self.sign_view(view, self.configs)
-        for annotation_type in annotation_types:
-            view.new_contain(
-                annotation_type, document=video.id, timeUnit='milliseconds', labelset=labels)
-        return view
-
     def _add_classifier_results_to_view(self, predictions: list, view: View):
         for prediction in predictions:
             timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
@@ -164,22 +160,13 @@ class SwtDetection(ClamsApp):
 
     def _add_stitcher_results_to_view(self, timeframes: list, view: View):
         for tf in timeframes:
+            targets = [target.annotation.id for target in tf.targets]
+            representatives = [p.annotation.id for p in tf.representative_predictions()]
             timeframe_annotation = view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("label", tf.label),
             timeframe_annotation.add_property('classification', {tf.label: tf.score})
-            timeframe_annotation.add_property('targets', [target.annotation.id for target in tf.targets])
-            timeframe_annotation.add_property("representatives",
-                                              [p.annotation.id for p in tf.representative_predictions()])
-            for prediction in tf.targets:
-                timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
-                prediction.annotation = timepoint_annotation
-                scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-                classification = {l:s for l, s in zip(prediction.labels, scores)}
-                classification = transform(classification, self.configs['postbin'])
-                label = max(classification, key=classification.get)
-                timepoint_annotation.add_property('timePoint', prediction.timepoint)
-                timepoint_annotation.add_property('label', label)
-                timepoint_annotation.add_property('classification', classification)
+            timeframe_annotation.add_property('targets', targets)
+            timeframe_annotation.add_property("representatives", representatives)
 
 
 def invert_mappings(mappings: dict) -> dict:
