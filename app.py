@@ -38,7 +38,7 @@ class SwtDetection(ClamsApp):
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         # parameters here is a "refined" dict, so hopefully its values are properly
-        # validated and casted at this point. 
+        # validated and casted at this point.
         self.configs = parameters
         self._configure_model()
         self._configure_postbin()

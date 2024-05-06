@@ -1,15 +1,32 @@
+"""cli.py
+
+Command Line Interface for the SWT app.
+
+This script can be called with the same arguments as the _annotate method on the app,
+except that we add --input, --output and --metadata parameters.
+
+Example invocation:
+
+$ python cli.py \
+    --modelName 20240409-093229.convnext_tiny
+    --input example-mmif-local.json
+    --output out.json
+    --map B:bars S:slate
+    --pretty true
+
+"""
+
+
+import sys
 import yaml
-import pprint
 import argparse
-from pathlib import Path
+
+from mmif import Mmif
+from clams.app import ClamsApp
 
 from metadata import appmetadata
-from clams.app import ClamsApp
 from app import SwtDetection
 
-
-
-default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 
 json_type_map = {
     "integer": int,
@@ -23,13 +40,8 @@ parameter_names = (
     'modelName', 'pretty', 'sampleRate', 'startAt', 'stopAt', 'useStitcher')
 
 
-def get_app():
-    app = SwtDetection(preconf_fname=default_config_fname, log_to_file=False)
-    return app
-
-
 def get_metadata():
-    """Gets the metadata from the metadata.py  filem, with the universal parameters added."""
+    """Gets the metadata from the metadata.py file, with the universal parameters added."""
     metadata = appmetadata()
     for param in ClamsApp.universal_parameters:
         metadata.add_parameter(**param)
@@ -67,20 +79,55 @@ def print_parameters(metadata):
         print(f'   choices={parameter.choices}')
 
 
-if __name__ == '__main__':
-
-    app = get_app()
-    metadata = get_metadata()
-
-    argparser = create_argparser(metadata)
-    args = argparser.parse_args()
-    
+def print_args(args):
     print(args)
     print()
     for arg in vars(args):
         value = getattr(args, arg)
         print(f'{arg:18s}  {str(type(value)):15s}  {value}')
 
+
+def build_app_parameters(args):
+    parameters = {}
+    for arg in vars(args):
+        if arg in ('input', 'output', 'metadata'):
+            continue
+        value = getattr(args, arg)
+        parameters[arg] = value
+    return parameters
+
+
+def adjust_parameters(parameters, args):
+    # Adding the empty directory makes the app code work, but it still won't be able
+    # to print the parameters as given by the user on the command line. So we loop
+    # over the arguments to populate the raw parameters dictionary.
+    parameters[ClamsApp._RAW_PARAMS_KEY] = {}
+    for arg in sys.argv[1:]:
+        if arg.startswith('--'):
+            argname = arg[2:]
+            argval = vars(args)[argname]
+            argval = argval if type(argval) is list else [str(argval)]
+            parameters[ClamsApp._RAW_PARAMS_KEY][argname] = argval
+
+
+
+if __name__ == '__main__':
+
+    app = SwtDetection()
+    metadata = get_metadata()
+
+    argparser = create_argparser(metadata)
+    args = argparser.parse_args()
+
     if args.metadata:
         print(metadata.jsonify(pretty=args.pretty))
-
+    else:
+        parameters = build_app_parameters(args)
+        # Simply calling _annotate() breaks when we try to create the view and copy the
+        # parameters into it because the CLAMS code expects there to be raw parameters.
+        # So we first adjust the parameters to match what the CLAMS code expects.
+        adjust_parameters(parameters, args)
+        mmif = Mmif(open(args.input).read())
+        app._annotate(mmif, **parameters)
+        with open(args.output, 'w') as fh:
+            fh.write(mmif.serialize(pretty=args.pretty))
