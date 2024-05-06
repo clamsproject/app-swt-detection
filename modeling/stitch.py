@@ -13,7 +13,7 @@ import operator
 
 import yaml
 
-from modeling import train, negative_label
+from modeling import train, negative_label, static_frames
 
 
 class Stitcher:
@@ -25,7 +25,6 @@ class Stitcher:
         self.min_frame_score = config.get("minFrameScore")
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
-        self.static_frames = self.config.get("staticFrames")
         self.model_label = train.pretraining_binned_label(self.model_config)
         self.stitch_label = config.get("postbin")
         self.debug = False
@@ -120,7 +119,6 @@ class Stitcher:
 class TimeFrame:
 
     def __init__(self, label: str, stitcher: Stitcher):
-        self.static_frames = stitcher.static_frames
         self.targets = []
         self.label = label
         self.points = []
@@ -182,11 +180,12 @@ class TimeFrame:
         couple of simple heuristics and the frame type."""
         representatives = list(zip(self.points, self.scores))
         timepoint, max_value = max(representatives, key=operator.itemgetter(1))
-        if self.label in self.static_frames:
+        if self.label in static_frames:
             # for these just pick the one with the highest score
             self.representatives = [timepoint]
         else:
             # throw out the lower values
+            # TODO: this may throw out too many time points
             representatives = [(tp, val) for tp, val in representatives if val >= self.score]
             # pick every third frame, which corresponds roughly to one every five seconds
             # (expect when all below-average values bundled together at one end)

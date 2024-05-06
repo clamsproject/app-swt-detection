@@ -20,7 +20,6 @@ from mmif.utils import video_document_helper as vdh
 
 from modeling import classify, stitch, negative_label, FRAME_TYPES
 
-default_config_fname = Path(__file__).parent / 'modeling/config/classifier.yml'
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
@@ -28,7 +27,6 @@ class SwtDetection(ClamsApp):
 
     def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
         super().__init__()
-        self.preconf = yaml.safe_load(open(preconf_fname))
         if log_to_file:
             fh = logging.FileHandler(f'{self.__class__.__name__}.log')
             fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
@@ -40,9 +38,8 @@ class SwtDetection(ClamsApp):
 
     def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         # parameters here is a "refined" dict, so hopefully its values are properly
-        # validated and casted at this point. 
-        self.parameters = parameters
-        self.configs = {**self.preconf, **parameters}
+        # validated and casted at this point.
+        self.configs = parameters
         self._configure_model()
         self._configure_postbin()
         for k, v in self.configs.items():
@@ -76,7 +73,7 @@ class SwtDetection(ClamsApp):
         return mmif
 
     def _configure_model(self):
-        model_name = self.parameters["modelName"]
+        model_name = self.configs["modelName"]
         self.configs['model_file'] = default_model_storage / f'{model_name}.pt'
         self.configs['model_config_file'] = default_model_storage / f'{model_name}.yml'
 
@@ -101,29 +98,18 @@ class SwtDetection(ClamsApp):
         that the underscore is replaced with a colon. This is not good if we intend
         there to be a dash.
         """
-        # TODO: this is ugly, but I do not know a better way yet. The default value
-        # of the map parameter in metadata.py is an empty list. If the user sets those
-        # parameters during invocation (for example "?map=S:slate&map=B:bar") then in
-        # the user parameters we have ['S:slate', 'B:bar'] for map and in the refined
-        # parameters we get {'S': 'slate', 'B': 'bar'}. If the user adds no map
-        # parameters then there is no map value in the user parameters and the value
-        # is [] in the refined  parameters (which is a bit inconsistent).
-        # Two experiments:
-        # 1. What if I set the default to a list like ['S:slate', 'B:bar']?
-        #    Then the map value in refined parameters is that same list, which means
-        #    that I have to turn it into a dictionary before I hand it off.
-        # 2. What if I set the default to a dictionary like {'S': 'slate', 'B': 'bar'}?
-        #    Then the map value in the refined parameters is a list with one element,
-        #    which is the wanted dictionary as a string: ["{'S': 'slate', 'B': 'bar'}"]
-        if type(self.parameters['map']) is list:
+        if type(self.configs['map']) is list:
+            # This needs to be done because when the default for the map parameters is
+            # a non-empty list then it will end up in the refined parameters as a list
+            # if no map parameters were specified when the user invoked the app (whereas
+            # when the user specifies the map parameter then the map will be a dictionary
+            # after refinement).
             newmap = {}
-            for kv in self.parameters['map']:
+            for kv in self.configs['map']:
                 k, v = kv.split(':')
                 newmap[k] = v
-            self.parameters['map'] = newmap
             self.configs['map'] = newmap
-        postbin = invert_mappings(self.parameters['map'])
-        self.configs['postbin'] = postbin
+        self.configs['postbin'] = invert_mappings(self.configs['map'])
 
     def _extract_images(self, video):
         open_video(video)
@@ -159,7 +145,7 @@ class SwtDetection(ClamsApp):
 
     def _new_view(self, annotation_types: list, video, labels: list, mmif):
         view: View = mmif.new_view()
-        self.sign_view(view, self.parameters)
+        self.sign_view(view, self.configs)
         for annotation_type in annotation_types:
             view.new_contain(
                 annotation_type, document=video.id, timeUnit='milliseconds', labelset=labels)
@@ -197,8 +183,6 @@ class SwtDetection(ClamsApp):
 
 
 def invert_mappings(mappings: dict) -> dict:
-    print('-'*80)
-    print(mappings)
     inverted_mappings = {}
     for in_label, out_label in mappings.items():
         in_label = restore_colon(in_label)
@@ -207,7 +191,7 @@ def invert_mappings(mappings: dict) -> dict:
 
 
 def restore_colon(label_in: str) -> str:
-    """Replace a dash with a colon."""
+    """Replace dashes with colons."""
     return label_in.replace('-', ':')
 
 
@@ -230,13 +214,11 @@ def transform(classification: dict, postbin: dict):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config", help="The YAML config file", default=default_config_fname)
     parser.add_argument("--port", action="store", default="5000", help="set port to listen")
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
-
     parsed_args = parser.parse_args()
 
-    app = SwtDetection(preconf_fname=parsed_args.config, log_to_file=False)
+    app = SwtDetection(log_to_file=False)
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
