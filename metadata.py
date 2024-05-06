@@ -3,6 +3,21 @@ from mmif import DocumentTypes, AnnotationTypes
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata, Input
 
+labelMapPresets = {'null': None}
+swt_4way_mapping = [
+    "B:bars",
+    "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
+    "I:chyron", "N:chyron", "Y:chyron",
+    "C:credit", "R:credit",
+]
+labelMapPresets['swt-v4-4way'] = swt_4way_mapping
+swt_6way_mapping = swt_4way_mapping.copy() \
+                   + ["E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text", 
+                      "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening"]
+labelMapPresets['swt-v4-6way'] = swt_6way_mapping
+
+labelMapPresetsMarkdown = '\n'.join([f"- `{k}`: `{str(v)}`" for k, v in labelMapPresets.items()])
+
 
 # DO NOT CHANGE the function name 
 def appmetadata() -> AppMetadata:
@@ -34,7 +49,7 @@ def appmetadata() -> AppMetadata:
                      '\"IN_LABEL:OUT_LABEL\" (with a colon). To pass multiple mappings, use this parameter multiple '
                      'times. By default, all the input labels are passed as is, including any \"negative\" labels '
                      '(with default value being no remapping at all). However, when at least one label is remapped, '
-                     'all the other \"unset\" labels are discarded asa negative label(\"-\").'))
+                     'all the other \"unset\" labels are discarded as the negative label(\"-\").'))
     metadata.add_parameter(
         name='minTFDuration', type='integer', default=1000,
         description='minimum duration of a TimeFrame in milliseconds')
@@ -44,7 +59,12 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='minTFScore', type='number', default=0.5,
         description='minimum average score of TimePoints in a TimeFrame to be considered as positive')
-    
+    metadata.add_parameter(
+        name='labelMapPreset', type='string', default='null',
+        choices=list(labelMapPresets.keys()),
+        description=f'preset of label mappings. If not `null`, this parameter will override the `labelMap` parameter. '
+                    f'Available presets are:\n{labelMapPresetsMarkdown}'
+    )
     return metadata
 
 

@@ -8,6 +8,8 @@ from mmif import Mmif, AnnotationTypes
 from mmif.utils import sequence_helper as sqh
 from mmif.utils import video_document_helper as vdh
 
+import metadata
+
 
 class SimpleTimepointsStitcher(ClamsApp):
 
@@ -24,9 +26,14 @@ class SimpleTimepointsStitcher(ClamsApp):
         https://apps.clams.ai/swt-detection/v4.2/
         """
         self.logger.info(f"Annotating with parameters: {parameters}")
-        self.logger.info(f"{[p for p in self.metadata.parameters if p.name == 'labelMap']}")
 
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        
         tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
+        if not tp_view:
+            self.logger.info("No TimePoint annotations found.")
+            return mmif
         tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
         
         # first, figure out time point sampling rate by looking at the first three annotations
@@ -47,14 +54,18 @@ class SimpleTimepointsStitcher(ClamsApp):
         src_labels = sqh.validate_labelset(tps)
         
         # and build the label remapper
-        label_remapper = sqh.build_label_remapper(src_labels, parameters['labelMap'])
+        label_map = metadata.labelMapPresets.get(parameters['labelMapPreset'])
+        if label_map is None:
+            label_map = parameters['labelMap']
+        else:
+            label_map = dict([lm.split(':') for lm in label_map])
+        self.logger.debug(f"Label map: {label_map}")
+        label_remapper = sqh.build_label_remapper(src_labels, label_map)
         
         # then, build the score lists
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps], 
                                                   label_remapper=label_remapper, score_remap_op=max)
         
-        v = mmif.new_view()
-        self.sign_view(v, parameters)
         # and stitch the scores
         for label, lidx in label_idx.items():
             if label == sqh.NEG_LABEL:
@@ -80,6 +91,10 @@ class SimpleTimepointsStitcher(ClamsApp):
                     tf.add_property('representatives', [tps[rep_idx].id])
         return mmif
 
+
+def get_app() -> ClamsApp:
+    return SimpleTimepointsStitcher()
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", action="store", default="5000", help="set port to listen")
@@ -88,7 +103,7 @@ if __name__ == "__main__":
     parsed_args = parser.parse_args()
 
     # create the app instance
-    app = SimpleTimepointsStitcher()
+    app = get_app()
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
