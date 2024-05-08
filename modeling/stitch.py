@@ -25,8 +25,9 @@ class Stitcher:
         self.min_frame_score = config.get("minFrameScore")
         self.min_timeframe_score = config.get("minTimeframeScore")
         self.min_frame_count = config.get("minFrameCount")
-        self.model_label = train.pretraining_binned_label(self.model_config)
-        self.stitch_label = config.get("postbin")
+        self.model_labels = train.pretraining_binned_label(self.model_config)
+        self.stitch_labels = config.get("postbin")
+        self.allow_overlap = config.get('allowOverlap')
         self.debug = False
 
     def __str__(self):
@@ -36,15 +37,16 @@ class Stitcher:
 
     def create_timeframes(self, predictions: list) -> list:
         if self.debug:
-            print('TimePoint labels', self.model_label)
-            print('TimeFrame labels', list(self.stitch_label.keys()))
+            print('>>> TimePoint labels:', ' '.join(self.model_labels))
+            print('>>> TimeFrame labels:', ' '.join(list(self.stitch_labels.keys())))
         timeframes = self.collect_timeframes(predictions)
         if self.debug:
             print_timeframes('Collected frames', timeframes)
         timeframes = self.filter_timeframes(timeframes)
         if self.debug:
             print_timeframes('Filtered frames', timeframes)
-        timeframes = self.remove_overlapping_timeframes(timeframes)
+        if not self.allow_overlap:
+            timeframes = self.remove_overlapping_timeframes(timeframes)
         for tf in timeframes:
             tf.set_representatives()
         timeframes = list(sorted(timeframes, key=(lambda tf: tf.start)))
@@ -55,14 +57,12 @@ class Stitcher:
     def collect_timeframes(self, predictions: list) -> list:
         """Find sequences of frames for all labels where the score of each frame
         is at least the mininum value as defined in self.min_frame_score."""
-        labels = self.stitch_label if self.stitch_label is not None else self.model_label
+        labels = self.stitch_labels if self.stitch_labels is not None else self.model_labels
         if self.debug:
             print('>>> labels', labels)
         timeframes = []
         open_frames = {label: TimeFrame(label, self) for label in labels}
         for prediction in predictions:
-            if self.debug:
-                print(prediction)
             for label in [label for label in labels if label != negative_label]:
                 score = self._score_for_label(label, prediction)
                 if score < self.min_frame_score:
@@ -110,10 +110,10 @@ class Stitcher:
     def _score_for_label(self, label: str, prediction):
         """Return the score for the label, this is somewhat more complicated when
         postbinning is used."""
-        if self.stitch_label is None:
+        if self.stitch_labels is None:
             return prediction.score_for_label(label)
         else:
-            return prediction.score_for_labels(self.stitch_label[label])
+            return prediction.score_for_labels(self.stitch_labels[label])
 
 
 class TimeFrame:

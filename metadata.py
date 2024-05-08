@@ -10,7 +10,7 @@ import yaml
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
-from app import default_model_storage#, default_config_fname
+from app import default_model_storage
 from modeling import FRAME_TYPES
 
 
@@ -75,6 +75,9 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
+    metadata.add_parameter(
+        name='allowOverlap', type='boolean', default=True,
+        description='Allow overlapping time frames')
     metadata.add_parameter(
         # TODO: do we want to use the old default labelMap from the configuration here or
         # do we truly want an empty mapping and use the pass-through, as hinted at in the
