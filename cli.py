@@ -2,17 +2,24 @@
 
 Command Line Interface for the SWT app.
 
-This script can be called with the same arguments as the _annotate method on the app,
+This script can be called with the same arguments as the annotate method on the app,
 except that we add --input, --output and --metadata parameters.
 
-Example invocation:
+Example invocations:
+
+$ python cli.py --metadata
 
 $ python cli.py \
-    --modelName 20240409-093229.convnext_tiny
-    --input example-mmif-local.json
+    --input example-mmif.json
     --output out.json
+    --modelName 20240409-093229.convnext_tiny
     --map B:bars S:slate
-    --pretty true
+    --pretty True
+
+The core of the code is a mapping from app parameters to ArgumentParser parameters.
+
+The most funky aspect of this is that boolean parameters are mapped to string-valued
+parameters with 'True' and 'False' as their only possible values.
 
 """
 
@@ -28,94 +35,119 @@ from metadata import appmetadata
 from app import SwtDetection
 
 
-json_type_map = {
+
+# Mapping from app metadata types to ArgumentParser types
+type_map = {
     "integer": int,
     "number": float,
     "string": str,
     "boolean": bool,
 }
 
-parameter_names = (
-    'metadata', 'map', 'minFrameCount', 'minFrameScore', 'minTimeframeScore',
-    'modelName', 'pretty', 'sampleRate', 'startAt', 'stopAt', 'useStitcher')
+# Mapping from metadata types to ArgumentParser metavars, relevant only for its
+# use when you call the script with the -h option.
+metavar_map = {
+    "integer": 'INT',
+    "number": 'FLOAT',
+    "string": 'STRING',
+    "boolean": 'BOOL',
+    "map": 'PRE_LABEL:POST_LABEL'
+}
+
+# Get the arguments handed in by the user, assumes all parameters start with
+# a double dash.
+user_arguments = [p[2:] for p in sys.argv[1:] if p.startswith('--') and len(p) > 2]
 
 
 def get_metadata():
-    """Gets the metadata from the metadata.py file, with the universal parameters added."""
+    """Gets the metadata from the metadata.py file, with the universal parameters
+    added."""
     metadata = appmetadata()
     for param in ClamsApp.universal_parameters:
         metadata.add_parameter(**param)
     return metadata
 
 
-def create_argparser(metadata):
+def create_argparser(parameters: dict):
+    """Create an ArgumentParser from the parameters taken from the app metadata."""
     parser = argparse.ArgumentParser(
         description=f"Command-Line Interface for {metadata.identifier}")
     parser.add_argument(
         "--metadata",
-        help="Return the apps metadata and exit",
+        help="Return the app's metadata and exit",
         action="store_true")
     parser.add_argument("--input", help="The input MMIF file")
     parser.add_argument("--output", help="The output MMIF file")
     for parameter in metadata.parameters:
-        nargs = '*' if parameter.type == 'map' else '?'
-        parser.add_argument(
-            f"--{parameter.name}",
-            help=parameter.description,
-            nargs=nargs,
-            type=json_type_map.get(parameter.type),
-            choices=parameter.choices,
-            default=parameter.default,
-            action="store")
+        p_name = f'--{parameter.name}'
+        p_type = type_map.get(parameter.type)
+        p_metavar = metavar_map.get(parameter.type)
+        default = parameter.default
+        choices = parameter.choices
+        if parameter.type == 'map':
+            # Nothing special, but it adds the nargs='*' argument
+            parser.add_argument(
+                p_name, help=parameter.description, metavar=p_metavar,
+                type=p_type, nargs='*', default=default, choices=choices)
+        elif parameter.type == 'boolean':
+            # We turn this boolean into a string, somewhat ugly but it was
+            # the cleanest way I could find to simplify the CLI for user and
+            # developer (MV)
+            parser.add_argument(
+                p_name, help=parameter.description, metavar=p_metavar,
+                type=str, default=default, choices=['True', 'False'])
+        else:
+            parser.add_argument(
+                p_name, help=parameter.description, metavar=p_metavar,
+                type=p_type, default=default, choices=choices)
     return parser
 
 
-def print_parameters(metadata):
-    for parameter in metadata.parameters:
-        continue
-        print(f'\n{parameter.name}')
-        print(f'   type={parameter.type}')
-        print(f'   default={parameter.default}')
-        print(f'   choices={parameter.choices}')
-
-
-def print_args(args):
-    print(args)
-    print()
-    for arg in vars(args):
-        value = getattr(args, arg)
-        print(f'{arg:18s}  {str(type(value)):15s}  {value}')
-
-
-def build_app_parameters(args):
+def build_app_parameters(args) -> dict:
+    """Return the parameters to be handed to the server-less app. Only include
+    the parameters handed in by the user, but exclude those that are irrelevant
+    for the app.""" 
     parameters = {}
     for arg in vars(args):
         if arg in ('input', 'output', 'metadata'):
             continue
-        value = getattr(args, arg)
-        parameters[arg] = value
+        if arg in user_arguments:
+            value = getattr(args, arg)
+            value = value if type(value) is list else [str(value)]
+            parameters[arg] = value
     return parameters
 
 
-def adjust_parameters(parameters, args):
-    # Adding the empty directory makes the app code work, but it still won't be able
-    # to print the parameters as given by the user on the command line. So we loop
-    # over the arguments to populate the raw parameters dictionary.
-    parameters[ClamsApp._RAW_PARAMS_KEY] = {}
-    for arg in sys.argv[1:]:
-        if arg.startswith('--'):
-            argname = arg[2:]
-            argval = vars(args)[argname]
-            argval = argval if type(argval) is list else [str(argval)]
-            parameters[ClamsApp._RAW_PARAMS_KEY][argname] = argval
+def print_metadata_parameters(metadata):
+    """Debugging utility method."""
+    print('\n>>> Metadata parameters')
+    for parameter in metadata.parameters:
+        print(f'--- {parameter.name:20} <{parameter.type}>',
+              f'default={parameter.default} choices={parameter.choices}')
+
+
+def print_parsed_parameters(parameters):
+    """Debugging utility method."""
+    print('\n>>> Parsed parameters')
+    for param in parameters:
+        if param == ClamsApp._RAW_PARAMS_KEY:
+            for prop in parameters[param]:
+                print(f'--- {param}  {prop:13s} -->  {repr(parameters[param][prop])}')
+        else:
+            print(f'--- {param:20s} -->  {repr(parameters[param])}')
+
+
+def print_args(args):
+    """Debugging utility method."""
+    print('\n>>> Argument Namespace')
+    for arg in vars(args):
+        print(f'--- {arg:20s} -->  {repr(getattr(args, arg))}')
 
 
 
 if __name__ == '__main__':
 
-    app = SwtDetection()
     metadata = get_metadata()
-
     argparser = create_argparser(metadata)
     args = argparser.parse_args()
 
@@ -123,11 +155,7 @@ if __name__ == '__main__':
         print(metadata.jsonify(pretty=args.pretty))
     else:
         parameters = build_app_parameters(args)
-        # Simply calling _annotate() breaks when we try to create the view and copy the
-        # parameters into it because the CLAMS code expects there to be raw parameters.
-        # So we first adjust the parameters to match what the CLAMS code expects.
-        adjust_parameters(parameters, args)
         mmif = Mmif(open(args.input).read())
-        app._annotate(mmif, **parameters)
+        out_mmif = SwtDetection().annotate(mmif, **parameters)
         with open(args.output, 'w') as fh:
-            fh.write(mmif.serialize(pretty=args.pretty))
+            fh.write(out_mmif)
