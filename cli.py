@@ -92,7 +92,7 @@ def create_argparser(parameters: dict):
         elif parameter.type == 'boolean':
             # We turn this boolean into a string, somewhat ugly but it was
             # the cleanest way I could find to simplify the CLI for user and
-            # developer (MV)
+            # developer alike (MV)
             parser.add_argument(
                 p_name, help=parameter.description, metavar=p_metavar,
                 type=str, default=default, choices=['True', 'False'])

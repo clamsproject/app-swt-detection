@@ -99,20 +99,9 @@ class SwtDetection(ClamsApp):
         Note that the labels cannot have colons in them, but historically we did have
         colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
         have mappings like S:H:slate. This here assumes the mapping is S-H:slate and
-        that the underscore is replaced with a colon. This is not good if we intend
-        there to be a dash.
+        that the dash is replaced with a colon. This is not good if we intend there to
+        be a dash.
         """
-        if type(self.configs['map']) is list:
-            # This needs to be done because when the default for the map parameters is
-            # a non-empty list then it will end up in the refined parameters as a list
-            # if no map parameters were specified when the user invoked the app (whereas
-            # when the user specifies the map parameter then the map will be a dictionary
-            # after refinement).
-            newmap = {}
-            for kv in self.configs['map']:
-                k, v = kv.split(':')
-                newmap[k] = v
-            self.configs['map'] = newmap
         self.configs['postbin'] = invert_mappings(self.configs['map'])
 
     def _extract_images(self, video):
