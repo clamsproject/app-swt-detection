@@ -10,11 +10,15 @@ Example invocations:
 $ python cli.py --metadata
 
 $ python cli.py \
-    --input example-mmif.json
-    --output out.json
-    --modelName 20240409-093229.convnext_tiny
-    --map B:bars S:slate
-    --pretty True
+    --input example-mmif.json --output out.json \
+    --modelName 20240409-093229.convnext_tiny \
+    --map B:bars S:slate --pretty True
+
+Instead of using --input and --output you can also use pipes:
+
+$ cat example-mmif.json | python cli.py \
+    --modelName 20240409-093229.convnext_tiny \
+    --map B:bars S:slate --pretty True > out.json
 
 The core of the code is a mapping from app parameters to ArgumentParser parameters.
 
@@ -155,7 +159,13 @@ if __name__ == '__main__':
         print(metadata.jsonify(pretty=args.pretty))
     else:
         parameters = build_app_parameters(args)
-        mmif = Mmif(open(args.input).read())
+        if args.input is None:
+            mmif = Mmif(sys.stdin.read())
+        else:
+            mmif = Mmif(open(args.input).read())
         out_mmif = SwtDetection().annotate(mmif, **parameters)
-        with open(args.output, 'w') as fh:
-            fh.write(out_mmif)
+        if args.output is None:
+            sys.stdout.write(out_mmif)
+        else:
+            with open(args.output, 'w') as fh:
+                fh.write(out_mmif)

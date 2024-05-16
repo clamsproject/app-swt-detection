@@ -26,7 +26,7 @@ def appmetadata() -> AppMetadata:
 
     available_models = default_model_storage.glob('*.pt')
 
-    # This was the most frequent label mapping from the now deprecated configuration file,
+    # This was the most frequent label mapping from the old configuration file,
     # which had default mappings for each model.
     labelMap = [
         "B:bars",
