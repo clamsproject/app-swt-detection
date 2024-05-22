@@ -2,13 +2,15 @@
 Metadata for the Scenes-with-text app.
 
 """
-import pathlib
 
+import pathlib
+import sys
 import yaml
+
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
-from app import default_model_storage, default_config_fname
+from app import default_model_storage
 from modeling import FRAME_TYPES
 
 
@@ -21,8 +23,18 @@ def appmetadata() -> AppMetadata:
     
     :return: AppMetadata object holding all necessary information.
     """
-    preconf = yaml.safe_load(open(default_config_fname))
+
     available_models = default_model_storage.glob('*.pt')
+
+    # This was the most frequent label mapping from the old configuration file,
+    # which had default mappings for each model.
+    labelMap = [
+        "B:bars",
+        "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
+        "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening",
+        "I:chyron", "N:chyron", "Y:chyron",
+        "C:credit", "R:credit",
+        "E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text" ]
 
     metadata = AppMetadata(
         name="Scenes-with-text Detection",
@@ -41,30 +53,43 @@ def appmetadata() -> AppMetadata:
         name='startAt', type='integer', default=0,
         description='Number of milliseconds into the video to start processing')
     metadata.add_parameter(
-        # 10M ms is almost 3 hours, that should do; this is better than sys.maxint
-        # (also, I tried using default=None, but that made stopAt a required property)
-        name='stopAt', type='integer', default=10000000,
+        name='stopAt', type='integer', default=sys.maxsize,
         description='Number of milliseconds into the video to stop processing')
     metadata.add_parameter(
-        name='sampleRate', type='integer', default=preconf['sampleRate'],
+        name='sampleRate', type='integer', default=1000,
         description='Milliseconds between sampled frames')
     metadata.add_parameter(
-        name='minFrameScore', type='number', default=preconf['minFrameScore'],
+        name='minFrameScore', type='number', default=0.01,
         description='Minimum score for a still frame to be included in a TimeFrame')
     metadata.add_parameter(
-        name='minTimeframeScore', type='number', default=preconf['minTimeframeScore'],
+        name='minTimeframeScore', type='number', default=0.5,
         description='Minimum score for a TimeFrame')
     metadata.add_parameter(
-        name='minFrameCount', type='integer', default=preconf['minFrameCount'],
+        name='minFrameCount', type='integer', default=2,
         description='Minimum number of sampled frames required for a TimeFrame')
     metadata.add_parameter(
         name='modelName', type='string', 
-        default=pathlib.Path(preconf['model_file']).stem,
+        default='20240409-091401.convnext_lg',
         choices=[m.stem for m in available_models],
         description='model name to use for classification')
     metadata.add_parameter(
-        name='useStitcher', type='boolean', default=preconf['useStitcher'],
+        name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
+    metadata.add_parameter(
+        name='allowOverlap', type='boolean', default=True,
+        description='Allow overlapping time frames')
+    metadata.add_parameter(
+        # TODO: do we want to use the old default labelMap from the configuration here or
+        # do we truly want an empty mapping and use the pass-through, as hinted at in the
+        # description (which is now not in sync with the code).
+        name='map', type='map', default=labelMap,
+        description=(
+            'Mapping of a label in the input annotations to a new label. Must be formatted as '
+            'IN_LABEL:OUT_LABEL (with a colon). To pass multiple mappings, use this parameter '
+            'multiple times. By default, all the input labels are passed as is, including any '
+            'negative labels (with default value being no remapping at all). However, when '
+            'at least one label is remapped, all the other "unset" labels are discarded as '
+            'a negative label.'))
 
     return metadata
 

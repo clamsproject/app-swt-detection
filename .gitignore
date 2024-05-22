@@ -267,3 +267,6 @@ modeling/html
 modeling/data/*
 modeling/frames/*
 html/*
+
+# Temporary output files
+out*.json

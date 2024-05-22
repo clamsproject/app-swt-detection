@@ -3,7 +3,7 @@
 
 ## Description
 
-Proof of concept prototype for an app that extracts scenes with textual content. The default model included in the app extracts slates, chyrons and credits.
+This app extracts scenes with textual content. It has two parts: (1) a classifier that labels timepoints with categories from a basic set of about two dozen types, and (2) a stitcher that pulls timepoints together into time frames of certain types. For the second part the basic categories can be combined into a less fine-grained set.
 
 
 ## User instructions
@@ -45,37 +45,43 @@ This may take a while depending on the size of the video file embedded in the MM
 
 ### Output details
 
-A TimeFrame looks as follows (the scores are somewhat condensed for clarity):
+A TimeFrame looks as follows:
 
 ```json
 {
-  "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v1",
+  "@type": "http://mmif.clams.ai/vocabulary/TimeFrame/v5",
   "properties": {
-    "frameType": "bars",
-    "score": 0.9999,
-    "scores": [0.9998, 0.9999, 0.9998, 0.9999, 0.9999],
-    "targets": ["tp_1", "tp_2", "tp_3", "tp_4", "tp_5"],
-    "representatives": ["tp_2"],
-    "id": "tf_1"
+    "label": "slate",
+    "classification": {
+      "slate": 0.9958384416320107
+    },
+    "targets": [ "tp_31",  "tp_32",  "tp_33",  "tp_34", "tp_35", "tp_36",
+                 "tp_37", "tp_38", "tp_39", "tp_40", "tp_41" ],
+    "representatives": [ "tp_40" ],
+    "id": "tf_2"
   }
 }
 ```
 
-The `targets` property containes the identifiers of the TimePoints that are included in the TimeFrame, in `scores` we have the TimePoint scores for the "bars" frame type, in `score` we have the average score for the entire TimeFrame, and in `representatives` we have pointers to TimePoints that are considered representative for thie TimeFrame.
+The *label* property has the label of the time frame and the *targets* property contains the identifiers of the TimePoints that are included in the TimeFrame. In *classification* we have the score for the "bars" frame type, which is the average score for all TimePoints in the entire TimeFrame, and in *representatives* we have pointers to TimePoints that are considered representative for the TimeFrame.
 
-Only TimePoints that are included in a TimeFrame will be in the MMIF output, here is one (heavily condensed for clarity and only showing four of the labels):
+The output also has all TimePoints from the document, here is one (heavily condensed for clarity and only showing four of the labels in the *classificatio*n dictionary):
 
 ```json
 {
-  "@type": "http://mmif.clams.ai/vocabulary/TimePoint/v1",
+  "@type": "http://mmif.clams.ai/vocabulary/TimePoint/v4",
   "properties": {
-    "timePont": 0,
-    "label": "B",
-    "labels": ["B", "S", "S:H", "S:C"],
-    "scores": [0.9998, 5.7532e-08, 2.4712e-13, 1.9209e-12],
-    "id": "tp_1"
+    "timePoint": 30030,
+    "label": "S",
+    "classification": {
+      "B": 1.3528440945265174e-07,
+      "S": 0.9999456405639648,
+      "R": 4.139282737014582e-06,
+      "NEG": 1.9432637543559395e-07
+    },
+    "id": "tp_31"
   }
 }
 ```
 
-The `label` property has the raw label for the TimePoint (which is potentially different from the frameType in the TimeFrame, for one, for the TimeFrame we typically group various raw labels together). In `labels` we have all labels for the TimePoint and in `scores` we have all classifier scores for the labels. 
+The *label* property has the raw label for the TimePoint (which is potentially different from the frameType in the TimeFrame, for one, for the TimeFrame we typically group various raw labels together).
