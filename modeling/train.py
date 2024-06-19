@@ -161,37 +161,43 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     p_scores = []
     r_scores = []
     f_scores = []
-    for i in range(0, configs['num_splits']):
-        validation_guids = set(guids[i*len_val:(i+1)*len_val])
-        train_guids = set(guids) - validation_guids
-        for block in configs['block_guids_valid']:
-            validation_guids.discard(block)
-        for block in configs['block_guids_train']:
-            train_guids.discard(block)
-        logger.debug(f'After applied block lists:')
-        logger.debug(f'train set: {train_guids}')
-        logger.debug(f'dev set: {validation_guids}')
-        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
-        # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
-        if not train.has_data() or not valid.has_data():
-            logger.info(f"Skipping fold {i} due to lack of data")
-            continue
-        train_loader = DataLoader(train, batch_size=40, shuffle=True)
-        valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
-        loss = nn.CrossEntropyLoss(reduction="none")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
-        export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
-        model = train_model(
-                get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']), 
-                loss, device, train_loader, configs)
-        torch.save(model.state_dict(), export_model_file)
-        p, r, f = evaluate(model, valid_loader, pretraining_binned_label(config), export_fname=export_csv_file)
-        val_set_spec.append(validation_guids)
-        p_scores.append(p)
-        r_scores.append(r)
-        f_scores.append(f)
+    # TODO: need to make this work with split of 1. have separate if statement probably
+    # but follow steps in this loop probably.
+    # TODO: may have to change prepare_datasets so it works with validation size of 0
+    if configs['num_splits'] > 1:
+        for i in range(0, configs['num_splits']):
+            validation_guids = set(guids[i*len_val:(i+1)*len_val])
+            train_guids = set(guids) - validation_guids
+            for block in configs['block_guids_valid']:
+                validation_guids.discard(block)
+            for block in configs['block_guids_train']:
+                train_guids.discard(block)
+            logger.debug(f'After applied block lists:')
+            logger.debug(f'train set: {train_guids}')
+            logger.debug(f'dev set: {validation_guids}')
+            train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
+            # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
+            if not train.has_data() or not valid.has_data():
+                logger.info(f"Skipping fold {i} due to lack of data")
+                continue
+            train_loader = DataLoader(train, batch_size=40, shuffle=True)
+            valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
+            loss = nn.CrossEntropyLoss(reduction="none")
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
+            export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
+            export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
+            model = train_model(
+                    get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
+                    loss, device, train_loader, configs)
+            torch.save(model.state_dict(), export_model_file)
+            p, r, f = evaluate(model, valid_loader, pretraining_binned_label(config), export_fname=export_csv_file)
+            val_set_spec.append(validation_guids)
+            p_scores.append(p)
+            r_scores.append(r)
+            f_scores.append(f)
+    else:
+
     p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
     p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
     p_results.parent.mkdir(parents=True, exist_ok=True)
