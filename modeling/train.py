@@ -161,9 +161,7 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     p_scores = []
     r_scores = []
     f_scores = []
-    # TODO: need to make this work with split of 1. have separate if statement probably
-    # but follow steps in this loop probably.
-    # TODO: may have to change prepare_datasets so it works with validation size of 0
+    # for num_splits = k where k > 1, do k-fold training with evaluation.
     if configs['num_splits'] > 1:
         for i in range(0, configs['num_splits']):
             validation_guids = set(guids[i*len_val:(i+1)*len_val])
@@ -196,13 +194,31 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
             p_scores.append(p)
             r_scores.append(r)
             f_scores.append(f)
+        p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
+        p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
+        p_results.parent.mkdir(parents=True, exist_ok=True)
+        export_kfold_config(config_file, configs, p_config)
+        export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
+    # if num_splits == 1. validation is empty.
     else:
-
-    p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
-    p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
-    p_results.parent.mkdir(parents=True, exist_ok=True)
-    export_kfold_config(config_file, configs, p_config)
-    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
+        i = 1
+        train_guids = set(guids)
+        validation_guids = set([])
+        for block in configs['block_guids_train']:
+            train_guids.discard(block)
+        # prepare_datasets seems to work fine with empty validation set
+        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
+        train_loader = DataLoader(train, batch_size=len(guids), shuffle=True)
+        loss = nn.CrossEntropyLoss(reduction="none")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
+        model = train_model(
+            get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
+            loss, device, train_loader, configs)
+        torch.save(model.state_dict(), export_model_file)
+        p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
+        export_kfold_config(config_file, configs, p_config)
 
 
 def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_id: str):
