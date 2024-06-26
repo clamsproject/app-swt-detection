@@ -48,7 +48,7 @@ class Classifier:
             img_enc_name=self.model_config["img_enc_name"],
             pos_enc_name=self.model_config.get("pos_enc_name", None),
             pos_enc_dim=self.model_config.get("pos_enc_dim", 0),
-            max_input_length=self.model_config.get("max_input_length", 0),
+            input_length=self.model_config.get("input_length", 0),
             pos_unit=self.model_config.get("pos_unit", 0))
         label_count = len(FRAME_TYPES) + 1
         if 'bins' in self.model_config:
