@@ -2,6 +2,7 @@
 Metadata for the Scenes-with-text app.
 
 """
+import sys
 from pathlib import Path
 
 from clams.app import ClamsApp
@@ -94,7 +95,6 @@ def appmetadata() -> AppMetadata:
 
 # DO NOT CHANGE the main block
 if __name__ == '__main__':
-    import sys
     metadata = appmetadata()
     for param in ClamsApp.universal_parameters:
         metadata.add_parameter(**param)
