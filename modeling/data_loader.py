@@ -24,6 +24,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Union, Tuple, Dict, ClassVar, Optional
+import logging
 
 import av
 import numpy as np
@@ -31,6 +32,13 @@ import torch
 from tqdm import tqdm
 
 from modeling import backbones
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class AnnotatedImage:
@@ -58,22 +66,25 @@ class FeatureExtractor(object):
     
     img_encoder: backbones.ExtractorModel
     pos_encoder: Optional[str]
-    max_input_length: int
+    input_length: int
     pos_dim: int
     sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
 
     def __init__(self, img_enc_name: str,
                  pos_enc_name: str = None,
                  pos_enc_dim: int = 512,
-                 max_input_length: int = 5640000,  # 94 min = the longest video in the first round of annotation
-                 pos_unit: int = 60000):
+                 input_length: int = 6000000,  # 100 min
+                 pos_unit: int = 60000,
+                 pos_abs_th_front: int = 5,
+                 pos_abs_th_end: int = 5,
+                 pos_vec_coeff: float = 0.5):
         """
         Initializes the FeatureExtractor object.
         
         @param: model_name = a name of backbone model (e.g. CNN) to use for image vector extraction
         @param: positional_encoder = type of positional encoder to use, one of 'fractional', sinusoidal-add', 'sinusoidal-concat', when not given use no positional encoding
         @param: positional_embedding_dim = dimension of positional embedding, only relevant to 'sinusoidal-add' scheme, when not given use 512
-        @param: max_input_length = maximum length of input video in milliseconds, used for padding positional encoding
+        @param: input_length = maximum length of input video in milliseconds, used for padding positional encoding
         @param: positional_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
         """
         if img_enc_name is None:
@@ -83,8 +94,11 @@ class FeatureExtractor(object):
         self.pos_encoder = pos_enc_name
         self.pos_dim = pos_enc_dim
         self.pos_unit = pos_unit
+        self.pos_abs_th_front = pos_abs_th_front
+        self.pos_abs_th_end = pos_abs_th_end
+        self.pos_vec_coeff = pos_vec_coeff
         if pos_enc_name in ['sinusoidal-add', 'sinusoidal-concat']:
-            position_dim = int(max_input_length / self.pos_unit)
+            position_dim = int(input_length / self.pos_unit)
             if position_dim % 2 == 1:
                 position_dim += 1
             if pos_enc_name == 'sinusoidal-concat':
@@ -120,14 +134,20 @@ class FeatureExtractor(object):
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
         img_vec = img_vec.squeeze(0)
+        if self.pos_encoder != 'none':
+            if cur_time < self.pos_abs_th_front or tot_time - cur_time < self.pos_abs_th_end:
+                pos_lookup_col = cur_time
+            else:
+                pos_lookup_col = cur_time // tot_time * self.pos_vec_lookup.shape[1]
+            pos_vec = self.pos_vec_lookup[pos_lookup_col] * self.pos_vec_coeff
         if self.pos_encoder == 'fractional':
             pos = cur_time / tot_time
             pos_vec = torch.tensor([pos]).to(img_vec.dtype)
             return torch.concat((img_vec, pos_vec))
         elif self.pos_encoder == 'sinusoidal-add':
-            return torch.add(img_vec, self.pos_vec_lookup[round(cur_time / self.pos_unit)])
+            return torch.add(img_vec, pos_vec)
         elif self.pos_encoder == 'sinusoidal-concat':
-            return torch.concat((img_vec, self.pos_vec_lookup[round(cur_time / self.pos_unit)]))
+            return torch.concat((img_vec, pos_vec))
         else:
             return img_vec
 
