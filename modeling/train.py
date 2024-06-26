@@ -177,7 +177,7 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
             get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
             loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
-        p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
+        p_config = Path(f'{outdir}/{train_id}.yml')
         export_kfold_config(config_file, configs, p_config)
         return
     # otherwise, do k-fold training, where k = 'num_splits'
