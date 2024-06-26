@@ -29,11 +29,11 @@ def appmetadata() -> AppMetadata:
     # which had default mappings for each model.
     labelMap = [
         "B:bars",
-        "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
-        "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening",
+        "S:slate",
         "I:chyron", "N:chyron", "Y:chyron",
         "C:credits", "R:credits",
-        "E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text" ]
+        "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening",
+        "E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text"]
 
     metadata = AppMetadata(
         name="Scenes-with-text Detection",
