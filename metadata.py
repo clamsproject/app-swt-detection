@@ -6,9 +6,9 @@ from clams.appmetadata import AppMetadata, Input
 labelMapPresets = {'null': None}
 swt_4way_mapping = [
     "B:bars",
-    "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
+    "S:slate",
     "I:chyron", "N:chyron", "Y:chyron",
-    "C:credit", "R:credit",
+    "C:credits", "R:credits",
 ]
 labelMapPresets['swt-v4-4way'] = swt_4way_mapping
 swt_6way_mapping = swt_4way_mapping.copy() \

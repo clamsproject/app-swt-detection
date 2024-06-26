@@ -1,2 +1,2 @@
-clams-python==1.2.1
+clams-python==1.2.5
 numpy
