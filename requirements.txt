@@ -1,4 +1,5 @@
-clams-python==1.2.2
+# Make sure clams-python version is explicitly specified, at least the lower bound
+clams-python==1.2.5
 torch==2.*
 torchvision
 torchmetrics

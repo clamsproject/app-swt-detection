@@ -92,7 +92,6 @@ def appmetadata() -> AppMetadata:
 
     return metadata
 
-
 # DO NOT CHANGE the main block
 if __name__ == '__main__':
     import sys

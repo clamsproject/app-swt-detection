@@ -183,6 +183,14 @@ def transform(classification: dict, postbin: dict):
     return transformed
 
 
+def get_app():
+    """
+    This function effectively creates an instance of the app class, without any arguments passed in, meaning, any
+    external information such as initial app configuration should be set without using function arguments. The easiest
+    way to do this is to set global variables before calling this.
+    """
+    return SwtDetection(log_to_file=False)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -190,7 +198,7 @@ if __name__ == "__main__":
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
     parsed_args = parser.parse_args()
 
-    app = SwtDetection(log_to_file=False)
+    app = get_app()
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
