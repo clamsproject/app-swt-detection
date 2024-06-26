@@ -2,16 +2,15 @@
 Metadata for the Scenes-with-text app.
 
 """
-
-import pathlib
-import sys
-import yaml
+from pathlib import Path
 
 from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
-from app import default_model_storage
+
 from modeling import FRAME_TYPES
+
+default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
 def appmetadata() -> AppMetadata:
@@ -33,7 +32,7 @@ def appmetadata() -> AppMetadata:
         "S:slate", "S-H:slate", "S-C:slate", "S-D:slate", "S-G:slate",
         "W:other_opening", "L:other_opening", "O:other_opening", "M:other_opening",
         "I:chyron", "N:chyron", "Y:chyron",
-        "C:credit", "R:credit",
+        "C:credits", "R:credits",
         "E:other_text", "K:other_text", "G:other_text", "T:other_text", "F:other_text" ]
 
     metadata = AppMetadata(

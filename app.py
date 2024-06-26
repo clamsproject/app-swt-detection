@@ -7,25 +7,23 @@ include slates, chyrons and credits.
 
 """
 
-import time
 import argparse
 import logging
-from pathlib import Path
+import time
+import warnings
 from typing import Union
 
-import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 from mmif.utils import video_document_helper as vdh
 
+from metadata import default_model_storage
 from modeling import classify, stitch, negative_label, FRAME_TYPES
-
-default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
+    def __init__(self, log_to_file: bool = False) -> None:
         super().__init__()
         if log_to_file:
             fh = logging.FileHandler(f'{self.__class__.__name__}.log')
@@ -49,8 +47,7 @@ class SwtDetection(ClamsApp):
 
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
-            warning = Warning('There were no video documents referenced in the MMIF file')
-            classifier_view.metadata.add_warnings(warning)
+            warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
             return mmif
         video = videos[0]
         self.logger.info(f"Processing video {video.id} at {video.location_path()}")
@@ -184,7 +181,6 @@ def transform(classification: dict, postbin: dict):
     for postlabel, prelabels in postbin.items():
         transformed[postlabel] = sum([classification[lbl] for lbl in prelabels])
     return transformed
-        
 
 
 if __name__ == "__main__":
