@@ -69,7 +69,7 @@ def appmetadata() -> AppMetadata:
         description='Minimum number of sampled frames required for a TimeFrame')
     metadata.add_parameter(
         name='modelName', type='string', 
-        default='20240409-091401.convnext_lg',
+        default='20240626-205715.convnext_lg',
         choices=[m.stem for m in available_models],
         description='model name to use for classification')
     metadata.add_parameter(
