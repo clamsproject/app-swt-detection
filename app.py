@@ -38,7 +38,6 @@ class SwtDetection(ClamsApp):
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
         self.configs = parameters
-        self._configure_model()
         self._configure_postbin()
         for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
@@ -72,11 +71,6 @@ class SwtDetection(ClamsApp):
             self._add_stitcher_results_to_view(timeframes, swt_view)
 
         return mmif
-
-    def _configure_model(self):
-        model_name = self.configs["modelName"]
-        self.configs['model_file'] = default_model_storage / f'{model_name}.pt'
-        self.configs['model_config_file'] = default_model_storage / f'{model_name}.yml'
 
     def _configure_postbin(self):
         """
@@ -122,10 +116,9 @@ class SwtDetection(ClamsApp):
 
     def _classify(self, extracted: list, positions: list, total_ms: int):
         t = time.perf_counter()
-        self.logger.info(f"Initiating classifier with {self.configs['model_file']}")
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.configs['logger_name'] = self.logger.name
-        classifier = classify.Classifier(**self.configs)
+        self.logger.info(f"Initiating classifier with {self.configs['modelName']}")
+        classifier = classify.Classifier(default_model_storage / self.configs['modelName'],
+                                         self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         predictions = classifier.classify_images(extracted, positions, total_ms)
