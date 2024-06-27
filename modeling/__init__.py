@@ -1,5 +1,5 @@
-negative_label = 'NEG'
-positive_label = 'POS'
+negative_label = '-'
+positive_label = '+'
 
 # full typology from https://github.com/clamsproject/app-swt-detection/issues/1
 FRAME_TYPES = ["B", "S", "W", "L", "O",

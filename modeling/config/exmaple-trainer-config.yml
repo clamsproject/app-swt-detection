@@ -1,5 +1,5 @@
-num_epochs: 2
-num_splits: 15
+num_epochs: 5
+num_splits: 5
 
 img_enc_name: "convnext_tiny"
 
@@ -39,3 +39,14 @@ pos_enc_dim: 512
 # cpb-aacip-259-4j09zf95    Duration: 01:33:59.57, start: 0.000000, bitrate: 852 kb/s
 # 94 mins = 5640 secs = 5640000 ms
 max_input_length: 5640000
+
+# bins config is used to "prebin" the labels into a smaller set of classes
+#bins:
+#  slate:
+#    - "S"
+#  chyron:
+#    - "I"
+#    - "N"
+#    - "Y"
+#  credit:
+#    - "C"
