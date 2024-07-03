@@ -129,16 +129,19 @@ class FeatureExtractor(object):
             return feature_vec.cpu().numpy()
         else:
             return feature_vec.cpu()
+        
+    def convert_position(self, cur, tot):
+        if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:
+            return cur
+        else:
+            return cur * self.pos_vec_lookup.shape[0] // tot
     
     def encode_position(self, cur_time, tot_time, img_vec):
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
         img_vec = img_vec.squeeze(0)
         if self.pos_encoder != 'none':
-            if cur_time < self.pos_abs_th_front or tot_time - cur_time < self.pos_abs_th_end:
-                pos_lookup_col = cur_time
-            else:
-                pos_lookup_col = cur_time * self.pos_vec_lookup.shape[0] // tot_time
+            pos_lookup_col = self.convert_position(cur_time, tot_time)
             pos_vec = self.pos_vec_lookup[pos_lookup_col] * self.pos_vec_coeff
         if self.pos_encoder == 'fractional':
             pos = cur_time / tot_time
