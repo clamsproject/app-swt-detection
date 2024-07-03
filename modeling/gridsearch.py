@@ -2,16 +2,22 @@ import itertools
 
 import modeling.backbones
 
+# parameter values from the best performing models in v5.0
 num_splits = {1}
 num_epochs = {10}
 num_layers = {4}
 pos_enc_name = {"sinusoidal-concat"}
-max_input_length = {5640000}
 pos_unit = {60000}
 pos_enc_dim = {256}
 dropouts = {0.1}
 # img_enc_name = modeling.backbones.model_map.keys()
 img_enc_name = {'convnext_lg', 'convnext_tiny'}
+
+# new search space for next rounds of positional encoding experiments
+max_input_length = {6000000}
+pos_abs_th_front = {0, 3, 5, 10}
+pos_abs_th_end = {0, 3, 5, 10}
+pos_enc_coeff = {1, 0.75, 0.5, 0.25}
 block_guids_train = [
     ["cpb-aacip-254-75r7szdz"],     # always block this the most "uninteresting" video (88/882 frames annotated)
 ]
@@ -44,7 +50,7 @@ block_guids_valid = [
 # we no longer use bins, keeping this just for historical reference
 # bins = [{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}]
 
-param_keys = ['num_splits', 'num_epochs', 'num_layers', 'pos_enc_name', 'max_input_length', 'pos_unit', 'pos_enc_dim', 'dropouts', 'img_enc_name', 'block_guids_train', 'block_guids_valid']
+param_keys = ['num_splits', 'num_epochs', 'num_layers', 'pos_enc_name', 'input_length', 'pos_unit', 'pos_enc_dim', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_enc_coeff', 'block_guids_train', 'block_guids_valid']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
