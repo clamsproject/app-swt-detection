@@ -40,12 +40,13 @@ pos_enc_dim: 512
 # 94 mins = 5640 secs = 5640000 ms
 input_length: 6000000
 
-bins:
-  slate:
-    - "S"
-  chyron:
-    - "I"
-    - "N"
-    - "Y"
-  credit:
-    - "C"
+# bins config is used to "prebin" the labels into a smaller set of classes
+#bins:
+#  slate:
+#    - "S"
+#  chyron:
+#    - "I"
+#    - "N"
+#    - "Y"
+#  credit:
+#    - "C"

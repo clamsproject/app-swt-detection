@@ -7,25 +7,23 @@ include slates, chyrons and credits.
 
 """
 
-import time
 import argparse
 import logging
-from pathlib import Path
+import time
+import warnings
 from typing import Union
 
-import yaml
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes
 from mmif.utils import video_document_helper as vdh
 
+from metadata import default_model_storage
 from modeling import classify, stitch, negative_label, FRAME_TYPES
-
-default_model_storage = Path(__file__).parent / 'modeling/models'
 
 
 class SwtDetection(ClamsApp):
 
-    def __init__(self, preconf_fname: str = None, log_to_file: bool = False) -> None:
+    def __init__(self, log_to_file: bool = False) -> None:
         super().__init__()
         if log_to_file:
             fh = logging.FileHandler(f'{self.__class__.__name__}.log')
@@ -40,7 +38,6 @@ class SwtDetection(ClamsApp):
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
         self.configs = parameters
-        self._configure_model()
         self._configure_postbin()
         for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
@@ -49,8 +46,7 @@ class SwtDetection(ClamsApp):
 
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
-            warning = Warning('There were no video documents referenced in the MMIF file')
-            classifier_view.metadata.add_warnings(warning)
+            warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
             return mmif
         video = videos[0]
         self.logger.info(f"Processing video {video.id} at {video.location_path()}")
@@ -75,11 +71,6 @@ class SwtDetection(ClamsApp):
             self._add_stitcher_results_to_view(timeframes, swt_view)
 
         return mmif
-
-    def _configure_model(self):
-        model_name = self.configs["modelName"]
-        self.configs['model_file'] = default_model_storage / f'{model_name}.pt'
-        self.configs['model_config_file'] = default_model_storage / f'{model_name}.yml'
 
     def _configure_postbin(self):
         """
@@ -125,10 +116,9 @@ class SwtDetection(ClamsApp):
 
     def _classify(self, extracted: list, positions: list, total_ms: int):
         t = time.perf_counter()
-        self.logger.info(f"Initiating classifier with {self.configs['model_file']}")
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.configs['logger_name'] = self.logger.name
-        classifier = classify.Classifier(**self.configs)
+        self.logger.info(f"Initiating classifier with {self.configs['modelName']}")
+        classifier = classify.Classifier(default_model_storage / self.configs['modelName'],
+                                         self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         predictions = classifier.classify_images(extracted, positions, total_ms)
@@ -184,8 +174,15 @@ def transform(classification: dict, postbin: dict):
     for postlabel, prelabels in postbin.items():
         transformed[postlabel] = sum([classification[lbl] for lbl in prelabels])
     return transformed
-        
 
+
+def get_app():
+    """
+    This function effectively creates an instance of the app class, without any arguments passed in, meaning, any
+    external information such as initial app configuration should be set without using function arguments. The easiest
+    way to do this is to set global variables before calling this.
+    """
+    return SwtDetection(log_to_file=False)
 
 if __name__ == "__main__":
 
@@ -194,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument("--production", action="store_true", help="run gunicorn server")
     parsed_args = parser.parse_args()
 
-    app = SwtDetection(log_to_file=False)
+    app = get_app()
 
     http_app = Restifier(app, port=int(parsed_args.port))
     # for running the application in production mode
