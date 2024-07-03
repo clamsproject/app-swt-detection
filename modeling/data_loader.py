@@ -81,11 +81,14 @@ class FeatureExtractor(object):
         """
         Initializes the FeatureExtractor object.
         
-        @param: model_name = a name of backbone model (e.g. CNN) to use for image vector extraction
-        @param: positional_encoder = type of positional encoder to use, one of 'fractional', sinusoidal-add', 'sinusoidal-concat', when not given use no positional encoding
-        @param: positional_embedding_dim = dimension of positional embedding, only relevant to 'sinusoidal-add' scheme, when not given use 512
-        @param: input_length = maximum length of input video in milliseconds, used for padding positional encoding
-        @param: positional_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
+        @param: img_enc_name = a name of backbone model (e.g. CNN) to use for image vector extraction
+        @param: pos_enc_name = type of positional encoder to use, one of 'fractional', sinusoidal-add', 'sinusoidal-concat', when not given use no positional encoding
+        @param: pos_enc_dim = dimension of positional embedding, only relevant to 'sinusoidal-add' scheme, when not given use 512
+        @param: input_length = length of input video in milliseconds, used for padding positional encoding
+        @param: pos_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
+        @param: pos_abs_th_front = the number of minutes to perform absolute lookup at the front of the video
+        @param: pos_abs_th_end = the number of minutes to perform absolute lookup at the end of the video
+        @param: pos_vec_coeff = a value used to regularize the impact of positional encoding
         """
         if img_enc_name is None:
             raise ValueError("A image vector model must be specified")
