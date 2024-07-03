@@ -198,7 +198,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
                     ordered_pair[i] = exp_id
         scores = macroavgs[ordered_pair[0]][label_to_show]
         data = defaultdict(list)
-        metric_list = list(scores.keys())
+        metric_list = ['Avg Accuracy', 'Avg Precision', 'Avg Recall', 'Avg F1-Score']
         for i, exp_id in enumerate(ordered_pair):
             for metric, score in scores.items():
                 if label_to_show in macroavgs[exp_id]:
@@ -253,7 +253,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
             print(f'{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}')
         else:
             html += f'<p>{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}</p>'
-    
+
     if not interactive_plots:
         html += '</body></html>'
         with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
