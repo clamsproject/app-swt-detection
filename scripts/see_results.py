@@ -69,7 +69,6 @@ def get_configs_and_macroavgs(directory):
             if file.endswith(".yml"):
                 with open(file, "r") as f:
                     data = yaml.safe_load(f)
-                data['bins'] = bins.index(data['bins'])  # set bin config as an index of the bin
                 # delete unnecessary items
                 del data['block_guids_train']
                 del data['block_guids_valid']
