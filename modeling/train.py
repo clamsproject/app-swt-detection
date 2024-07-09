@@ -150,7 +150,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     return train, valid, pre_bin_size
 
 
-def k_fold_train(indir, outdir, config_file, configs, pos_enc_on: bool, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
@@ -163,11 +163,10 @@ def k_fold_train(indir, outdir, config_file, configs, pos_enc_on: bool, train_id
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # get suffix that identifies whether positional encoding is turned on or off (True = on, False = off)
-    if pos_enc_on:
-        pos_enc_suffix = "T"
-    else:
+    if configs['pos_vec_coeff'] == 0:
         pos_enc_suffix = "F"
-        configs['pos_enc_coeff'] = 0
+    else:
+        pos_enc_suffix = "T"
     # if num_splits == 1, validation is empty. single fold training.
     if configs['num_splits'] == 1:
         train_guids = set(guids)
@@ -304,17 +303,11 @@ if __name__ == "__main__":
     if args.config:
         config = load_config(args.config)
         k_fold_train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, pos_enc_on=True,
-            train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
-        k_fold_train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, pos_enc_on=False,
+            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
             train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
     else:
         import modeling.gridsearch
         for config in modeling.gridsearch.configs:
             k_fold_train(
-                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, pos_enc_on=True,
-                train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
-            k_fold_train(
-                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, pos_enc_on=False,
+                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
                 train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
