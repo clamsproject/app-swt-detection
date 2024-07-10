@@ -120,12 +120,11 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
 
     extractor = data_loader.FeatureExtractor(
         img_enc_name=configs.get('img_enc_name'),
-        pos_enc_name=configs.get('pos_enc_name'),
         pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
         pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
-        input_length=configs.get('input_length')
+        pos_length=configs.get('pos_length')
     )
-        
+
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{configs['img_enc_name']}.npy")
@@ -152,7 +151,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
 
 
 def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
-    # need to implement "whitelist"? 
+    # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
     logger.info(f'Using config: {configs}')
@@ -217,7 +216,7 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
 
 
-def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_id: str):
+def export_kfold_config(config_file: str, configs: dict, outfile: str):
     if config_file is None:
         configs_copy = copy.deepcopy(configs)
         with open(outfile, 'w') as fh:
@@ -226,7 +225,7 @@ def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_
         shutil.copyfile(config_file, outfile)
 
 
-def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results, **train_spec):
+def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
     with open(p_results, 'w') as out:
         max_f1_idx = f_scores.index(max(f_scores))
         min_f1_idx = f_scores.index(min(f_scores))
@@ -297,13 +296,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.config:
-        config = load_config(args.config)
-        k_fold_train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+        configs = [load_config(args.config)]
     else:
         import modeling.gridsearch
-        for config in modeling.gridsearch.configs:
-            k_fold_train(
-                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-                train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+        configs = modeling.gridsearch.configs
+    for config in configs:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        backbonename = config['img_enc_name']
+        positionalencoding = "pos" + "F" if config["pos_vec_coeff"] == 0 else "T"
+        k_fold_train(   
+            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
+            train_id='.'.join([timestamp, backbonename, positionalencoding])
+        )

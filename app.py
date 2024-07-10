@@ -116,8 +116,10 @@ class SwtDetection(ClamsApp):
 
     def _classify(self, extracted: list, positions: list, total_ms: int):
         t = time.perf_counter()
-        self.logger.info(f"Initiating classifier with {self.configs['modelName']}")
-        classifier = classify.Classifier(default_model_storage / self.configs['modelName'],
+        model_checkpoint_name = next(default_model_storage.glob(
+            f"*.{self.configs['modelName']}.pos{'T' if self.configs['usePosModel'] else 'F'}.pt"))
+        self.logger.info(f"Initiating classifier with {model_checkpoint_name.stem}")
+        classifier = classify.Classifier(model_checkpoint_name, 
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")

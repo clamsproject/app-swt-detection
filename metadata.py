@@ -69,9 +69,12 @@ def appmetadata() -> AppMetadata:
         description='Minimum number of sampled frames required for a TimeFrame')
     metadata.add_parameter(
         name='modelName', type='string', 
-        default='20240626-205715.convnext_lg',
-        choices=[m.stem for m in available_models],
+        default='convnext_lg',
+        choices=[m.stem.split('.')[1] for m in available_models],
         description='model name to use for classification')
+    metadata.add_parameter(
+        name='usePosModel', type='boolean', default=True,
+        description='Use the model trained with positional features')
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')

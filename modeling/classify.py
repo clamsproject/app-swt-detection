@@ -23,9 +23,8 @@ class Classifier:
         self.training_labels = train.pretraining_binned_label(model_config)
         self.featurizer = data_loader.FeatureExtractor(
             img_enc_name=model_config["img_enc_name"],
-            pos_enc_name=model_config.get("pos_enc_name", None),
             pos_enc_dim=model_config.get("pos_enc_dim", 0),
-            max_input_length=model_config.get("input_length", 0),
+            pos_length=model_config.get("pos_length", 0),
             pos_unit=model_config.get("pos_unit", 0))
         label_count = len(FRAME_TYPES) + 1
         if 'bins' in model_config:
