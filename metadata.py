@@ -70,8 +70,11 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='modelName', type='string', 
         default='convnext_lg',
-        choices=[m.stem[16:] for m in available_models],
+        choices=[m.stem.split('.')[1] for m in available_models],
         description='model name to use for classification')
+    metadata.add_parameter(
+        name='usePosModel', type='boolean', default=True,
+        description='Use the model trained with positional features')
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
