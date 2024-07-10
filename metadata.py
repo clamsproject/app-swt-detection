@@ -70,7 +70,7 @@ def appmetadata() -> AppMetadata:
     metadata.add_parameter(
         name='modelName', type='string', 
         default='convnext_lg',
-        choices=[m.stem.split('.')[1] for m in available_models],
+        choices=list(set(m.stem.split('.')[1] for m in available_models)),
         description='model name to use for classification')
     metadata.add_parameter(
         name='usePosModel', type='boolean', default=True,

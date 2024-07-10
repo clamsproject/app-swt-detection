@@ -116,10 +116,11 @@ class SwtDetection(ClamsApp):
 
     def _classify(self, extracted: list, positions: list, total_ms: int):
         t = time.perf_counter()
-        model_checkpoint_name = next(default_model_storage.glob(
-            f"*.{self.configs['modelName']}.pos{'T' if self.configs['usePosModel'] else 'F'}.pt"))
-        self.logger.info(f"Initiating classifier with {model_checkpoint_name.stem}")
-        classifier = classify.Classifier(model_checkpoint_name, 
+        # in the following, the .glob() should always return only one, otherwise we have a problem
+        model_filestem = next(default_model_storage.glob(
+            f"*.{self.configs['modelName']}.pos{'T' if self.configs['usePosModel'] else 'F'}.pt")).stem
+        self.logger.info(f"Initiating classifier with {model_filestem}")
+        classifier = classify.Classifier(default_model_storage / model_filestem, 
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
@@ -141,8 +142,8 @@ class SwtDetection(ClamsApp):
 
     def _add_stitcher_results_to_view(self, timeframes: list, view: View):
         for tf in timeframes:
-            targets = [target.annotation.id for target in tf.targets]
-            representatives = [p.annotation.id for p in tf.representative_predictions()]
+            targets = [target.annotation.long_id for target in tf.targets]
+            representatives = [p.annotation.long_id for p in tf.representative_predictions()]
             timeframe_annotation = view.new_annotation(AnnotationTypes.TimeFrame)
             timeframe_annotation.add_property("label", tf.label),
             timeframe_annotation.add_property('classification', {tf.label: tf.score})

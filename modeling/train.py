@@ -303,8 +303,8 @@ if __name__ == "__main__":
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
-        positionalencoding = "pos" + "F" if config["pos_vec_coeff"] == 0 else "T"
-        k_fold_train(   
+        positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
+        k_fold_train(
             indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
             train_id='.'.join([timestamp, backbonename, positionalencoding])
         )
