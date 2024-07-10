@@ -1,22 +1,3 @@
-"""Scenes with Text / Frames of Interest Data Ingestion
-
-Extracts features for "frames of interest" in video.
-grabs stills at each listed timeframe, processes them into 
-VGG features, and serializes the data into an output.
-
-INPUT: a video file location and CSV file containing timepoint information+metadata
-for labeled stills
-
-OUTPUT:
- - a numpy matrix, in which each row is a (4096,1) vector representing the features of a 
- particularframe of interest.
-
- - a dictionary, serialized into JSON, representing the following metadata of each still:
-    - timestamp
-    - label 
-    - subtype label
-"""
-
 import argparse
 import csv
 import json
@@ -42,7 +23,10 @@ logger.setLevel(logging.INFO)
 
 
 class AnnotatedImage:
-    """Object representing a single frame and its metadata"""
+    """
+    Object representing a single frame and its metadata
+    """
+    
     def __init__(self, filename: str, label: str, subtype_label: str, mod: bool = False):
         self.image = None
         self.guid, self.total_time, self.curr_time = self.split_name(filename)
@@ -54,20 +38,30 @@ class AnnotatedImage:
 
     @staticmethod
     def split_name(filename:str) -> List[str]:
-        """pulls apart the filename into components
-        @param: filename = filename of the format **GUID_TOTAL_CURR**
-        @returns: a tuple containing all the significant metadata"""
+        """
+        pulls apart the filename into components
+        
+        :param filename: filename of the format **GUID_TOTAL_CURR**
+        :return: a tuple containing all the significant metadata
+        """
         guid, total, curr = filename.split("_")
         curr = curr[:-4]
         return guid, total, curr
 
 
 class FeatureExtractor(object):
-    
+    """
+    Main class that provides feature extraction functionality for a given image. Will create two vectors, one from a 
+    pretrained CNN model and another from a positional encoding matrix. And then returns a single feature vector based
+    on a weighed sum of the two.
+    """
     img_encoder: backbones.ExtractorModel
-    pos_encoder: Optional[str]
+    pos_enc_dim: int
     pos_length: int
-    pos_dim: int
+    pos_unit: int
+    pos_abs_th_front: int
+    pos_abs_th_end: int
+    pos_vec_coeff: float
     sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
 
     def __init__(self, img_enc_name: str,
@@ -80,20 +74,20 @@ class FeatureExtractor(object):
         """
         Initializes the FeatureExtractor object.
 
-        @param: img_enc_name = a name of backbone model (e.g. CNN) to use for image vector extraction
-        @param: pos_enc_dim = dimension of positional embedding, when not given use 512
-        @param: pos_length = "width" of positional encoding matrix, actual number of matrix columns is calculated by 
+        :param img_enc_name: a name of backbone model (e.g. CNN) to use for image vector extraction
+        :param pos_enc_dim: dimension of positional embedding, when not given use 512
+        :param pos_length: "width" of positional encoding matrix, actual number of matrix columns is calculated by 
                              pos_length / pos_unit (with default values, that is 100 minutes)
-        @param: pos_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
-        @param: pos_abs_th_front = the number of "units" to perform absolute lookup at the front of the video
-        @param: pos_abs_th_end = the number of "units" to perform absolute lookup at the end of the video
-        @param: pos_vec_coeff = a value used to regularize the impact of positional encoding
+        :param pos_unit: unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
+        :param pos_abs_th_front: the number of "units" to perform absolute lookup at the front of the video
+        :param pos_abs_th_end: the number of "units" to perform absolute lookup at the end of the video
+        :param pos_vec_coeff: a value used to regularize the impact of positional encoding
         """
         if img_enc_name is None:
             raise ValueError("A image vector model must be specified")
         else:
             self.img_encoder: backbones.ExtractorModel = backbones.model_map[img_enc_name]()
-        self.pos_dim = pos_enc_dim
+        self.pos_enc_dim = pos_enc_dim
         self.pos_unit = pos_unit
         self.pos_abs_th_front = pos_abs_th_front
         self.pos_abs_th_end = pos_abs_th_end
@@ -166,11 +160,13 @@ class TrainingDataPreprocessor(object):
     def process_video(self,
                       vid_path: Union[os.PathLike, str],
                       csv_path: Union[os.PathLike, str],) -> Tuple[Dict, Dict[str, np.ndarray]]:
-        """Extract the features for every annotated timepoint in a video.
+        """
+        Extract the features for every annotated timepoint in a video.
 
-        @param: vid_path = filename of the video
-        @param: csv_path = filename of the csv containing timepoints
-        @returns: A list of metadata dictionaries and associated feature matrix"""
+        :param vid_path: filename of the video
+        :param csv_path: filename of the csv containing timepoints
+        :return: A list of metadata dictionaries and associated feature matrix
+        """
 
         frame_metadata = {'frames': []}
         frame_vecs = defaultdict(list)
@@ -192,11 +188,13 @@ class TrainingDataPreprocessor(object):
 
     def get_stills(self, vid_path: Union[os.PathLike, str],
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
-        """Extract stills at given timepoints from a video file
+        """
+        Extract stills at given timepoints from a video file
 
-        @param: vid_path = the filename of the video
-        @param: timepoints = a list of the video's annotated timepoints
-        @return: a list of Frame objects"""
+        :param vid_path: the filename of the video
+        :param timepoints: a list of the video's annotated timepoints
+        :return: a list of Frame objects
+        """
 
         with open(csv_path, encoding='utf8') as f:
             reader = csv.reader(f)
@@ -245,20 +243,24 @@ def main(args):
         np.save(f"{args.outdir}/{feat_metadata['guid']}.{name}", vectors)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input_file",
-                        help="filepath for the video to be featurized",
+    parser = argparse.ArgumentParser(description="CLI for preprocessing a video file and its associated manual SWT "
+                                                 "annotations to pre-generate (CNN) image feature vectors with manual"
+                                                 "labels attached for later training.")
+    parser.add_argument("-i", "--input-video",
+                        help="filepath for the video to be processed.",
                         required=True)
-    parser.add_argument("-c", "--csv_file",
-                        help="filepath for the csv containing timepoints + labels",
+    parser.add_argument("-c", "--annotation-csv",
+                        help="filepath for the csv containing timepoints + labels.",
                         required=True)
-    parser.add_argument("-m", "--model_name",
+    parser.add_argument("-m", "--model",
                         type=str,
-                        help="name of backbone model to use for feature extraction, when not given use all available models",
+                        help="name of backbone model to use for feature extraction, all available models are used if "
+                             "not specified.",
                         choices=list(backbones.model_map.keys()),
                         default=None)
     parser.add_argument("-o", "--outdir",
-                        help="directory to save output files",
-                        default=Path(__file__).parent / "vectorized")
+                        help="directory to save output files. Output files: 1) json with per-frame metadata including "
+                             "the manual labels, 2) numpy file(s) with backbone model name siffix.",
+                        default=Path(__file__).parent / "extracted")
     clargs = parser.parse_args()
     main(clargs)
