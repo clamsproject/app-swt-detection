@@ -72,7 +72,7 @@ class FeatureExtractor(object):
 
     def __init__(self, img_enc_name: str,
                  pos_enc_dim: int = 512,
-                 pos_length: int = 6000000,  # 100 min, actual number of columns is calculated by pos_length / pos_unit
+                 pos_length: int = 6000000,
                  pos_unit: int = 60000,
                  pos_abs_th_front: int = 3,
                  pos_abs_th_end: int = 10,
@@ -82,10 +82,11 @@ class FeatureExtractor(object):
 
         @param: img_enc_name = a name of backbone model (e.g. CNN) to use for image vector extraction
         @param: pos_enc_dim = dimension of positional embedding, when not given use 512
-        @param: pos_length = length of input video in milliseconds, used for padding positional encoding
+        @param: pos_length = "width" of positional encoding matrix, actual number of matrix columns is calculated by 
+                             pos_length / pos_unit (with default values, that is 100 minutes)
         @param: pos_unit = unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
-        @param: pos_abs_th_front = the number of minutes to perform absolute lookup at the front of the video
-        @param: pos_abs_th_end = the number of minutes to perform absolute lookup at the end of the video
+        @param: pos_abs_th_front = the number of "units" to perform absolute lookup at the front of the video
+        @param: pos_abs_th_end = the number of "units" to perform absolute lookup at the end of the video
         @param: pos_vec_coeff = a value used to regularize the impact of positional encoding
         """
         if img_enc_name is None:

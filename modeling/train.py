@@ -162,11 +162,6 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     f_scores = []
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # get suffix that identifies whether positional encoding is turned on or off (True = on, False = off)
-    if configs['pos_vec_coeff'] == 0:
-        pos_enc_suffix = "F"
-    else:
-        pos_enc_suffix = "T"
     # if num_splits == 1, validation is empty. single fold training.
     if configs['num_splits'] == 1:
         train_guids = set(guids)
@@ -176,12 +171,12 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
         # prepare_datasets seems to work fine with empty validation set
         train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
         train_loader = DataLoader(train, batch_size=len(guids), shuffle=True)
-        export_model_file = f"{outdir}/{train_id}-Pos{pos_enc_suffix}.pt"
+        export_model_file = f"{outdir}/{train_id}.pt"
         model = train_model(
             get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
             loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
-        p_config = Path(f'{outdir}/{train_id}-Pos{pos_enc_suffix}.yml')
+        p_config = Path(f'{outdir}/{train_id}.yml')
         export_kfold_config(config_file, configs, p_config)
         return
     # otherwise, do k-fold training, where k = 'num_splits'
@@ -203,8 +198,8 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
         logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{outdir}/{train_id}-Pos{pos_enc_suffix}.kfold_{i:03d}.csv"
-        export_model_file = f"{outdir}/{train_id}-Pos{pos_enc_suffix}.kfold_{i:03d}.pt"
+        export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
+        export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
         model = train_model(
                 get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
                 loss, device, train_loader, configs)
@@ -214,14 +209,14 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
         p_scores.append(p)
         r_scores.append(r)
         f_scores.append(f)
-    p_config = Path(f'{outdir}/{train_id}-Pos{pos_enc_suffix}.kfold_config.yml')
-    p_results = Path(f'{outdir}/{train_id}-Pos{pos_enc_suffix}.kfold_results.txt')
+    p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
+    p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
     p_results.parent.mkdir(parents=True, exist_ok=True)
     export_kfold_config(config_file, configs, p_config)
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
 
 
-def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_id: str):
+def export_kfold_config(config_file: str, configs: dict, outfile: str):
     if config_file is None:
         configs_copy = copy.deepcopy(configs)
         with open(outfile, 'w') as fh:
@@ -230,7 +225,7 @@ def export_kfold_config(config_file: str, configs: dict, outfile: str):#, train_
         shutil.copyfile(config_file, outfile)
 
 
-def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results, **train_spec):
+def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
     with open(p_results, 'w') as out:
         max_f1_idx = f_scores.index(max(f_scores))
         min_f1_idx = f_scores.index(min(f_scores))
@@ -301,13 +296,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.config:
-        config = load_config(args.config)
-        k_fold_train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+        configs = [load_config(args.config)]
     else:
         import modeling.gridsearch
-        for config in modeling.gridsearch.configs:
-            k_fold_train(
-                indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-                train_id=f'{time.strftime("%Y%m%d-%H%M%S")}.{config["img_enc_name"]}')
+        configs = modeling.gridsearch.configs
+    for config in configs:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        backbonename = config['img_enc_name']
+        positionalencoding = "pos" + "F" if config["pos_vec_coeff"] == 0 else "T"
+        k_fold_train(   
+            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
+            train_id='.'.join([timestamp, backbonename, positionalencoding])
+        )
