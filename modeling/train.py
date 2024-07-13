@@ -6,6 +6,7 @@ import shutil
 import time
 from pathlib import Path
 import copy
+from typing import Union
 
 import numpy as np
 import torch
@@ -213,10 +214,10 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
     p_results.parent.mkdir(parents=True, exist_ok=True)
     export_kfold_config(config_file, configs, p_config)
-    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results, **configs)
+    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results)
 
 
-def export_kfold_config(config_file: str, configs: dict, outfile: str):
+def export_kfold_config(config_file: str, configs: dict, outfile: Union[str, Path]):
     if config_file is None:
         configs_copy = copy.deepcopy(configs)
         with open(outfile, 'w') as fh:
