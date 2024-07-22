@@ -1,11 +1,12 @@
 import argparse
+import copy
 import json
 import logging
+import os
 import platform
 import shutil
 import time
 from pathlib import Path
-import copy
 from typing import Union
 
 import numpy as np
@@ -119,12 +120,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         pre_bin_size = len(FRAME_TYPES) + 1
     train_vimg = valid_vimg = 0
 
-    extractor = data_loader.FeatureExtractor(
-        img_enc_name=configs.get('img_enc_name'),
-        pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
-        pos_enc_dim=configs['pos_enc_dim'] if 'pos_enc_dim' in configs else 512,
-        pos_length=configs.get('pos_length')
-    )
+    extractor = data_loader.FeatureExtractor(**config)
 
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
@@ -152,6 +148,8 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
 
 
 def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+    os.makedirs(outdir, exist_ok=True)
+
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
