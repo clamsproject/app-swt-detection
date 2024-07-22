@@ -11,8 +11,10 @@ import av
 import numpy as np
 import torch
 from tqdm import tqdm
+from PIL import Image
 
-from modeling import backbones
+#from modeling import backbones
+import backbones
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -29,6 +31,7 @@ class AnnotatedImage:
     
     def __init__(self, filename: str, label: str, subtype_label: str, mod: bool = False):
         self.image = None
+        self.filename = filename
         self.guid, self.total_time, self.curr_time = self.split_name(filename)
         self.total_time = int(self.total_time)
         self.curr_time = int(self.curr_time)
@@ -44,7 +47,7 @@ class AnnotatedImage:
         :param filename: filename of the format **GUID_TOTAL_CURR**
         :return: a tuple containing all the significant metadata
         """
-        guid, total, curr = filename.split("_")
+        guid, total, sought, curr = filename.split("_")
         curr = curr[:-4]
         return guid, total, curr
 
@@ -157,21 +160,29 @@ class TrainingDataPreprocessor(object):
                 raise ValueError("No valid model found")
         print(f'using model(s): {[model.img_encoder.name for model in self.models]}')
 
-    def process_video(self,
-                      vid_path: Union[os.PathLike, str],
+    def process_input(self,
+                      input_path: Union[os.PathLike, str],
                       csv_path: Union[os.PathLike, str],) -> Tuple[Dict, Dict[str, np.ndarray]]:
         """
         Extract the features for every annotated timepoint in a video.
 
-        :param vid_path: filename of the video
+        :param input_path: filename of the input
         :param csv_path: filename of the csv containing timepoints
         :return: A list of metadata dictionaries and associated feature matrix
         """
 
+        if os.path.isdir(input_path):
+            is_dir = True
+        else:
+            is_dir = False
+
         frame_metadata = {'frames': []}
         frame_vecs = defaultdict(list)
-        print(f'processing video: {vid_path}')
-        for i, frame in tqdm(enumerate(self.get_stills(vid_path, csv_path))):
+        if is_dir == True:
+            print(f'processing dictionary: {input_path}')
+        else:
+            print(f'processing video: {input_path}')
+        for i, frame in tqdm(enumerate(self.get_stills(input_path, csv_path, is_directory=is_dir))):
             if 'guid' not in frame_metadata:
                 frame_metadata['guid'] = frame.guid
             if 'duration' not in frame_metadata:
@@ -186,13 +197,14 @@ class TrainingDataPreprocessor(object):
         frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
         return frame_metadata, frame_mats
 
-    def get_stills(self, vid_path: Union[os.PathLike, str],
-                   csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
+    def get_stills(self, path: Union[os.PathLike, str],
+                   csv_path: Union[os.PathLike, str], is_directory) -> List[AnnotatedImage]:
         """
         Extract stills at given timepoints from a video file
 
         :param vid_path: the filename of the video
         :param timepoints: a list of the video's annotated timepoints
+        :param is_directory: a boolean value of whether the input is directory or not.
         :return: a list of Frame objects
         """
 
@@ -209,30 +221,39 @@ class TrainingDataPreprocessor(object):
         # this part is doing the same thing as the get_stills function in getstills.py
         # (copied from https://github.com/WGBH-MLA/keystrokelabeler/blob/df4d2bc936fa3a73cdf3004803a0c35c290caf93/getstills.py#L36 )
 
-        container = av.open(vid_path)
-        video_stream = next((s for s in container.streams if s.type == 'video'), None)
-        if video_stream is None:
-            raise Exception("No video stream found in {}".format(vid_path))
-        fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
-        cur_target_frame = 0
-        fcount = 0
-        for frame in container.decode(video=0):
-            if cur_target_frame == len(frame_list):
-                break
-            ftime = int(frame.time * 1000)
-            if ftime == frame_list[cur_target_frame].curr_time:
-                frame_list[cur_target_frame].image = frame.to_image()
-                yield frame_list[cur_target_frame]
-                cur_target_frame += 1
-            fcount += 1
+        if is_directory:
+        # Process as directory of images
+            for frame in frame_list:
+                image_path = os.path.join(path, frame.filename)
+                if os.path.exists(image_path):
+                    frame.image = Image.open(image_path)
+                    yield frame
+
+        else:
+            container = av.open(path)
+            video_stream = next((s for s in container.streams if s.type == 'video'), None)
+            if video_stream is None:
+                raise Exception("No video stream found in {}".format(path))
+            fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
+            cur_target_frame = 0
+            fcount = 0
+            for frame in container.decode(video=0):
+                if cur_target_frame == len(frame_list):
+                    break
+                ftime = int(frame.time * 1000)
+                if ftime == frame_list[cur_target_frame].curr_time:
+                    frame_list[cur_target_frame].image = frame.to_image()
+                    yield frame_list[cur_target_frame]
+                    cur_target_frame += 1
+                fcount += 1
 
 
 def main(args):
-    in_file = args.input_file
-    metadata_file = args.csv_file
-    featurizer = TrainingDataPreprocessor(args.model_name)
+    in_file = args.input_data
+    metadata_file = args.annotation_csv
+    featurizer = TrainingDataPreprocessor(args.model)
     print('extractor ready')
-    feat_metadata, feat_mats = featurizer.process_video(in_file, metadata_file)
+    feat_metadata, feat_mats = featurizer.process_input(in_file, metadata_file)
     print('extraction complete')
 
     if not os.path.exists(args.outdir):
@@ -246,9 +267,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CLI for preprocessing a video file and its associated manual SWT "
                                                  "annotations to pre-generate (CNN) image feature vectors with manual"
                                                  "labels attached for later training.")
-    parser.add_argument("-i", "--input-video",
-                        help="filepath for the video to be processed.",
-                        required=True)
+    parser.add_argument("-i", "--input-data", 
+                        help="filepath for the video file or a directory of extracted images to be processed.", 
+                        required=True) 
     parser.add_argument("-c", "--annotation-csv",
                         help="filepath for the csv containing timepoints + labels.",
                         required=True)
