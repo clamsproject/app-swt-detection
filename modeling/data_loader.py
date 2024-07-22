@@ -13,8 +13,7 @@ import torch
 from tqdm import tqdm
 from PIL import Image
 
-#from modeling import backbones
-import backbones
+from modeling import backbones
 
 logging.basicConfig(
     level=logging.WARNING,
