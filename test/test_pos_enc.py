@@ -15,7 +15,6 @@ class TestPosAbsTh(unittest.TestCase):
     def prep_extractor(th_front, th_end, cols=100):
         extractor = data_loader.FeatureExtractor(
             img_enc_name="mock_model_name",
-            pos_enc_dim=256,
             pos_length=6000000,
             pos_unit=60000,
             pos_abs_th_front=th_front,
