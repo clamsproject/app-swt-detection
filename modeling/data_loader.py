@@ -46,7 +46,12 @@ class AnnotatedImage:
         :param filename: filename of the format **GUID_TOTAL_CURR**
         :return: a tuple containing all the significant metadata
         """
-        guid, total, sought, curr = filename.split("_")
+
+        split_string = filename.split("_")
+        if len(split_string) == 3:
+            guid, total, curr = split_string
+        elif len(split_string) == 4:
+            guid, total, sought, curr = split_string
         curr = curr[:-4]
         return guid, total, curr
 
@@ -240,7 +245,10 @@ class TrainingDataPreprocessor(object):
                 if cur_target_frame == len(frame_list):
                     break
                 ftime = int(frame.time * 1000)
-                if ftime == frame_list[cur_target_frame].curr_time:
+                # Define a tolerance in milliseconds
+                time_tolerance_ms = 50  # Adjust this value as needed
+                # Adjust the condition to check within a tolerance
+                if abs(ftime - frame_list[cur_target_frame].curr_time) <= time_tolerance_ms:
                     frame_list[cur_target_frame].image = frame.to_image()
                     yield frame_list[cur_target_frame]
                     cur_target_frame += 1
