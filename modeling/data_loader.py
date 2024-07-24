@@ -166,45 +166,37 @@ class TrainingDataPreprocessor(object):
 
     def process_input(self,
                       input_path: Union[os.PathLike, str],
-                      csv_path: Union[os.PathLike, str],
-                      outdir):
+                      csv_path: Union[os.PathLike, str]):
         """
         Extract the features for every annotated timepoint in a video.
 
         :param input_path: filename of the input
         :param csv_path: csv file containing timepoint-wise annotations
-        :param outdir: directory to save output files (1 json and many npy files)
         """
         if Path(input_path).is_dir():
             logger.info(f'processing dictionary: {input_path}')
         else:
             logger.info(f'processing video: {input_path}')
 
-        # Group frames by GUID
-        frames_by_guid = defaultdict(list)
+        frame_metadata = {'frames': []}
+        frame_vecs = defaultdict(list)
         for frame in tqdm(self.get_stills(input_path, csv_path)):
-            frames_by_guid[frame.guid].append(frame)
-
-        # Process each group of frames
-        for guid, frames in frames_by_guid.items():
-            frame_metadata = {'guid': guid, 'frames': []}
-            frame_vecs = defaultdict(list)
-
-            for i, frame in enumerate(frames):
-                if 'duration' not in frame_metadata:
-                    frame_metadata['duration'] = frame.total_time
-                frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time" and k != "filename"}
-                frame_dict['vec_idx'] = i
-                frame_metadata["frames"].append(frame_dict)
-                for extractor in self.models:
-                    frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vector(frame.image, as_numpy=True))
-
-            frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
-            # Save metadata and vectors for each group of frames
-            with open(f"{outdir}/{guid}.json", 'w', encoding='utf8') as f:
-                json.dump(frame_metadata, f)
-            for name, vectors in frame_mats.items():
-                np.save(f"{outdir}/{guid}.{name}", vectors)
+            if 'guid' in frame_metadata and frame.guid != frame_metadata['guid']:
+                frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
+                yield frame_metadata, frame_mats
+                frame_metadata = {'frames': []}
+                frame_vecs = defaultdict(list)
+            if 'guid' not in frame_metadata:
+                frame_metadata['guid'] = frame.guid
+            if 'duration' not in frame_metadata:
+                frame_metadata['duration'] = frame.total_time
+            for extractor in self.models:
+                frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vector(frame.image, as_numpy=True))
+            frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time" and k != "filename"}
+            frame_dict['vec_idx'] = len(frame_metadata['frames'])
+            frame_metadata["frames"].append(frame_dict)
+        frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
+        yield frame_metadata, frame_mats
 
     def get_stills(self, media_path: Union[os.PathLike, str],
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
@@ -223,10 +215,11 @@ class TrainingDataPreprocessor(object):
                                          subtype_label=row[3],
                                          mod=row[4].lower() == 'true') for row in reader if row[1] == 'true']
         # CSV rows with mod=True should be discarded (taken as "unseen")
-        # maybe we can throw away the video with the least (88) frames annotation from B2 to make 20/20 split on dense vs sparse annotation
+        # maybe we can throw away the video with the least (88) frames annotation from B2 
+        # to make 20/20 split on dense vs sparse annotation
 
         if Path(media_path).is_dir():
-        # Process as directory of images
+            # Process as directory of images
             for frame in frame_list:
                 image_path = Path(media_path) / frame.filename
                 if image_path.exists():
@@ -266,7 +259,15 @@ def main(args):
 
     Path(args.outdir).mkdir(parents=True, exist_ok=True)
 
-    featurizer.process_input(in_file, metadata_file, args.outdir)
+    for feat_metadata, feat_mats in featurizer.process_input(in_file, metadata_file):
+        logger.info(f'{feat_metadata["guid"]} extraction complete')
+        with open(f"{args.outdir}/{feat_metadata['guid']}.json", 'w', encoding='utf8') as f:
+            json.dump(feat_metadata, f)
+        for name, vectors in feat_mats.items():
+            np.save(f"{args.outdir}/{feat_metadata['guid']}.{name}", vectors)
+    logger.info('all extraction complete')
+
+    # featurizer.process_input(in_file, metadata_file, args.outdir)
     logger.info('extraction complete')
 
 if __name__ == "__main__":
