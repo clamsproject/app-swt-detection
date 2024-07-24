@@ -166,40 +166,48 @@ class TrainingDataPreprocessor(object):
 
     def process_input(self,
                       input_path: Union[os.PathLike, str],
-                      csv_path: Union[os.PathLike, str],) -> Tuple[Dict, Dict[str, np.ndarray]]:
+                      csv_path: Union[os.PathLike, str],
+                      outdir):
         """
         Extract the features for every annotated timepoint in a video.
 
         :param input_path: filename of the input
         :param csv_path: filename of the csv containing timepoints
-        :return: A list of metadata dictionaries and associated feature matrix
         """
-
         if os.path.isdir(input_path):
             is_dir = True
         else:
             is_dir = False
-
-        frame_metadata = {'frames': []}
-        frame_vecs = defaultdict(list)
         if is_dir == True:
             print(f'processing dictionary: {input_path}')
         else:
             print(f'processing video: {input_path}')
-        for i, frame in tqdm(enumerate(self.get_stills(input_path, csv_path, is_directory=is_dir))):
-            if 'guid' not in frame_metadata:
-                frame_metadata['guid'] = frame.guid
-            if 'duration' not in frame_metadata:
-                frame_metadata['duration'] = frame.total_time
 
-            for extractor in self.models:
-                frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vector(frame.image, as_numpy=True))
-            frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time"}
-            frame_dict['vec_idx'] = i
-            frame_metadata["frames"].append(frame_dict)
+        # Group frames by GUID
+        frames_by_guid = defaultdict(list)
+        for frame in tqdm(self.get_stills(input_path, csv_path, is_directory=is_dir)):
+            frames_by_guid[frame.guid].append(frame)
 
-        frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
-        return frame_metadata, frame_mats
+        # Process each group of frames
+        for guid, frames in frames_by_guid.items():
+            frame_metadata = {'guid': guid, 'frames': []}
+            frame_vecs = defaultdict(list)
+
+            for i, frame in enumerate(frames):
+                if 'duration' not in frame_metadata:
+                    frame_metadata['duration'] = frame.total_time
+                frame_dict = {k: v for k, v in frame.__dict__.items() if k != "image" and k != "guid" and k != "total_time" and k != "filename"}
+                frame_dict['vec_idx'] = i
+                frame_metadata["frames"].append(frame_dict)
+                for extractor in self.models:
+                    frame_vecs[extractor.img_encoder.name].append(extractor.get_img_vector(frame.image, as_numpy=True))
+
+            frame_mats = {k: np.vstack(v) for k, v in frame_vecs.items()}
+            # Save metadata and vectors for each group of frames
+            with open(f"{outdir}/{guid}.json", 'w', encoding='utf8') as f:
+                json.dump(frame_metadata, f)
+            for name, vectors in frame_mats.items():
+                np.save(f"{outdir}/{guid}.{name}", vectors)
 
     def get_stills(self, path: Union[os.PathLike, str],
                    csv_path: Union[os.PathLike, str], is_directory) -> List[AnnotatedImage]:
@@ -211,7 +219,6 @@ class TrainingDataPreprocessor(object):
         :param is_directory: a boolean value of whether the input is directory or not.
         :return: a list of Frame objects
         """
-
         with open(csv_path, encoding='utf8') as f:
             reader = csv.reader(f)
             next(reader)
@@ -260,15 +267,12 @@ def main(args):
     metadata_file = args.annotation_csv
     featurizer = TrainingDataPreprocessor(args.model)
     print('extractor ready')
-    feat_metadata, feat_mats = featurizer.process_input(in_file, metadata_file)
-    print('extraction complete')
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir, exist_ok=True)
-    with open(f"{args.outdir}/{feat_metadata['guid']}.json", 'w', encoding='utf8') as f:
-        json.dump(feat_metadata, f)
-    for name, vectors in feat_mats.items():
-        np.save(f"{args.outdir}/{feat_metadata['guid']}.{name}", vectors)
+
+    featurizer.process_input(in_file, metadata_file, args.outdir)
+    print('extraction complete')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CLI for preprocessing a video file and its associated manual SWT "
