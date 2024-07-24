@@ -206,12 +206,12 @@ class TrainingDataPreprocessor(object):
             for name, vectors in frame_mats.items():
                 np.save(f"{outdir}/{guid}.{name}", vectors)
 
-    def get_stills(self, path: Union[os.PathLike, str],
+    def get_stills(self, media_path: Union[os.PathLike, str],
                    csv_path: Union[os.PathLike, str]) -> List[AnnotatedImage]:
         """
         Extract stills at given timepoints from a video file
 
-        :param path: the filename of the video
+        :param media_path: the filename of the video
         :param csv_path: path to the csv file containing timepoint-wise annotations
         :return: a generator of image objects that contains raw Image array and metadata from the annotations
         """
@@ -225,22 +225,25 @@ class TrainingDataPreprocessor(object):
         # CSV rows with mod=True should be discarded (taken as "unseen")
         # maybe we can throw away the video with the least (88) frames annotation from B2 to make 20/20 split on dense vs sparse annotation
 
-        path = Path(path)
-        if path.is_dir():
+        if Path(media_path).is_dir():
         # Process as directory of images
             for frame in frame_list:
-                image_path = path / frame.filename
+                image_path = Path(media_path) / frame.filename
                 if image_path.exists():
-                    frame.image = Image.open(image_path)
+                    # see https://stackoverflow.com/a/30376272
+                    i = Image.open(image_path)
+                    frame.image = i.copy()
                     yield frame
+                else:
+                    logger.warning(f"Image file not found for annotation: {frame.filename}")
 
         else:
             # this part is doing the same thing as the get_stills function in getstills.py
             # (copied from https://github.com/WGBH-MLA/keystrokelabeler/blob/df4d2bc936fa3a73cdf3004803a0c35c290caf93/getstills.py#L36 )
-            container = av.open(path)
+            container = av.open(media_path)
             video_stream = next((s for s in container.streams if s.type == 'video'), None)
             if video_stream is None:
-                raise Exception("No video stream found in {}".format(path))
+                raise Exception("No video stream found in {}".format(media_path))
             fps = video_stream.average_rate.numerator / video_stream.average_rate.denominator
             cur_target_frame = 0
             fcount = 0
