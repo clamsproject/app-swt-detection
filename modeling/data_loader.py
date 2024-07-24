@@ -251,11 +251,8 @@ class TrainingDataPreprocessor(object):
             for frame in container.decode(video=0):
                 if cur_target_frame == len(frame_list):
                     break
-                ftime = int(frame.time * 1000)
-                # Define a tolerance in milliseconds
-                time_tolerance_ms = 50  # Adjust this value as needed
-                # Adjust the condition to check within a tolerance
-                if abs(ftime - frame_list[cur_target_frame].curr_time) <= time_tolerance_ms:
+                ftime = int(fcount/fps * 1000)
+                if ftime == frame_list[cur_target_frame].curr_time:
                     frame_list[cur_target_frame].image = frame.to_image()
                     yield frame_list[cur_target_frame]
                     cur_target_frame += 1
