@@ -30,7 +30,7 @@ class Classifier:
             n_labels=label_count,
             num_layers=model_config["num_layers"],
             dropout=model_config["dropouts"])
-        self.classifier.load_state_dict(torch.load(model_checkpoint))
+        self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
         self.debug = False
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
 
