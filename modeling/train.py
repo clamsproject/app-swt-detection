@@ -299,6 +299,7 @@ if __name__ == "__main__":
     else:
         import modeling.gridsearch
         configs = modeling.gridsearch.configs
+    print(f'training with {str(len(configs))} different configurations')
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
