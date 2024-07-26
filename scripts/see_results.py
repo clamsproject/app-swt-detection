@@ -11,33 +11,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-# list of bins
-# Since the bins parameters are too long to print or show on the plot, they are numbered by index.
-bins = [
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'],
-             'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'credits': ['C']}},
 
-
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'],
-             'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I'], 'credits': ['C']}},
-
-
-    {'pre': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}, 'post': {'chyron': ['chyron']}},
-    {'post': {'chyron': ['I', 'N', 'Y']}},
-]
-
-
-def get_configs_and_macroavgs(directory):
+def get_configs_and_macroavgs(directory, target_labels=[]):
     """
     1. Iterate over all files in the directory
     2. Get configuration information
     3. Calculate the averages of accuracy, precision, recall, and f1-score for each label for each set of k_fold results.
     4. Save and return them in a dictionary format.
     :param directory: where evaluation results files are stored
+    :param target_labels: list of labels to calculate macro average. If empty, all labels are used.
     :return: 1. A dictionary with ids as keys and the configuration dictionary as values : dict[id][parameter]->value
             2. A dictionary with ids as keys and the macro average dictionary as values: dict[id][label][metric]->value
     """
@@ -59,12 +41,14 @@ def get_configs_and_macroavgs(directory):
             if file.endswith(".csv"):
                 i += 1
                 with open(file, "r") as f:
-                   csv_reader = csv.DictReader(f)
-                   for row in csv_reader:
-                       macro_avg[row['Label']]['Accuracy'] += float(row['Accuracy'])
-                       macro_avg[row['Label']]['Precision'] += float(row['Precision'])
-                       macro_avg[row['Label']]['Recall'] += float(row['Recall'])
-                       macro_avg[row['Label']]['F1-Score'] += float(row['F1-Score'])
+                    csv_reader = csv.DictReader(f)
+                    for row in csv_reader:
+                        if target_labels and row['Label'] not in target_labels:
+                            continue
+                        macro_avg[row['Label']]['Accuracy'] += float(row['Accuracy'])
+                        macro_avg[row['Label']]['Precision'] += float(row['Precision'])
+                        macro_avg[row['Label']]['Recall'] += float(row['Recall'])
+                        macro_avg[row['Label']]['F1-Score'] += float(row['F1-Score'])
 
             if file.endswith(".yml"):
                 with open(file, "r") as f:
@@ -76,17 +60,17 @@ def get_configs_and_macroavgs(directory):
                 configs[key] = data
 
         # Calculate macro averages
-        for k, v in macro_avg.items():
-            for metric in v:
-                v[metric] = v[metric]/float(i)
+        for label, scores in macro_avg.items():
+            for prf_metric in scores:
+                scores[prf_metric] = scores[prf_metric] / float(i)
 
         # Add overall macro averages for all labels for each set.
         num_classes = len(macro_avg)
         macro_avg["overall"] = defaultdict(float)
-        for k, v in macro_avg.items():
-            if k != "overall":
-                for metric in v:
-                    macro_avg["overall"][metric] += v[metric]/num_classes
+        for label, scores in macro_avg.items():
+            if label != "overall":
+                for prf_metric in scores:
+                    macro_avg["overall"][prf_metric] += scores[prf_metric] / num_classes
 
         macro_avgs[key] = macro_avg
 
@@ -212,8 +196,8 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
 
         # plot a bar graph
         x = np.arange(len(metric_list))  # the label locations
-        l = len(data) # length of data (it varies by set)
-        width = 1/(l+1)  # the width of the bars
+        l = len(data)  # length of data (it varies by set)
+        width = 1 / (l + 1)  # the width of the bars
         multiplier = 0
 
         if l != 0:
@@ -227,7 +211,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
             # Add some text for labels, title and custom x-axis tick labels, etc.
             ax.set_ylabel('Score')
             ax.set_title(str(label_to_show))
-            ax.set_xticks(x + width*(l-1)/2, metric_list)
+            ax.set_xticks(x + width * (l - 1) / 2, metric_list)
             ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
             ax.set_ylim(0.0, 1.15)
             # Show information on fixed parameters.
@@ -254,6 +238,11 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
             html += f'<p>{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}</p>'
 
     if not interactive_plots:
+        if label_to_show == 'overall':
+            labels = set()
+            for _, scores_by_label in macroavgs.items():
+                labels.update(scores_by_label.keys())
+            label_to_show = '+'.join(sorted(labels))
         html += '</body></html>'
         with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
             f.write(html)
@@ -309,6 +298,12 @@ if __name__ == '__main__':
         help='Pick a label to compare, default is overall, meaning all labels are plotted'
     )
     parser.add_argument(
+        '-L', '--target-labels',
+        default='B S I N Y C R'.split(),
+        nargs='+',
+        help='List of labels to calculate macro average. Default to the "source" labels used in 4-way "post" remapping'
+    )
+    parser.add_argument(
         '-k', '--config-key',
         default=None,
         action='store',
@@ -326,7 +321,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Get necessary dictionaries and lists for processing the comparison.
-    configs, macroavgs = get_configs_and_macroavgs(args.directory)
+    configs, macroavgs = get_configs_and_macroavgs(args.directory, args.target_labels)
     label_list = get_labels(macroavgs)
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
