@@ -66,6 +66,18 @@ class SimpleTimepointsStitcher(ClamsApp):
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps], 
                                                   label_remapper=label_remapper, score_remap_op=max)
         
+        # keep track of the timepoints that have been included as TF targets
+        used_timepoints = set()
+
+        def has_overlapping_timeframes(timepoints: list):
+            """
+            Given a list of TPs, return True if there is a TP in the list that has already been used.
+            """
+            for timepoint in timepoints:
+                if timepoint in used_timepoints:
+                    return True
+            return False
+
         # and stitch the scores
         for label, lidx in label_idx.items():
             if label == sqh.NEG_LABEL:
@@ -83,11 +95,16 @@ class SimpleTimepointsStitcher(ClamsApp):
                 tf_score = tp_scores.mean()
                 rep_idx = tp_scores.argmax() + positive_interval[0]
                 if tf_score > parameters['minTFScore']:
+                    target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
+                    if has_overlapping_timeframes(target_list):
+                        continue
+                    for target in target_list:
+                        used_timepoints.add(target)
                     tf = v.new_annotation(AnnotationTypes.TimeFrame)
                     # tf.add_property('labelset', list(label_remapper.values()))
                     tf.add_property('label', label)
                     tf.add_property('classification', {label: tf_score})
-                    tf.add_property('targets', [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]])
+                    tf.add_property('targets', target_list)
                     tf.add_property('representatives', [tps[rep_idx].id])
         return mmif
 
