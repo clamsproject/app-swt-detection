@@ -1,3 +1,2 @@
-clams-python>=1.2.1
-mmif-python[cv]==1.0.14
+clams-python==1.2.1
 numpy
