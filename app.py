@@ -96,7 +96,7 @@ class SimpleTimepointsStitcher(ClamsApp):
                 rep_idx = tp_scores.argmax() + positive_interval[0]
                 if tf_score > parameters['minTFScore']:
                     target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
-                    if has_overlapping_timeframes(target_list):
+                    if not parameters['allowOverlap'] and has_overlapping_timeframes(target_list):
                         continue
                     for target in target_list:
                         used_timepoints.add(target)
