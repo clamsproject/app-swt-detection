@@ -1,6 +1,7 @@
 import argparse
 import logging
 import math
+from collections import namedtuple
 from typing import Union
 
 from clams import ClamsApp, Restifier
@@ -12,6 +13,7 @@ import metadata
 
 
 class SimpleTimepointsStitcher(ClamsApp):
+    TimeFrame = namedtuple('TimeFrame', ['label', 'tf_score', 'targets', 'representatives'])
 
     def __init__(self):
         super().__init__()
@@ -78,6 +80,7 @@ class SimpleTimepointsStitcher(ClamsApp):
                     return True
             return False
 
+        all_tf = []
         # and stitch the scores
         for label, lidx in label_idx.items():
             if label == sqh.NEG_LABEL:
@@ -96,16 +99,23 @@ class SimpleTimepointsStitcher(ClamsApp):
                 rep_idx = tp_scores.argmax() + positive_interval[0]
                 if tf_score > parameters['minTFScore']:
                     target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
-                    if not parameters['allowOverlap'] and has_overlapping_timeframes(target_list):
-                        continue
-                    for target in target_list:
-                        used_timepoints.add(target)
-                    tf = v.new_annotation(AnnotationTypes.TimeFrame)
-                    # tf.add_property('labelset', list(label_remapper.values()))
-                    tf.add_property('label', label)
-                    tf.add_property('classification', {label: tf_score})
-                    tf.add_property('targets', target_list)
-                    tf.add_property('representatives', [tps[rep_idx].id])
+                    all_tf.append(self.TimeFrame(label=label, tf_score=tf_score, targets=target_list, representatives=[tps[rep_idx].long_id]))
+        if not parameters['allowOverlap']:
+            overlap_filter = []
+            for tf in sorted(all_tf, key=lambda x: x.tf_score):
+                if has_overlapping_timeframes(tf.targets):
+                    continue
+                for target_id in tf.targets:
+                    used_timepoints.add(target_id)
+                overlap_filter.append(tf)
+            all_tf = overlap_filter
+        for tf in sorted(all_tf, key=lambda x: x.targets[0]):
+            v.new_annotation(AnnotationTypes.TimeFrame,
+                             labelset=list(label_remapper.values()),
+                             label=tf.label,
+                             classification={tf.label: tf.tf_score},
+                             targets=tf.targets, 
+                             representatives=tf.representatives)
         return mmif
 
 
