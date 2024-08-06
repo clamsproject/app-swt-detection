@@ -63,8 +63,10 @@ def appmetadata() -> AppMetadata:
         name='labelMapPreset', type='string', default='null',
         choices=list(labelMapPresets.keys()),
         description=f'preset of label mappings. If not `null`, this parameter will override the `labelMap` parameter. '
-                    f'Available presets are:\n{labelMapPresetsMarkdown}'
-    )
+                    f'Available presets are:\n{labelMapPresetsMarkdown}')
+    metadata.add_parameter(
+        name='allowOverlap', type='boolean', default=True,
+        description='Allow overlapping time frames')
     return metadata
 
 
