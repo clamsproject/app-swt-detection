@@ -97,12 +97,12 @@ class SimpleTimepointsStitcher(ClamsApp):
                 tp_scores = scores[lidx][positive_interval[0]:positive_interval[1]]
                 tf_score = tp_scores.mean()
                 rep_idx = tp_scores.argmax() + positive_interval[0]
-                if tf_score > parameters['minTFScore']:
+                if tf_score >= parameters['minTFScore']:
                     target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
                     all_tf.append(self.TimeFrame(label=label, tf_score=tf_score, targets=target_list, representatives=[tps[rep_idx].long_id]))
         if not parameters['allowOverlap']:
             overlap_filter = []
-            for tf in sorted(all_tf, key=lambda x: x.tf_score):
+            for tf in sorted(all_tf, key=lambda x: x.tf_score, reverse=True):
                 if has_overlapping_timeframes(tf.targets):
                     continue
                 for target_id in tf.targets:
