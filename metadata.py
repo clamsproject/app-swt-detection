@@ -50,37 +50,40 @@ def appmetadata() -> AppMetadata:
                         timeUnit='milliseconds', labelset=FRAME_TYPES)
 
     metadata.add_parameter(
-        name='startAt', type='integer', default=0,
-        description='Number of milliseconds into the video to start processing')
+        name='useClassifier', type='boolean', default=True,
+        description='Use the image classifier model to generate TimePoint annotations')
     metadata.add_parameter(
-        name='stopAt', type='integer', default=sys.maxsize,
-        description='Number of milliseconds into the video to stop processing')
-    metadata.add_parameter(
-        name='sampleRate', type='integer', default=1000,
-        description='Milliseconds between sampled frames')
-    metadata.add_parameter(
-        name='minFrameScore', type='number', default=0.01,
-        description='Minimum score for a still frame to be included in a TimeFrame')
-    metadata.add_parameter(
-        name='minTimeframeScore', type='number', default=0.5,
-        description='Minimum score for a TimeFrame')
-    metadata.add_parameter(
-        name='minFrameCount', type='integer', default=2,
-        description='Minimum number of sampled frames required for a TimeFrame')
-    metadata.add_parameter(
-        name='modelName', type='string', 
+        name='modelName', type='string',
         default='convnext_lg',
         choices=list(set(m.stem.split('.')[1] for m in available_models)),
-        description='model name to use for classification')
+        description='model name to use for classification, only applies when `useClassifier=true`')
     metadata.add_parameter(
         name='usePosModel', type='boolean', default=True,
-        description='Use the model trained with positional features')
+        description='Use the model trained with positional features, only applies when `useClassifier=true`')
+    metadata.add_parameter(
+        name='startAt', type='integer', default=0,
+        description='Number of milliseconds into the video to start processing, only applies when `useClassifier=true`')
+    metadata.add_parameter(
+        name='stopAt', type='integer', default=sys.maxsize,
+        description='Number of milliseconds into the video to stop processing, only applies when `useClassifier=true`')
+    metadata.add_parameter(
+        name='sampleRate', type='integer', default=1000,
+        description='Milliseconds between sampled frames, only applies when `useClassifier=true`')
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
     metadata.add_parameter(
+        name='minFrameScore', type='number', default=0.01,
+        description='Minimum score for a still frame to be included in a TimeFrame, only applies when `useStitcher=true`')
+    metadata.add_parameter(
+        name='minTimeframeScore', type='number', default=0.5,
+        description='Minimum score for a TimeFrame, only applies when `useStitcher=true`')
+    metadata.add_parameter(
+        name='minFrameCount', type='integer', default=2,
+        description='Minimum number of sampled frames required for a TimeFrame, only applies when `useStitcher=true`')
+    metadata.add_parameter(
         name='allowOverlap', type='boolean', default=True,
-        description='Allow overlapping time frames')
+        description='Allow overlapping time frames, only applies when `useStitcher=true`')
     metadata.add_parameter(
         # TODO: do we want to use the old default labelMap from the configuration here or
         # do we truly want an empty mapping and use the pass-through, as hinted at in the
@@ -92,7 +95,7 @@ def appmetadata() -> AppMetadata:
             'multiple times. By default, all the input labels are passed as is, including any '
             'negative labels (with default value being no remapping at all). However, when '
             'at least one label is remapped, all the other "unset" labels are discarded as '
-            'a negative label.'))
+            'a negative label. Only applies when `useStitcher=true`'))
 
     return metadata
 
