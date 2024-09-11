@@ -72,7 +72,7 @@ def get_configs_and_macroavgs(directory):
                 # delete unnecessary items
                 data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
                 data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
-                del data['num_splits']
+                del data['split_size']
                 configs[key] = data
 
         # Calculate macro averages

@@ -63,7 +63,6 @@ class FeatureExtractor(object):
     on a weighed sum of the two.
     """
     img_encoder: backbones.ExtractorModel
-    pos_enc_dim: int
     pos_length: int
     pos_unit: int
     pos_abs_th_front: int
@@ -72,7 +71,6 @@ class FeatureExtractor(object):
     sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
 
     def __init__(self, img_enc_name: str,
-                 pos_enc_dim: int = 512,
                  pos_length: int = 6000000,
                  pos_unit: int = 60000,
                  pos_abs_th_front: int = 3,
@@ -82,7 +80,6 @@ class FeatureExtractor(object):
         Initializes the FeatureExtractor object.
 
         :param img_enc_name: a name of backbone model (e.g. CNN) to use for image vector extraction
-        :param pos_enc_dim: dimension of positional embedding, when not given use 512
         :param pos_length: "width" of positional encoding matrix, actual number of matrix columns is calculated by 
                              pos_length / pos_unit (with default values, that is 100 minutes)
         :param pos_unit: unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
@@ -94,7 +91,6 @@ class FeatureExtractor(object):
             raise ValueError("A image vector model must be specified")
         else:
             self.img_encoder: backbones.ExtractorModel = backbones.model_map[img_enc_name]()
-        self.pos_enc_dim = pos_enc_dim
         self.pos_unit = pos_unit
         self.pos_abs_th_front = pos_abs_th_front
         self.pos_abs_th_end = pos_abs_th_end

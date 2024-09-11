@@ -3,7 +3,7 @@ import itertools
 import modeling.backbones
 
 # parameter values from the best performing models in v5.0
-num_splits = {1}
+split_size = {5}
 num_epochs = {10}
 num_layers = {4}
 pos_unit = {60000}
@@ -114,7 +114,7 @@ block_guids_valid = [
 # we no longer use bins, keeping this just for historical reference
 # bins = [{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}]
 
-param_keys = ['num_splits', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'pos_enc_dim', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid']
+param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
