@@ -301,6 +301,10 @@ if __name__ == "__main__":
     else:
         import modeling.gridsearch
         configs = modeling.gridsearch.configs
+
+    import os
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']

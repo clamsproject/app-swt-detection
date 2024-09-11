@@ -70,8 +70,8 @@ def get_configs_and_macroavgs(directory):
                 with open(file, "r") as f:
                     data = yaml.safe_load(f)
                 # delete unnecessary items
-                del data['block_guids_train']
-                del data['block_guids_valid']
+                data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
+                data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
                 del data['num_splits']
                 configs[key] = data
 
