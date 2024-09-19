@@ -13,7 +13,7 @@ import warnings
 from typing import Union
 
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, AnnotationTypes, DocumentTypes
+from mmif import Mmif, View, AnnotationTypes, DocumentTypes, Annotation, Document
 from mmif.utils import video_document_helper as vdh
 
 from metadata import default_model_storage
@@ -33,47 +33,36 @@ class SwtDetection(ClamsApp):
         # using metadata.py
         pass
 
-    def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
+    def _annotate(self, mmif: Mmif, **parameters) -> Mmif:
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
-        self.configs = parameters
+        self.configs = parameters.copy()
         self._configure_postbin()
         for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
-        tp_labels = FRAME_TYPES + [negative_label]
-        tf_labels = list(self.configs['postbin'].keys())
-
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
             warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
             return mmif
         video = videos[0]
         self.logger.info(f"Processing video {video.id} at {video.location_path()}")
-
-        extracted, positions, total_ms = self._extract_images(video)
-
-        swt_view: View = mmif.new_view()
-        self.sign_view(swt_view, self.configs)
-        swt_view.new_contain(
-            AnnotationTypes.TimePoint,
-            document=video.id, timeUnit='milliseconds', labelset=tp_labels)
-
-        predictions = self._classify(extracted, positions, total_ms)
-        self._add_classifier_results_to_view(predictions, swt_view)
-        if self.configs.get('useStitcher'):
-            swt_view.new_contain(
-                AnnotationTypes.TimeFrame,
-                document=video.id, timeUnit='milliseconds', labelset=tf_labels)
-            stitcher = stitch.Stitcher(**self.configs)
-            self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
-            timeframes = stitcher.create_timeframes(predictions)
-            self._add_stitcher_results_to_view(timeframes, swt_view)
-
+        if parameters.get('useClassifier'):
+            self._annotate_timepoints(mmif, **parameters)
+        if parameters.get('useStitcher'):
+            self._annotate_timeframes(mmif, **parameters)
         return mmif
+    
+    @staticmethod
+    def _get_first_videodocument(mmif: Mmif) -> Union[Document, None]:
+        videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
+        if not videos:
+            warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
+            return None
+        return videos[0]
 
     def _configure_postbin(self):
         """
-        Set the postbin property of the the configs configuration dictionary, using the
+        Set the postbin property of the configs configuration dictionary, using the
         label mapping parameters if there are any, otherwise using the label mapping from
         the default configuration file.
 
@@ -93,6 +82,22 @@ class SwtDetection(ClamsApp):
         be a dash.
         """
         self.configs['postbin'] = invert_mappings(self.configs['map'])
+        
+    def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
+        video = self._get_first_videodocument(mmif)
+        if video is None:
+            return mmif
+        tp_labels = FRAME_TYPES + [negative_label]
+        extracted, positions, total_ms = self._extract_images(video)
+
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(
+            AnnotationTypes.TimePoint,
+            document=video.id, timeUnit='milliseconds', labelset=tp_labels)
+
+        predictions = self._classify(extracted, positions, total_ms)
+        self._add_classifier_results_to_view(predictions, v)
 
     def _extract_images(self, video):
         open_video(video)
@@ -139,6 +144,23 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('label', label)
             timepoint_annotation.add_property('classification', classification)
 
+    def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
+        video = self._get_first_videodocument(mmif)
+        if video is None:
+            return mmif
+        tf_labels = list(self.configs['postbin'].keys())
+        predictions = list(mmif.get_annotations(AnnotationTypes.TimePoint))  # or something like this
+        
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(
+            AnnotationTypes.TimeFrame,
+            document=video.id, timeUnit='milliseconds', labelset=tf_labels)
+        stitcher = stitch.Stitcher(**self.configs)
+        self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
+        timeframes = stitcher.create_timeframes(predictions)
+        self._add_stitcher_results_to_view(timeframes, v)
+        
     def _add_stitcher_results_to_view(self, timeframes: list, view: View):
         for tf in timeframes:
             targets = [target.annotation.long_id for target in tf.targets]

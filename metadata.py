@@ -38,7 +38,13 @@ def appmetadata() -> AppMetadata:
 
     metadata = AppMetadata(
         name="Scenes-with-text Detection",
-        description="Detects scenes with text, like slates, chyrons and credits.",
+        description="Detects scenes with text, like slates, chyrons and credits. "
+                    "This app can run in three modes, depending on `useClassifier`, `useStitcher` parameters. "
+                    "When `useClassifier=True`, it runs in the \"TimePoint mode\" and generates TimePoint annotations. "
+                    "When `useStitcher=True`, it runs in the \"TimeFrame mode\" and generates TimeFrame annotations "
+                    "based on existing TimePoint annotations -- if no TimePoint is found, it produces an error. "
+                    "By default, it runs in the 'both' mode and first generates TimePoint annotations and then "
+                    "TimeFrame annotations on them.",
         app_license="Apache 2.0",
         identifier="swt-detection",
         url="https://github.com/clamsproject/app-swt-detection"
