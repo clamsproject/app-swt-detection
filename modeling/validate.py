@@ -11,7 +11,7 @@ from torchmetrics import functional as metrics
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 
 
-def evaluate(model, valid_loader, labelset, export_fname=None):
+def validate(model, valid_loader, labelset, export_fname=None):
     model.eval()
     # valid_loader is currently expected to be a single batch
     vfeats, vlabels = next(iter(valid_loader))
@@ -28,13 +28,13 @@ def evaluate(model, valid_loader, labelset, export_fname=None):
         path = Path(export_fname)
         path.parent.mkdir(parents=True, exist_ok=True)
         export_f = open(path, 'w', encoding='utf8')
-    export_train_result(out=export_f, preds=preds, golds=vlabels,
-                        labelset=labelset, img_enc_name=valid_loader.dataset.img_enc_name)
+    export_validation_results(out=export_f, preds=preds, golds=vlabels,
+                              labelset=labelset, img_enc_name=valid_loader.dataset.img_enc_name)
     logging.info(f"Exported to {export_f.name}")
     return p, r, f
 
 
-def export_train_result(out: IO, preds: Tensor, golds: Tensor, labelset: List[str], img_enc_name: str):
+def export_validation_results(out: IO, preds: Tensor, golds: Tensor, labelset: List[str], img_enc_name: str):
     """Exports the data into a human-readable format.
     """
 
