@@ -1,22 +1,23 @@
 import argparse
+import copy
 import json
 import logging
 import platform
 import shutil
 import time
 from pathlib import Path
-import copy
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 import torch
 import torch.nn as nn
 import yaml
+from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 import modeling
-from modeling import data_loader, FRAME_TYPES
+from modeling import data_loader, gridsearch, FRAME_TYPES
 from modeling.validate import validate
 
 logging.basicConfig(
@@ -30,7 +31,7 @@ RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
-    def __init__(self, backbone_model_name, labels, vectors):
+    def __init__(self, backbone_model_name: str, labels: List[int], vectors: List[Tensor]):
         self.img_enc_name = backbone_model_name
         self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
         self.labels = labels
@@ -167,10 +168,12 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
         
     # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
     if configs['split_size'] >= len(train_all_guids):
-        validation_guids = set([])
+        valid_guids = gridsearch.guids_for_fixed_validation_set
+        train_all_guids = train_all_guids - set(valid_guids)
         # prepare_datasets seems to work fine with empty validation set
-        train, valid = prepare_datasets(indir, train_all_guids, validation_guids, configs)
+        train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs)
         train_loader = DataLoader(train, batch_size=len(train_all_guids), shuffle=True)
+        valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=False)   
         base_fname = f"{outdir}/{train_id}"
         export_model_file = f"{base_fname}.pt"
         model = train_model(
@@ -178,6 +181,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
             loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
         p_config = Path(f'{base_fname}.yml')
+        validate(model, valid_loader, pretraining_binned_label(config), export_fname=f'{base_fname}.csv')
         export_train_config(config_file, configs, p_config)
         return
     # otherwise, do k-fold training with k's size = split_size
