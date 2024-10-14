@@ -18,7 +18,7 @@ pos_abs_th_front = {0, 3, 5, 10}
 pos_abs_th_end = {0, 3, 5, 10}
 pos_vec_coeff = {0, 1, 0.75, 0.5, 0.25}  # when 0, positional encoding is not enabled
 # "challenging images" from later annotation (60 videos, 2024 summer)
-guids_with_challenging_images = [
+guids_with_challenging_images_bm = [
         "cpb-aacip-00a9ed7f2ba",
         "cpb-aacip-0ace30f582d", 
         "cpb-aacip-0ae98c2c4b2",
@@ -39,6 +39,9 @@ guids_with_challenging_images = [
         "cpb-aacip-0fe3e4311e1",
         "cpb-aacip-1a365705273",
         "cpb-aacip-1b295839145",
+]
+
+guids_with_challenging_images_pbd = [
         "cpb-aacip-110-16c2ftdq",
         "cpb-aacip-120-1615dwkg",
         "cpb-aacip-120-203xsm67",
@@ -79,7 +82,11 @@ guids_with_challenging_images = [
         "cpb-aacip-77-81jhbv89",
         "cpb-aacip-83-074tmx7h",
         "cpb-aacip-83-23612txx",
-        ]
+]
+guids_with_challenging_images = guids_with_challenging_images_bm + guids_with_challenging_images_pbd
+# this set contains 40 videos with 15328 (non-transitional) + 557 (transitional) = 15885 frames
+guids_for_fixed_validation_set = guids_with_challenging_images_pbd
+
 block_guids_train = [
     ["cpb-aacip-254-75r7szdz"],     # always block this the most "uninteresting" video (88/882 frames annotated)
     ["cpb-aacip-254-75r7szdz"] + guids_with_challenging_images,  # evaluate the impact of the new challenging images annotation
