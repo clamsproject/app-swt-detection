@@ -119,12 +119,15 @@ block_guids_valid = [
     ] + guids_with_challenging_images,  # also block the challenging images
     # {"cpb-aacip-254-75r7szdz"},  # effectively no block except
 ]
-# we no longer use bins, keeping this just for historical reference
-# bins = [{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}]
+nobinning = {t: t for t in modeling.FRAME_TYPES}
+binning_schemes = {
+    "nobinning": nobinning,
+}
 
-param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid']
+prebin = list(binning_schemes.keys())
+
+param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid', 'prebin']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
     configs.append(dict(zip(param_keys, vals)))
-
