@@ -2,6 +2,7 @@ import argparse
 import base64
 import csv
 import os
+import pathlib
 from collections import defaultdict
 from io import BytesIO
 from itertools import product
@@ -11,28 +12,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
+
 # list of bins
 # Since the bins parameters are too long to print or show on the plot, they are numbered by index.
-bins = [
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'],
-             'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'credits': ['C']}},
 
 
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'],
-             'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I'], 'credits': ['C']}},
-
-
-    {'pre': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}, 'post': {'chyron': ['chyron']}},
-    {'post': {'chyron': ['I', 'N', 'Y']}},
-]
-
-
-def get_configs_and_macroavgs(directory):
+def process_kfold_validation_results(directory):
     """
+    THIS FUNCTION IS OUTDATED since we no longer actively use k-fold validation.
+    Hence, the code is not compatible with new file naming convention and structure for new "fixed" validateion experiment results.
+    
     1. Iterate over all files in the directory
     2. Get configuration information
     3. Calculate the averages of accuracy, precision, recall, and f1-score for each label for each set of k_fold results.
@@ -92,6 +81,36 @@ def get_configs_and_macroavgs(directory):
 
     return configs, macro_avgs
 
+def process_fixed_validation_results(directory):
+    configs = {}
+    scores = {}
+    for csv_fname in pathlib.Path(directory).glob('*.csv'):
+        key = csv_fname.stem
+        timestamp, bb_name, bin_name, posenc = key.split('.')
+        posenc = posenc[-1] == 'T'
+        score = defaultdict(lambda: defaultdict(float))
+        with open(csv_fname, "r") as csv_f:
+            csv_reader = csv.DictReader(csv_f)
+            for row in csv_reader:
+                if 'Confusion Matrix' in row['Model_Name'] or not row:
+                    break
+                score[row['Label']]['Accuracy'] += float(row['Accuracy'])
+                score[row['Label']]['Precision'] += float(row['Precision'])
+                score[row['Label']]['Recall'] += float(row['Recall'])
+                score[row['Label']]['F1-Score'] += float(row['F1-Score'])
+        config_fname = csv_fname.with_suffix('.yml')
+        with open(config_fname, "r") as yml_f:
+            data = yaml.safe_load(yml_f)
+        # delete unnecessary items
+            data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
+            data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
+            del data['split_size']
+            data['prebin'] = bin_name
+            data['posenc'] = posenc
+            configs[key] = data
+        scores[key] = score
+    return configs, scores
+
 
 def get_inverse_configs(configs):
     """
@@ -118,10 +137,12 @@ def get_grid(configs):
         for k, v in value.items():
             grid[k].add(v)
 
+    refined_grid = {}
     for key, val in grid.items():
-        grid[key] = list(val)
+        if len(val) > 1:
+            refined_grid[key] = list(val)
 
-    return grid
+    return refined_grid
 
 
 def get_labels(macroavgs):
@@ -133,6 +154,7 @@ def get_labels(macroavgs):
     labels = set()
     for key, val in macroavgs.items():
         labels.update(val.keys())
+    labels.remove('-')
     return list(labels)
 
 
@@ -162,7 +184,8 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
         for s in list_of_sets[1:]:
             intersection_result = intersection_result.intersection(s)
 
-        pair_list.append(list(intersection_result))
+        if len(intersection_result) > 0:
+            pair_list.append(list(intersection_result))
 
     return pair_list
 
@@ -326,7 +349,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Get necessary dictionaries and lists for processing the comparison.
-    configs, macroavgs = get_configs_and_macroavgs(args.directory)
+    is_kfold = bool(any(pathlib.Path(args.directory).glob("*kfold*.csv")))
+    if is_kfold:
+        configs, macroavgs = process_kfold_validation_results(args.directory)
+    else:
+        configs, macroavgs = process_fixed_validation_results(args.directory)
     label_list = get_labels(macroavgs)
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
