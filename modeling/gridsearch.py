@@ -85,6 +85,7 @@ guids_with_challenging_images_pbd = [
 ]
 guids_with_challenging_images = guids_with_challenging_images_bm + guids_with_challenging_images_pbd
 # this set contains 40 videos with 15328 (non-transitional) + 557 (transitional) = 15885 frames
+# then updated with more annotations 19331 (non-transitional) + 801 (transitional) = 20132 frames
 guids_for_fixed_validation_set = guids_with_challenging_images_pbd
 
 block_guids_train = [
