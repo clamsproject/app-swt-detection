@@ -218,7 +218,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label
     :param configs:
     :param grid:
     :param var_to_compare:
-    :param label_to_show: User choice of label (including overall) to show scores in the graph. 
+    :param target_label: User choice of label (including overall) to show scores in the graph. 
     """
 
     # Form parameter to color dictionary for consistency in color across all pairs
@@ -238,17 +238,21 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label
             for exp_id in pair:
                 if configs[exp_id][var_to_compare] == value:
                     ordered_pair[i] = exp_id
-        scores = macroavgs[ordered_pair[0]][label_to_show]
+        for _, labels in macroavgs.items():
+            for label in labels.keys():
+                if label.startswith(target_label):
+                    target_label = label
+        scores = macroavgs[ordered_pair[0]][target_label]
         data = defaultdict(list)
         metric_list = ['Avg Accuracy', 'Avg Precision', 'Avg Recall', 'Avg F1-Score']
         for i, exp_id in enumerate(ordered_pair):
             for metric, score in scores.items():
-                if label_to_show in macroavgs[exp_id]:
-                    data[exp_id].append(macroavgs[exp_id][label_to_show][metric])
+                if target_label in macroavgs[exp_id]:
+                    data[exp_id].append(macroavgs[exp_id][target_label][metric])
                     if 'preci' in metric.lower():
-                        all_ps[i].append(macroavgs[exp_id][label_to_show][metric])
+                        all_ps[i].append(macroavgs[exp_id][target_label][metric])
                     if 'recal' in metric.lower():
-                        all_rs[i].append(macroavgs[exp_id][label_to_show][metric])
+                        all_rs[i].append(macroavgs[exp_id][target_label][metric])
                 else:
                     data[exp_id].append(0.0)
         data = dict(data)
@@ -269,7 +273,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label
 
         # Add some text for labels, title and custom x-axis tick labels, etc.
         ax.set_ylabel('Score')
-        ax.set_title(str(label_to_show))
+        ax.set_title(str(target_label))
         ax.set_xticks(x + width*(len(data)-1)/2, metric_list)
         ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
         ax.set_ylim(0.0, 1.15)
@@ -298,7 +302,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label
 
     if not interactive_plots:
         html += '</body></html>'
-        with open(f'results-comparison-{var_to_compare}-{label_to_show}.html', 'w') as f:
+        with open(f'results-comparison-{var_to_compare}-{target_label}.html', 'w') as f:
             f.write(html)
 
 
