@@ -59,10 +59,7 @@ def process_kfold_validation_results(directory):
                 with open(file, "r") as f:
                     data = yaml.safe_load(f)
                 # delete unnecessary items
-                data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
-                data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
-                del data['split_size']
-                configs[key] = data
+                configs[key] = clean_config(data)
 
         # Calculate macro averages
         for k, v in macro_avg.items():
@@ -80,6 +77,29 @@ def process_kfold_validation_results(directory):
         macro_avgs[key] = macro_avg
 
     return configs, macro_avgs
+
+
+def clean_config(config, prebin_name=None):
+    """
+    Clean up the configuration found in a yml file with more human friendly names. 
+    """
+    config['block_guids_train'] = f'{len(config["block_guids_train"])}@{hash(str(sorted(config["block_guids_train"])))}'
+    config['block_guids_valid'] = f'{len(config["block_guids_valid"])}@{hash(str(sorted(config["block_guids_valid"])))}'
+    
+    # a short string name of the prebin can be passed as an argument or can be generated from dictionary in the config 
+    if prebin_name:
+        config['prebin'] = prebin_name
+    elif 'prebin' in config:
+        config['prebin'] = f'{len(config["prebin"])}way@{hash(str(config["prebin"]))}'
+    else:
+        config['prebin'] = 'None'
+        
+    config['posenc'] = config['pos_vec_coeff'] > 0
+    del config['pos_vec_coeff']
+    
+    del config['split_size']
+    return config
+
 
 def process_fixed_validation_results(directory):
     configs = {}
@@ -100,14 +120,10 @@ def process_fixed_validation_results(directory):
                 score[row['Label']]['F1-Score'] += float(row['F1-Score'])
         config_fname = csv_fname.with_suffix('.yml')
         with open(config_fname, "r") as yml_f:
-            data = yaml.safe_load(yml_f)
+            config = yaml.safe_load(yml_f)
+            config = clean_config(config, bin_name)
         # delete unnecessary items
-            data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
-            data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
-            del data['split_size']
-            data['prebin'] = bin_name
-            data['posenc'] = posenc
-            configs[key] = data
+            configs[key] = config
         scores[key] = score
     return configs, scores
 
@@ -190,19 +206,19 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     return pair_list
 
 
-def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show, variable_values, interactive_plots=True):
+def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label_to_show, variable_values, interactive_plots=True):
     """
     For list of pairs got from get_pairs_to_compare function, compare each pair by plotting bar graphs for given label.
     :param list_of_pairs: got from get_pairs_to_compare function for given variable
     :param macroavgs:
     :param configs:
     :param grid:
-    :param variable:
-    :param label_to_show: User choice of label (including overall) to show scores in the graph.
+    :param var_to_compare:
+    :param label_to_show: User choice of label (including overall) to show scores in the graph. 
     """
 
     # Form parameter to color dictionary for consistency in color across all pairs
-    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(grid[variable]))
+    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(grid[var_to_compare]))
 
     html = '<html><head><title>Comparison of pairs</title></head><body>'
 
@@ -216,7 +232,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
         ordered_pair = [None] * len(variable_values)
         for i, value in enumerate(variable_values):
             for exp_id in pair:
-                if configs[exp_id][variable] == value:
+                if configs[exp_id][var_to_compare] == value:
                     ordered_pair[i] = exp_id
         scores = macroavgs[ordered_pair[0]][label_to_show]
         data = defaultdict(list)
@@ -233,42 +249,42 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_sh
                     data[exp_id].append(0.0)
         data = dict(data)
 
+        if len(data) == 0:
+            continue
         # plot a bar graph
         x = np.arange(len(metric_list))  # the label locations
-        l = len(data) # length of data (it varies by set)
-        width = 1/(l+1)  # the width of the bars
+        width = 1/(len(data)+1)  # the width of the bars
         multiplier = 0
 
-        if l != 0:
-            for exp_id, scores in data.items():
-                id_variable = str(variable) + ": " + str(configs[exp_id][variable])
-                offset = width * multiplier
-                rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[exp_id][variable])])
-                ax.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
-                multiplier += 1
+        for exp_id, scores in data.items():
+            id_variable = str(var_to_compare) + ": " + str(configs[exp_id][var_to_compare])
+            offset = width * multiplier
+            rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[exp_id][var_to_compare])])
+            ax.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
+            multiplier += 1
 
-            # Add some text for labels, title and custom x-axis tick labels, etc.
-            ax.set_ylabel('Score')
-            ax.set_title(str(label_to_show))
-            ax.set_xticks(x + width*(l-1)/2, metric_list)
-            ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
-            ax.set_ylim(0.0, 1.15)
-            # Show information on fixed parameters.
-            configs[exp_id].pop(variable)
-            string_configs = ""
-            for k, v in configs[exp_id].items():
-                string_configs += str(k) + ": " + str(v) + "\n"
-            ax.text(0.99, 0.97, string_configs,
-                    verticalalignment='bottom', horizontalalignment='right',
-                    transform=ax.transAxes,
-                    color='green', fontsize='small')
+        # Add some text for labels, title and custom x-axis tick labels, etc.
+        ax.set_ylabel('Score')
+        ax.set_title(str(label_to_show))
+        ax.set_xticks(x + width*(len(data)-1)/2, metric_list)
+        ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
+        ax.set_ylim(0.0, 1.15)
+        # Show information on fixed parameters.
+        configs[exp_id].pop(var_to_compare)
+        string_configs = f'{exp_id}\n'
+        for k, v in configs[exp_id].items():
+            string_configs += str(k) + ": " + str(v) + "\n"
+        ax.text(0.99, 0.97, string_configs,
+                verticalalignment='bottom', horizontalalignment='right',
+                transform=ax.transAxes,
+                color='green', fontsize='small')
 
-            if interactive_plots:
-                plt.show()
-            else:
-                temp_io_stream = BytesIO()
-                fig.savefig(temp_io_stream, format='png', bbox_inches='tight')
-                html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
+        if interactive_plots:
+            plt.show()
+        else:
+            temp_io_stream = BytesIO()
+            fig.savefig(temp_io_stream, format='png', bbox_inches='tight')
+            html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
         plt.cla()
     for i, var_val in enumerate(variable_values):
         if interactive_plots:
