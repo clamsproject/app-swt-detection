@@ -101,7 +101,7 @@ def clean_config(config, prebin_name=None):
     return config
 
 
-def process_fixed_validation_results(directory):
+def process_fixed_validation_results(directory, include_negative_label=False):
     configs = {}
     scores = {}
     for csv_fname in pathlib.Path(directory).glob('*.csv'):
@@ -114,6 +114,9 @@ def process_fixed_validation_results(directory):
             for row in csv_reader:
                 if 'Confusion Matrix' in row['Model_Name'] or not row:
                     break
+                # ignore negative class
+                if row['Label'] == '-' and not include_negative_label:
+                    continue
                 score[row['Label']]['Accuracy'] += float(row['Accuracy'])
                 score[row['Label']]['Precision'] += float(row['Precision'])
                 score[row['Label']]['Recall'] += float(row['Recall'])
@@ -170,7 +173,8 @@ def get_labels(macroavgs):
     labels = set()
     for key, val in macroavgs.items():
         labels.update(val.keys())
-    labels.remove('-')
+    if '-' in labels:
+        labels.remove('-')
     return list(labels)
 
 
@@ -294,7 +298,7 @@ def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label
 
     if not interactive_plots:
         html += '</body></html>'
-        with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
+        with open(f'results-comparison-{var_to_compare}-{label_to_show}.html', 'w') as f:
             f.write(html)
 
 
@@ -361,6 +365,11 @@ if __name__ == '__main__':
         action='store_true',
         help='Flag to show plots in interactive mode. If not set, the program will save all the plots in a html file.'
     )
+    parser.add_argument(
+        '-n', '--negativelabel', 
+        action='store_true',
+        help='Flag to include the negative label when averaging scores.'
+    )
 
     args = parser.parse_args()
 
@@ -369,7 +378,7 @@ if __name__ == '__main__':
     if is_kfold:
         configs, macroavgs = process_kfold_validation_results(args.directory)
     else:
-        configs, macroavgs = process_fixed_validation_results(args.directory)
+        configs, macroavgs = process_fixed_validation_results(args.directory, args.negativelabel)
     label_list = get_labels(macroavgs)
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
