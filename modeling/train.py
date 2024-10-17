@@ -56,12 +56,12 @@ def get_guids(data_dir):
 
 
 def pretraining_bin(label, specs):
-    if specs is None or "bins" not in specs:
+    if specs is None or "prebin" not in specs:
         return int_encode(label)
-    for i, ptbin in enumerate(specs["bins"].values()):
+    for i, ptbin in enumerate(specs["prebin"].values()):
         if label and label in ptbin:
             return i
-    return len(specs["bins"].keys())
+    return len(specs["prebin"].keys())
 
 
 def load_config(config):
@@ -161,11 +161,12 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # the number of labels (after "pre"-binning)
-    if configs and 'bins' in configs:
-        num_labels = len(configs['bins'].keys()) + 1
+    if configs and 'prebin' in configs:
+        num_labels = len(configs['prebin'].keys()) + 1
     else:
         num_labels = len(FRAME_TYPES) + 1
-        
+    labelset = get_prebinned_labelset(configs)
+
     # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
     if configs['split_size'] >= len(train_all_guids):
         valid_guids = gridsearch.guids_for_fixed_validation_set
@@ -181,7 +182,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
             loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
         p_config = Path(f'{base_fname}.yml')
-        validate(model, valid_loader, pretraining_binned_label(config), export_fname=f'{base_fname}.csv')
+        validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
         export_train_config(config_file, configs, p_config)
         return
     # otherwise, do k-fold training with k's size = split_size
@@ -206,7 +207,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
                 get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
                 loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
-        p, r, f = validate(model, valid_loader, pretraining_binned_label(config), export_fname=export_csv_file)
+        p, r, f = validate(model, valid_loader, labelset, export_fname=export_csv_file)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
@@ -247,9 +248,9 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
         out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def pretraining_binned_label(config):
-    if 'bins' in config:
-        return list(config["bins"].keys()) + [modeling.negative_label]
+def get_prebinned_labelset(config):
+    if 'prebin' in config:
+        return list(config["prebin"].keys()) + [modeling.negative_label]
     return modeling.FRAME_TYPES + [modeling.negative_label]
 
 
@@ -309,8 +310,13 @@ if __name__ == "__main__":
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
+        if isinstance(config['prebin'], str):
+            prebin_name = config['prebin']
+            config['prebin'] = gridsearch.binning_schemes[prebin_name]
+        else:
+            prebin_name = ''
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
         train(
             indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id='.'.join([timestamp, backbonename, positionalencoding])
+            train_id='.'.join(filter(None, [timestamp, backbonename, prebin_name, positionalencoding]))
         )
