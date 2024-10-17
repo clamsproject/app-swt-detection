@@ -6,15 +6,10 @@ import pathlib
 from collections import defaultdict
 from io import BytesIO
 from itertools import product
-from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-
-
-# list of bins
-# Since the bins parameters are too long to print or show on the plot, they are numbered by index.
 
 
 def process_kfold_validation_results(directory):
@@ -178,6 +173,64 @@ def get_labels(macroavgs):
     return list(labels)
 
 
+def plot_bar_graphs(axis, exp_group, score_dict, config_dict, target_label, target_var, var_vals, colorscheme):
+    # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
+    # and plot a bar graph
+    # re-order the pair to show the variable values in the same order as in the grid
+    ordered_group = [None] * len(var_vals)
+    for i, value in enumerate(var_vals):
+        for exp_id in exp_group:
+            if config_dict[exp_id][target_var] == value:
+                ordered_group[i] = exp_id
+    metrics = score_dict[ordered_group[0]]["Overall"].keys()
+    data = defaultdict(list)
+    metric_list = [f'Avg {m}' for m in metrics]
+    for i, exp_id in enumerate(ordered_group):
+        label_found = False
+        for l in score_dict[exp_id].keys():
+            if l.startswith(target_label):
+                for metric in metrics:
+                    data[exp_id].append(score_dict[exp_id][l][metric])
+                label_found = True
+                break
+        if not label_found:
+            data[exp_id].append(0.0)
+    data = dict(data)
+
+    if len(data) == 0:
+        return None, None
+    # plot a bar graph
+    x = np.arange(len(metric_list))  # the label locations
+    width = 1/(len(data)+1)  # the width of the bars
+    multiplier = 0
+
+    for exp_id, scores in data.items():
+        if len(scores) == 1 and scores[0] == 0.0:
+            continue
+        id_variable = str(target_var) + ": " + str(config_dict[exp_id][target_var])
+        offset = width * multiplier
+        rects = axis.bar(x + offset, scores, width, label=id_variable, color=colorscheme[str(config_dict[exp_id][target_var])])
+        axis.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
+        multiplier += 1
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    axis.set_ylabel('Score')
+    axis.set_title(str(target_label))
+    axis.set_xticks(x + width * (len(data) - 1) / 2, metric_list)
+    axis.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
+    axis.set_ylim(0.0, 1.15)
+    # Show information on fixed parameters.
+    string_configs = f'{exp_id}\n'
+    for k, v in config_dict[exp_id].items():
+        if k != target_var:
+            string_configs += str(k) + ": " + str(v) + "\n"
+    axis.text(0.99, 0.97, string_configs,
+              verticalalignment='bottom', horizontalalignment='right',
+              transform=axis.transAxes,
+              color='green', fontsize='small')
+    return axis
+
+
 def get_pairs_to_compare(grid, inverse_configs, variable):
     """
     Get a list of pairs(lists of IDs) where all configurations are the same except for one given variable.
@@ -193,7 +246,7 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     # Form all possible configurations of parameters from grid and store it as a list of dictionary form.
     conf_dicts = [dict(zip(grid.keys(), config)) for config in list(product(*grid.values()))]
 
-    # Get all the possible lists of pairs(IDs) using inverse_configs dictionary and intersection of them for every configuration.
+    # Get all the possible lists of exps using inverse_configs dictionary and intersection of them for every config
     pair_list = []
     for conf_dict in conf_dicts:
         list_of_sets = [inverse_configs[param_name][val] for param_name, val in conf_dict.items()]
@@ -210,99 +263,50 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     return pair_list
 
 
-def compare_pairs(list_of_pairs, macroavgs, configs, grid, var_to_compare, label_to_show, variable_values, interactive_plots=True):
+def compare_pairs(exp_groups, scores, conf_grid, configs, target_lbl, target_var, var_vals, interactive_plots=True):
     """
     For list of pairs got from get_pairs_to_compare function, compare each pair by plotting bar graphs for given label.
-    :param list_of_pairs: got from get_pairs_to_compare function for given variable
-    :param macroavgs:
-    :param configs:
-    :param grid:
-    :param var_to_compare:
-    :param target_label: User choice of label (including overall) to show scores in the graph. 
+    :param exp_groups: got from get_pairs_to_compare function for given variable
+    :param scores: PRF scores from each experiment configuration
+    :param conf_grid: grid of configurations used in this experiment
+    :param configs: actual configurations used in this experiment
+    :param target_lbl: User choice of label (including overall) to show scores in the graph. 
+                       a special value `all` will generate plots for all "normalized" labels (put them horizontally)
+    :param target_var: configuration key name to use as a variable to compare, all other keys are fixed.
+    :param var_vals: list of values for the variable to compare
+    :param interactive_plots: flag to show plots in realtime. If false, the program will save all the plots in a html
     """
 
     # Form parameter to color dictionary for consistency in color across all pairs
-    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(grid[var_to_compare]))
+    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(conf_grid[target_var]))
 
     html = '<html><head><title>Comparison of pairs</title></head><body>'
 
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
-    fig, ax = plt.subplots()
-    all_ps = [[] for _ in range(len(list_of_pairs[0]))]
-    all_rs = [[] for _ in range(len(list_of_pairs[0]))]
-    for pair in list_of_pairs:
-        # re-order the pair to show the variable values in the same order as in the grid
-        ordered_pair = [None] * len(variable_values)
-        for i, value in enumerate(variable_values):
-            for exp_id in pair:
-                if configs[exp_id][var_to_compare] == value:
-                    ordered_pair[i] = exp_id
-        for _, labels in macroavgs.items():
-            for label in labels.keys():
-                if label.startswith(target_label):
-                    target_label = label
-        scores = macroavgs[ordered_pair[0]][target_label]
-        data = defaultdict(list)
-        metric_list = ['Avg Accuracy', 'Avg Precision', 'Avg Recall', 'Avg F1-Score']
-        for i, exp_id in enumerate(ordered_pair):
-            for metric, score in scores.items():
-                if target_label in macroavgs[exp_id]:
-                    data[exp_id].append(macroavgs[exp_id][target_label][metric])
-                    if 'preci' in metric.lower():
-                        all_ps[i].append(macroavgs[exp_id][target_label][metric])
-                    if 'recal' in metric.lower():
-                        all_rs[i].append(macroavgs[exp_id][target_label][metric])
-                else:
-                    data[exp_id].append(0.0)
-        data = dict(data)
-
-        if len(data) == 0:
-            continue
-        # plot a bar graph
-        x = np.arange(len(metric_list))  # the label locations
-        width = 1/(len(data)+1)  # the width of the bars
-        multiplier = 0
-
-        for exp_id, scores in data.items():
-            id_variable = str(var_to_compare) + ": " + str(configs[exp_id][var_to_compare])
-            offset = width * multiplier
-            rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[exp_id][var_to_compare])])
-            ax.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
-            multiplier += 1
-
-        # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('Score')
-        ax.set_title(str(target_label))
-        ax.set_xticks(x + width*(len(data)-1)/2, metric_list)
-        ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
-        ax.set_ylim(0.0, 1.15)
-        # Show information on fixed parameters.
-        configs[exp_id].pop(var_to_compare)
-        string_configs = f'{exp_id}\n'
-        for k, v in configs[exp_id].items():
-            string_configs += str(k) + ": " + str(v) + "\n"
-        ax.text(0.99, 0.97, string_configs,
-                verticalalignment='bottom', horizontalalignment='right',
-                transform=ax.transAxes,
-                color='green', fontsize='small')
+    for group in exp_groups:
+        if target_lbl == 'all':
+            interested_lbls = "Ba Sl Ch Cr".split()
+            fig, axes = plt.subplots(1, len(interested_lbls), figsize=(45, 5), sharex=True, sharey=True)
+            plt.subplots_adjust(wspace=1)
+            for ax, lbl in zip(np.ravel(axes), interested_lbls):
+                plot_bar_graphs(ax, group, scores, configs, lbl, target_var, var_vals, param_to_color)
+        else:
+            fig, ax = plt.subplots()
+            plot_bar_graphs(ax, group, scores, configs, target_lbl, target_var, var_vals, param_to_color)
 
         if interactive_plots:
             plt.show()
         else:
             temp_io_stream = BytesIO()
             fig.savefig(temp_io_stream, format='png', bbox_inches='tight')
-            html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
+            htmlized = f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
+            html += htmlized
         plt.cla()
-    for i, var_val in enumerate(variable_values):
-        if interactive_plots:
-            print(f'{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}')
-        else:
-            html += f'<p>{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}</p>'
 
     if not interactive_plots:
         html += '</body></html>'
-        with open(f'results-comparison-{var_to_compare}-{target_label}.html', 'w') as f:
+        with open(f'results-comparison-{target_var}-{target_lbl}.html', 'w') as f:
             f.write(html)
 
 
@@ -384,6 +388,7 @@ if __name__ == '__main__':
     else:
         configs, macroavgs = process_fixed_validation_results(args.directory, args.negativelabel)
     label_list = get_labels(macroavgs)
+    label_list.append('all')
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
     if args.config_key is None:
@@ -402,4 +407,5 @@ if __name__ == '__main__':
     variable_values = sorted(grid[choice_variable].copy())
     list_of_pairs = get_pairs_to_compare(grid.copy(), inverse_configs, choice_variable)
     # Show the comparison results of pairs in bar graphs
-    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label, variable_values, interactive_plots=args.interactive_plots)
+    compare_pairs(list_of_pairs, macroavgs, grid, configs.copy(), choice_label, choice_variable, variable_values,
+                  interactive_plots=args.interactive_plots)
