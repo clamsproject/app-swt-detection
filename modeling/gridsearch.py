@@ -185,7 +185,9 @@ binning_schemes = {
     }
 }
 
-prebin = list(binning_schemes.keys())
+# for single binning configuration, just use the binning dict
+# for multiple binning configurations (for experimental reasons), use the binning scheme names (str)
+prebin = [nobining]
 
 param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid', 'prebin']
 l = locals()
