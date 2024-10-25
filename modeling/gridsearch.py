@@ -119,12 +119,78 @@ block_guids_valid = [
     ] + guids_with_challenging_images,  # also block the challenging images
     # {"cpb-aacip-254-75r7szdz"},  # effectively no block except
 ]
-# we no longer use bins, keeping this just for historical reference
-# bins = [{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}]
+nobinning = {t: t for t in modeling.FRAME_TYPES}
 
-param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid']
+label_bins = {
+    "Bars": ["B"],
+    "Chyron-other": ["Y", "U", "K"],
+    "Chyron-person": ["I", "N"],
+    "Credits": ["C", "R"],
+    "Main": ["M"],
+    "Opening": ["O", "W"],
+    "Slate": ["S", "S:H", "S:C", "S:D", "S:B", "S:G"],
+    "Other-text-sm": ["L", "G", "F", "E", "T"],
+    "Other-text-md": ["M", "O", "W", "L", "G", "F", "E", "T"],
+    "Other-text-lg": ["M", "O", "W", "Y", "U", "K", "L", "G", "F", "E", "T"],
+}
+
+binning_schemes = {
+    "nobinning": nobinning,
+    
+    "strict": {
+        "Bars": label_bins["Bars"],
+        "Slate": label_bins["Slate"],
+        "Chyron-person": label_bins["Chyron-person"],
+        "Credits": label_bins["Credits"],
+        "Main": label_bins["Main"],
+        "Opening": label_bins["Opening"],
+        "Chyron-other": label_bins["Chyron-other"],
+        "Other-text": label_bins["Other-text-sm"],
+    },
+
+    "simple": {
+        "Bars": label_bins["Bars"],
+        "Slate": label_bins["Slate"],
+        "Chyron-person": label_bins["Chyron-person"],
+        "Credits": label_bins["Credits"],
+        "Other-text": label_bins["Other-text-lg"],
+    },
+
+    "relaxed": {
+        "Bars": label_bins["Bars"],
+        "Slate": label_bins["Slate"],
+        "Chyron": label_bins["Chyron-other"] + label_bins["Chyron-person"],
+        "Credits": label_bins["Credits"],
+        "Other-text": label_bins["Other-text-md"],
+    },
+
+    "binary-bars": {
+        "Bars": label_bins["Bars"],
+    },
+
+    "binary-slate": {
+        "Slate": label_bins["Slate"],
+    },
+
+    "binary-chyron-strict": {
+        "Chyron-person": label_bins["Chyron-person"],
+    },
+
+    "binary-chyron-relaxed": {
+        "Chyron": label_bins["Chyron-other"] + label_bins["Chyron-person"],
+    },
+
+    "binary-credits": {
+        "Credits": label_bins["Credits"],
+    }
+}
+
+# for single binning configuration, just use the binning dict
+# for multiple binning configurations (for experimental reasons), use the binning scheme names (str)
+prebin = [nobining]
+
+param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid', 'prebin']
 l = locals()
 configs = []
 for vals in itertools.product(*[l[key] for key in param_keys]):
     configs.append(dict(zip(param_keys, vals)))
-

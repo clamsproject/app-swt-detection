@@ -2,37 +2,21 @@ import argparse
 import base64
 import csv
 import os
+import pathlib
 from collections import defaultdict
 from io import BytesIO
 from itertools import product
-from statistics import mean
 
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-# list of bins
-# Since the bins parameters are too long to print or show on the plot, they are numbered by index.
-bins = [
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'other-opening': ['W', 'L', 'O', 'M'],
-             'chyron': ['I', 'N', 'Y'], 'not-chyron': ['P', 'K', 'G', 'T', 'F'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I', 'N', 'Y'], 'credits': ['C']}},
 
-
-    {'pre': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'warning': ['W'], 'opening': ['O'],
-             'main_title': ['M'], 'chyron': ['I'], 'credits': ['C'], 'copyright': ['R']},
-     'post': {'bars': ['bars'], 'slate': ['slate'], 'chyron': ['chyron'], 'credits': ['credits']}},
-    {'post': {'bars': ['B'], 'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G'], 'chyron': ['I'], 'credits': ['C']}},
-
-
-    {'pre': {'chyron': ['I', 'N', 'Y'], 'person-not-chyron': ['E', 'P', 'K']}, 'post': {'chyron': ['chyron']}},
-    {'post': {'chyron': ['I', 'N', 'Y']}},
-]
-
-
-def get_configs_and_macroavgs(directory):
+def process_kfold_validation_results(directory):
     """
+    THIS FUNCTION IS OUTDATED since we no longer actively use k-fold validation.
+    Hence, the code is not compatible with new file naming convention and structure for new "fixed" validateion experiment results.
+    
     1. Iterate over all files in the directory
     2. Get configuration information
     3. Calculate the averages of accuracy, precision, recall, and f1-score for each label for each set of k_fold results.
@@ -70,10 +54,7 @@ def get_configs_and_macroavgs(directory):
                 with open(file, "r") as f:
                     data = yaml.safe_load(f)
                 # delete unnecessary items
-                data['block_guids_train'] = f"{len(data['block_guids_train'])}@{hash(str(sorted(data['block_guids_train'])))}"
-                data['block_guids_valid'] = f"{len(data['block_guids_valid'])}@{hash(str(sorted(data['block_guids_valid'])))}"
-                del data['split_size']
-                configs[key] = data
+                configs[key] = clean_config(data)
 
         # Calculate macro averages
         for k, v in macro_avg.items():
@@ -91,6 +72,58 @@ def get_configs_and_macroavgs(directory):
         macro_avgs[key] = macro_avg
 
     return configs, macro_avgs
+
+
+def clean_config(config, prebin_name=None):
+    """
+    Clean up the configuration found in a yml file with more human friendly names. 
+    """
+    config['block_guids_train'] = f'{len(config["block_guids_train"])}@{hash(str(sorted(config["block_guids_train"])))}'
+    config['block_guids_valid'] = f'{len(config["block_guids_valid"])}@{hash(str(sorted(config["block_guids_valid"])))}'
+    
+    # a short string name of the prebin can be passed as an argument or can be generated from dictionary in the config 
+    if prebin_name:
+        config['prebin'] = prebin_name
+    elif 'prebin' in config:
+        config['prebin'] = f'{len(config["prebin"])}way@{hash(str(config["prebin"]))}'
+    else:
+        config['prebin'] = 'None'
+        
+    config['posenc'] = config['pos_vec_coeff'] > 0
+    del config['pos_vec_coeff']
+    
+    del config['split_size']
+    return config
+
+
+def process_fixed_validation_results(directory, include_negative_label=False):
+    configs = {}
+    scores = {}
+    for csv_fname in pathlib.Path(directory).glob('*.csv'):
+        key = csv_fname.stem
+        timestamp, bb_name, bin_name, posenc = key.split('.')
+        posenc = posenc[-1] == 'T'
+        score = defaultdict(lambda: defaultdict(float))
+        with open(csv_fname, "r") as csv_f:
+            csv_reader = csv.DictReader(csv_f)
+            for row in csv_reader:
+                if 'Confusion Matrix' in row['Model_Name'] or not row:
+                    break
+                # ignore negative class
+                if row['Label'] == '-' and not include_negative_label:
+                    continue
+                score[row['Label']]['Accuracy'] += float(row['Accuracy'])
+                score[row['Label']]['Precision'] += float(row['Precision'])
+                score[row['Label']]['Recall'] += float(row['Recall'])
+                score[row['Label']]['F1-Score'] += float(row['F1-Score'])
+        config_fname = csv_fname.with_suffix('.yml')
+        with open(config_fname, "r") as yml_f:
+            config = yaml.safe_load(yml_f)
+            config = clean_config(config, bin_name)
+        # delete unnecessary items
+            configs[key] = config
+        scores[key] = score
+    return configs, scores
 
 
 def get_inverse_configs(configs):
@@ -118,10 +151,12 @@ def get_grid(configs):
         for k, v in value.items():
             grid[k].add(v)
 
+    refined_grid = {}
     for key, val in grid.items():
-        grid[key] = list(val)
+        if len(val) > 1:
+            refined_grid[key] = list(val)
 
-    return grid
+    return refined_grid
 
 
 def get_labels(macroavgs):
@@ -133,7 +168,81 @@ def get_labels(macroavgs):
     labels = set()
     for key, val in macroavgs.items():
         labels.update(val.keys())
+    if '-' in labels:
+        labels.remove('-')
     return list(labels)
+
+
+def find_best_matching_label(target_label, existing_labels):
+    """
+    Find the best base label that matches the target label, given a target string. 
+    """
+    for i in range(0, len(target_label)):
+        
+        if target_label[:i] in existing_labels:
+            return target_label[:i]
+
+def plot_bar_graphs(axis, exp_group, score_dict, config_dict, target_label, target_var, var_vals, colorscheme):
+    # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
+    # and plot a bar graph
+    # re-order the pair to show the variable values in the same order as in the grid
+    ordered_group = [None] * len(var_vals)
+    for i, value in enumerate(var_vals):
+        for exp_id in exp_group:
+            if config_dict[exp_id][target_var] == value:
+                ordered_group[i] = exp_id
+    metrics = score_dict[ordered_group[0]]["Overall"].keys()
+    data = defaultdict(list)
+    metric_list = [f'Avg {m}' for m in metrics]
+    for i, exp_id in enumerate(ordered_group):
+        label_found = False
+        existing_labels = list(score_dict[exp_id].keys())
+        if all(len(x) == 1 for x in existing_labels):
+            # meaning it's `nobinning`, so we just use some manual mapping
+            data[exp_id].append(score_dict[exp_id][l][metric])
+
+        for l in score_dict[exp_id].keys():
+            if l.startswith(target_label):
+                for metric in metrics:
+                    data[exp_id].append(score_dict[exp_id][l][metric])
+                label_found = True
+                break
+        if not label_found:
+            data[exp_id].append(0.0)
+    data = dict(data)
+
+    if len(data) == 0:
+        return None, None
+    # plot a bar graph
+    x = np.arange(len(metric_list))  # the label locations
+    width = 1/(len(data)+1)  # the width of the bars
+    multiplier = 0
+
+    for exp_id, scores in data.items():
+        if len(scores) == 1 and scores[0] == 0.0:
+            continue
+        id_variable = str(target_var) + ": " + str(config_dict[exp_id][target_var])
+        offset = width * multiplier
+        rects = axis.bar(x + offset, scores, width, label=id_variable, color=colorscheme[str(config_dict[exp_id][target_var])])
+        axis.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
+        multiplier += 1
+
+    # Add some text for labels, title and custom x-axis tick labels, etc.
+    axis.set_ylabel('Score')
+    axis.set_title(str(target_label))
+    axis.set_xticks(x + width * (len(data) - 1) / 2, metric_list)
+    axis.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
+    axis.set_ylim(0.0, 1.15)
+    # Show information on fixed parameters.
+    string_configs = f'{exp_id}\n'
+    for k, v in config_dict[exp_id].items():
+        if k != target_var:
+            string_configs += str(k) + ": " + str(v) + "\n"
+    axis.text(0.99, 0.97, string_configs,
+              verticalalignment='bottom', horizontalalignment='right',
+              transform=axis.transAxes,
+              color='green', fontsize='small')
+    return axis
 
 
 def get_pairs_to_compare(grid, inverse_configs, variable):
@@ -151,7 +260,7 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
     # Form all possible configurations of parameters from grid and store it as a list of dictionary form.
     conf_dicts = [dict(zip(grid.keys(), config)) for config in list(product(*grid.values()))]
 
-    # Get all the possible lists of pairs(IDs) using inverse_configs dictionary and intersection of them for every configuration.
+    # Get all the possible lists of exps using inverse_configs dictionary and intersection of them for every config
     pair_list = []
     for conf_dict in conf_dicts:
         list_of_sets = [inverse_configs[param_name][val] for param_name, val in conf_dict.items()]
@@ -162,100 +271,56 @@ def get_pairs_to_compare(grid, inverse_configs, variable):
         for s in list_of_sets[1:]:
             intersection_result = intersection_result.intersection(s)
 
-        pair_list.append(list(intersection_result))
+        if len(intersection_result) > 0:
+            pair_list.append(list(intersection_result))
 
     return pair_list
 
 
-def compare_pairs(list_of_pairs, macroavgs, configs, grid, variable, label_to_show, variable_values, interactive_plots=True):
+def compare_pairs(exp_groups, scores, conf_grid, configs, target_lbl, target_var, var_vals, interactive_plots=True):
     """
     For list of pairs got from get_pairs_to_compare function, compare each pair by plotting bar graphs for given label.
-    :param list_of_pairs: got from get_pairs_to_compare function for given variable
-    :param macroavgs:
-    :param configs:
-    :param grid:
-    :param variable:
-    :param label_to_show: User choice of label (including overall) to show scores in the graph.
+    :param exp_groups: got from get_pairs_to_compare function for given variable
+    :param scores: PRF scores from each experiment configuration
+    :param conf_grid: grid of configurations used in this experiment
+    :param configs: actual configurations used in this experiment
+    :param target_lbl: User choice of label (including overall) to show scores in the graph. 
+                       a special value `all` will generate plots for all "normalized" labels (put them horizontally)
+    :param target_var: configuration key name to use as a variable to compare, all other keys are fixed.
+    :param var_vals: list of values for the variable to compare
+    :param interactive_plots: flag to show plots in realtime. If false, the program will save all the plots in a html
     """
 
     # Form parameter to color dictionary for consistency in color across all pairs
-    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(grid[variable]))
+    param_to_color = dict((str(value), f'C{i}') for i, value in enumerate(conf_grid[target_var]))
 
     html = '<html><head><title>Comparison of pairs</title></head><body>'
 
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
-    fig, ax = plt.subplots()
-    all_ps = [[] for _ in range(len(list_of_pairs[0]))]
-    all_rs = [[] for _ in range(len(list_of_pairs[0]))]
-    for pair in list_of_pairs:
-        # re-order the pair to show the variable values in the same order as in the grid
-        ordered_pair = [None] * len(variable_values)
-        for i, value in enumerate(variable_values):
-            for exp_id in pair:
-                if configs[exp_id][variable] == value:
-                    ordered_pair[i] = exp_id
-        scores = macroavgs[ordered_pair[0]][label_to_show]
-        data = defaultdict(list)
-        metric_list = ['Avg Accuracy', 'Avg Precision', 'Avg Recall', 'Avg F1-Score']
-        for i, exp_id in enumerate(ordered_pair):
-            for metric, score in scores.items():
-                if label_to_show in macroavgs[exp_id]:
-                    data[exp_id].append(macroavgs[exp_id][label_to_show][metric])
-                    if 'preci' in metric.lower():
-                        all_ps[i].append(macroavgs[exp_id][label_to_show][metric])
-                    if 'recal' in metric.lower():
-                        all_rs[i].append(macroavgs[exp_id][label_to_show][metric])
-                else:
-                    data[exp_id].append(0.0)
-        data = dict(data)
-
-        # plot a bar graph
-        x = np.arange(len(metric_list))  # the label locations
-        l = len(data) # length of data (it varies by set)
-        width = 1/(l+1)  # the width of the bars
-        multiplier = 0
-
-        if l != 0:
-            for exp_id, scores in data.items():
-                id_variable = str(variable) + ": " + str(configs[exp_id][variable])
-                offset = width * multiplier
-                rects = ax.bar(x + offset, scores, width, label=id_variable, color=param_to_color[str(configs[exp_id][variable])])
-                ax.bar_label(rects, fmt='%.6s', fontsize='small', rotation='vertical', padding=3)
-                multiplier += 1
-
-            # Add some text for labels, title and custom x-axis tick labels, etc.
-            ax.set_ylabel('Score')
-            ax.set_title(str(label_to_show))
-            ax.set_xticks(x + width*(l-1)/2, metric_list)
-            ax.legend(loc='center left', fontsize='small', ncol=1, bbox_to_anchor=(1, 0.5))
-            ax.set_ylim(0.0, 1.15)
-            # Show information on fixed parameters.
-            configs[exp_id].pop(variable)
-            string_configs = ""
-            for k, v in configs[exp_id].items():
-                string_configs += str(k) + ": " + str(v) + "\n"
-            ax.text(0.99, 0.97, string_configs,
-                    verticalalignment='bottom', horizontalalignment='right',
-                    transform=ax.transAxes,
-                    color='green', fontsize='small')
-
-            if interactive_plots:
-                plt.show()
-            else:
-                temp_io_stream = BytesIO()
-                fig.savefig(temp_io_stream, format='png', bbox_inches='tight')
-                html += f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
-        plt.cla()
-    for i, var_val in enumerate(variable_values):
-        if interactive_plots:
-            print(f'{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}')
+    for group in exp_groups:
+        if target_lbl == 'all':
+            interested_lbls = "Ba Sl Ch Cr".split()
+            fig, axes = plt.subplots(1, len(interested_lbls), figsize=(45, 5), sharex=True, sharey=True)
+            plt.subplots_adjust(wspace=1)
+            for ax, lbl in zip(np.ravel(axes), interested_lbls):
+                plot_bar_graphs(ax, group, scores, configs, lbl, target_var, var_vals, param_to_color)
         else:
-            html += f'<p>{var_val}\t{round(mean(all_ps[i]), 4)}\t{round(mean(all_rs[i]), 4)}</p>'
+            fig, ax = plt.subplots()
+            plot_bar_graphs(ax, group, scores, configs, target_lbl, target_var, var_vals, param_to_color)
+
+        if interactive_plots:
+            plt.show()
+        else:
+            temp_io_stream = BytesIO()
+            fig.savefig(temp_io_stream, format='png', bbox_inches='tight')
+            htmlized = f'<p><img src="data:image/png;base64,{base64.b64encode(temp_io_stream.getvalue()).decode("utf-8")}"></p>'
+            html += htmlized
+        plt.cla()
 
     if not interactive_plots:
         html += '</body></html>'
-        with open(f'results-comparison-{variable}-{label_to_show}.html', 'w') as f:
+        with open(f'results-comparison-{target_var}-{target_lbl}.html', 'w') as f:
             f.write(html)
 
 
@@ -322,12 +387,22 @@ if __name__ == '__main__':
         action='store_true',
         help='Flag to show plots in interactive mode. If not set, the program will save all the plots in a html file.'
     )
+    parser.add_argument(
+        '-n', '--negativelabel', 
+        action='store_true',
+        help='Flag to include the negative label when averaging scores.'
+    )
 
     args = parser.parse_args()
 
     # Get necessary dictionaries and lists for processing the comparison.
-    configs, macroavgs = get_configs_and_macroavgs(args.directory)
+    is_kfold = bool(any(pathlib.Path(args.directory).glob("*kfold*.csv")))
+    if is_kfold:
+        configs, macroavgs = process_kfold_validation_results(args.directory)
+    else:
+        configs, macroavgs = process_fixed_validation_results(args.directory, args.negativelabel)
     label_list = get_labels(macroavgs)
+    label_list.append('all')
     inverse_configs = get_inverse_configs(configs)
     grid = get_grid(configs)
     if args.config_key is None:
@@ -346,4 +421,5 @@ if __name__ == '__main__':
     variable_values = sorted(grid[choice_variable].copy())
     list_of_pairs = get_pairs_to_compare(grid.copy(), inverse_configs, choice_variable)
     # Show the comparison results of pairs in bar graphs
-    compare_pairs(list_of_pairs, macroavgs, configs.copy(), grid, choice_variable, choice_label, variable_values, interactive_plots=args.interactive_plots)
+    compare_pairs(list_of_pairs, macroavgs, grid, configs.copy(), choice_label, choice_variable, variable_values,
+                  interactive_plots=args.interactive_plots)
