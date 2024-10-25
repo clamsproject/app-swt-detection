@@ -173,6 +173,15 @@ def get_labels(macroavgs):
     return list(labels)
 
 
+def find_best_matching_label(target_label, existing_labels):
+    """
+    Find the best base label that matches the target label, given a target string. 
+    """
+    for i in range(0, len(target_label)):
+        
+        if target_label[:i] in existing_labels:
+            return target_label[:i]
+
 def plot_bar_graphs(axis, exp_group, score_dict, config_dict, target_label, target_var, var_vals, colorscheme):
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
@@ -187,6 +196,11 @@ def plot_bar_graphs(axis, exp_group, score_dict, config_dict, target_label, targ
     metric_list = [f'Avg {m}' for m in metrics]
     for i, exp_id in enumerate(ordered_group):
         label_found = False
+        existing_labels = list(score_dict[exp_id].keys())
+        if all(len(x) == 1 for x in existing_labels):
+            # meaning it's `nobinning`, so we just use some manual mapping
+            data[exp_id].append(score_dict[exp_id][l][metric])
+
         for l in score_dict[exp_id].keys():
             if l.startswith(target_label):
                 for metric in metrics:
