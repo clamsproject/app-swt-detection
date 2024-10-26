@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
+from modeling import FRAME_TYPES
+
 
 def process_kfold_validation_results(directory):
     """
@@ -78,8 +80,10 @@ def clean_config(config, prebin_name=None):
     """
     Clean up the configuration found in a yml file with more human friendly names. 
     """
-    config['block_guids_train'] = f'{len(config["block_guids_train"])}@{hash(str(sorted(config["block_guids_train"])))}'
-    config['block_guids_valid'] = f'{len(config["block_guids_valid"])}@{hash(str(sorted(config["block_guids_valid"])))}'
+    bgtrain = list(set(config['block_guids_train']))
+    bgvalid = list(set(config['block_guids_valid']))
+    config['block_guids_train'] = f'{len(bgtrain):04}@{hash(str(sorted(bgtrain)))}'
+    config['block_guids_valid'] = f'{len(bgvalid):04}@{hash(str(sorted(bgvalid)))}'
     
     # a short string name of the prebin can be passed as an argument or can be generated from dictionary in the config 
     if prebin_name:
@@ -101,7 +105,11 @@ def process_fixed_validation_results(directory, include_negative_label=False):
     scores = {}
     for csv_fname in pathlib.Path(directory).glob('*.csv'):
         key = csv_fname.stem
-        timestamp, bb_name, bin_name, posenc = key.split('.')
+        try:
+            timestamp, bb_name, bin_name, posenc = key.split('.')
+        except ValueError:
+            timestamp, bb_name, posenc = key.split('.')
+            bin_name = None
         posenc = posenc[-1] == 'T'
         score = defaultdict(lambda: defaultdict(float))
         with open(csv_fname, "r") as csv_f:
@@ -182,12 +190,13 @@ def find_best_matching_label(target_label, existing_labels):
         if target_label[:i] in existing_labels:
             return target_label[:i]
 
+
 def plot_bar_graphs(axis, exp_group, score_dict, config_dict, target_label, target_var, var_vals, colorscheme):
     # For each pair, form a data dictionary as data = { ID1: [accuracy, precision, recall, f1], ...}
     # and plot a bar graph
     # re-order the pair to show the variable values in the same order as in the grid
     ordered_group = [None] * len(var_vals)
-    for i, value in enumerate(var_vals):
+    for i, value in enumerate(sorted(var_vals)):
         for exp_id in exp_group:
             if config_dict[exp_id][target_var] == value:
                 ordered_group[i] = exp_id
@@ -300,8 +309,9 @@ def compare_pairs(exp_groups, scores, conf_grid, configs, target_lbl, target_var
     # and plot a bar graph
     for group in exp_groups:
         if target_lbl == 'all':
-            interested_lbls = "Ba Sl Ch Cr".split()
-            fig, axes = plt.subplots(1, len(interested_lbls), figsize=(45, 5), sharex=True, sharey=True)
+            # interested_lbls = "Ba Sl Ch Cr".split()
+            interested_lbls = "B S I N C R".split()
+            fig, axes = plt.subplots(1, len(interested_lbls), figsize=(10*len(interested_lbls), 5), sharex=True, sharey=True)
             plt.subplots_adjust(wspace=1)
             for ax, lbl in zip(np.ravel(axes), interested_lbls):
                 plot_bar_graphs(ax, group, scores, configs, lbl, target_var, var_vals, param_to_color)

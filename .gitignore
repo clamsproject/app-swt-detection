@@ -257,9 +257,7 @@ $RECYCLE.BIN/
 
 # Files created by data_ingestion or visualization
 modeling/features
-modeling/results*/*kfold*pt
-modeling/results*/*kfold*csv
-modeling/results*/*kfold*txt
+modeling/results*
 modeling/vectorized/*
 modeling/html
 
