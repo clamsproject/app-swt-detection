@@ -1,5 +1,4 @@
 """
-
 CLAMS app to detect scenes with text.
 
 The kinds of scenes that are recognized depend on the model used but typically
@@ -188,7 +187,6 @@ def get_app():
     return SwtDetection(log_to_file=False)
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", action="store", default="5000", help="set port to listen")
     parser.add_argument("--production", action="store_true", help="run gunicorn server")

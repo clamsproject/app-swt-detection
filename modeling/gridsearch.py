@@ -15,7 +15,7 @@ img_enc_name = {'convnext_lg', 'convnext_base', 'convnext_small', 'convnext_tiny
 
 # positional encoding configuration best performed as of v6.0
 pos_length = {6000000}
-pos_abs_th_front = {3}
+pos_abs_th_front = {5}
 pos_abs_th_end = {10}
 pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
 

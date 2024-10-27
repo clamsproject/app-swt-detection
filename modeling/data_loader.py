@@ -70,12 +70,14 @@ class FeatureExtractor(object):
     pos_vec_coeff: float
     sinusoidal_embeddings: ClassVar[Dict[Tuple[int, int], torch.Tensor]] = {}
 
-    def __init__(self, img_enc_name: str,
+    def __init__(self, 
+                 img_enc_name: str,
                  pos_length: int = 6000000,
                  pos_unit: int = 60000,
                  pos_abs_th_front: int = 3,
                  pos_abs_th_end: int = 10,
-                 pos_vec_coeff: float = 0.5):
+                 pos_vec_coeff: float = 0.5, 
+                 **kwargs):  # to catch unexpected arguments
         """
         Initializes the FeatureExtractor object.
 

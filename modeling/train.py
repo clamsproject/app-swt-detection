@@ -2,6 +2,7 @@ import argparse
 import copy
 import json
 import logging
+import os
 import platform
 import shutil
 import time
@@ -116,11 +117,7 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     valid_labels = []
     train_vimg = valid_vimg = 0
 
-    extractor = data_loader.FeatureExtractor(
-        img_enc_name=configs.get('img_enc_name'),
-        pos_unit=configs['pos_unit'] if configs and 'pos_unit' in configs else 3600000,
-        pos_length=configs.get('pos_length')
-    )
+    extractor = data_loader.FeatureExtractor(**config)
 
     for j in Path(indir).glob('*.json'):
         guid = j.with_suffix("").name
@@ -148,6 +145,8 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
 
 
 def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+    os.makedirs(outdir, exist_ok=True)
+
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
@@ -307,6 +306,7 @@ if __name__ == "__main__":
     import os
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
+    print(f'training with {str(len(configs))} different configurations')
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']

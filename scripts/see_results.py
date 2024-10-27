@@ -11,19 +11,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 
-from modeling import FRAME_TYPES
 
-
-def process_kfold_validation_results(directory):
+def process_kfold_validation_results(directory, target_labels=[]):
     """
-    THIS FUNCTION IS OUTDATED since we no longer actively use k-fold validation.
-    Hence, the code is not compatible with new file naming convention and structure for new "fixed" validateion experiment results.
-    
     1. Iterate over all files in the directory
     2. Get configuration information
     3. Calculate the averages of accuracy, precision, recall, and f1-score for each label for each set of k_fold results.
     4. Save and return them in a dictionary format.
     :param directory: where evaluation results files are stored
+    :param target_labels: list of labels to calculate macro average. If empty, all labels are used.
     :return: 1. A dictionary with ids as keys and the configuration dictionary as values : dict[id][parameter]->value
             2. A dictionary with ids as keys and the macro average dictionary as values: dict[id][label][metric]->value
     """
@@ -45,12 +41,14 @@ def process_kfold_validation_results(directory):
             if file.endswith(".csv"):
                 i += 1
                 with open(file, "r") as f:
-                   csv_reader = csv.DictReader(f)
-                   for row in csv_reader:
-                       macro_avg[row['Label']]['Accuracy'] += float(row['Accuracy'])
-                       macro_avg[row['Label']]['Precision'] += float(row['Precision'])
-                       macro_avg[row['Label']]['Recall'] += float(row['Recall'])
-                       macro_avg[row['Label']]['F1-Score'] += float(row['F1-Score'])
+                    csv_reader = csv.DictReader(f)
+                    for row in csv_reader:
+                        if target_labels and row['Label'] not in target_labels:
+                            continue
+                        macro_avg[row['Label']]['Accuracy'] += float(row['Accuracy'])
+                        macro_avg[row['Label']]['Precision'] += float(row['Precision'])
+                        macro_avg[row['Label']]['Recall'] += float(row['Recall'])
+                        macro_avg[row['Label']]['F1-Score'] += float(row['F1-Score'])
 
             if file.endswith(".yml"):
                 with open(file, "r") as f:
@@ -59,17 +57,17 @@ def process_kfold_validation_results(directory):
                 configs[key] = clean_config(data)
 
         # Calculate macro averages
-        for k, v in macro_avg.items():
-            for metric in v:
-                v[metric] = v[metric]/float(i)
+        for label, scores in macro_avg.items():
+            for prf_metric in scores:
+                scores[prf_metric] = scores[prf_metric] / float(i)
 
         # Add overall macro averages for all labels for each set.
         num_classes = len(macro_avg)
         macro_avg["overall"] = defaultdict(float)
-        for k, v in macro_avg.items():
-            if k != "overall":
-                for metric in v:
-                    macro_avg["overall"][metric] += v[metric]/num_classes
+        for label, scores in macro_avg.items():
+            if label != "overall":
+                for prf_metric in scores:
+                    macro_avg["overall"][prf_metric] += scores[prf_metric] / num_classes
 
         macro_avgs[key] = macro_avg
 
@@ -329,6 +327,11 @@ def compare_pairs(exp_groups, scores, conf_grid, configs, target_lbl, target_var
         plt.cla()
 
     if not interactive_plots:
+        if target_lbl == 'overall':
+            labels = set()
+            for _, scores_by_label in macroavgs.items():
+                labels.update(scores_by_label.keys())
+            target_lbl = '+'.join(sorted(labels))
         html += '</body></html>'
         with open(f'results-comparison-{target_var}-{target_lbl}.html', 'w') as f:
             f.write(html)
@@ -384,6 +387,12 @@ if __name__ == '__main__':
         help='Pick a label to compare, default is overall, meaning all labels are plotted'
     )
     parser.add_argument(
+        '-L', '--target-labels',
+        default='B S I N Y C R'.split(),
+        nargs='+',
+        help='List of labels to calculate macro average. Default to the "source" labels used in 4-way "post" remapping'
+    )
+    parser.add_argument(
         '-k', '--config-key',
         default=None,
         action='store',
@@ -408,7 +417,7 @@ if __name__ == '__main__':
     # Get necessary dictionaries and lists for processing the comparison.
     is_kfold = bool(any(pathlib.Path(args.directory).glob("*kfold*.csv")))
     if is_kfold:
-        configs, macroavgs = process_kfold_validation_results(args.directory)
+        configs, macroavgs = process_kfold_validation_results(args.directory, args.target_labels)
     else:
         configs, macroavgs = process_fixed_validation_results(args.directory, args.negativelabel)
     label_list = get_labels(macroavgs)

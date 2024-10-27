@@ -1,5 +1,5 @@
 # Use the same base image version as the clams-python python library version
-FROM ghcr.io/clamsproject/clams-python-opencv4-torch2:1.2.5
+FROM ghcr.io/clamsproject/clams-python-opencv4-torch2:1.3.1
 # See https://github.com/orgs/clamsproject/packages?tab=packages&q=clams-python for more base images
 # IF you want to automatically publish this image to the clamsproject organization,
 # 1. you should have generated this template without --no-github-actions flag
@@ -25,7 +25,7 @@ ENV HF_HOME="/cache/huggingface"
 # https://pytorch.org/docs/stable/hub.html#where-are-my-downloaded-models-saved
 ENV TORCH_HOME="/cache/torch"
 
-RUN mkdir /cache ; rm -rf /root/.cache && ln -s /cache /root/.cache
+RUN mkdir /cache ; rm -rf /root/.cache ; ln -s /cache /root/.cache
 ################################################################################
 
 ################################################################################

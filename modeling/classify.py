@@ -21,10 +21,7 @@ class Classifier:
         model_checkpoint = f"{model_stem}.pt"
         model_config = yaml.safe_load(open(model_config_file))
         self.training_labels = train.get_prebinned_labelset(model_config)
-        self.featurizer = data_loader.FeatureExtractor(
-            img_enc_name=model_config["img_enc_name"],
-            pos_length=model_config.get("pos_length", 0),
-            pos_unit=model_config.get("pos_unit", 0))
+        self.featurizer = data_loader.FeatureExtractor(**model_config)
         label_count = len(FRAME_TYPES) + 1
         if 'bins' in model_config:
             label_count = len(model_config['bins'].keys()) + 1
@@ -33,7 +30,7 @@ class Classifier:
             n_labels=label_count,
             num_layers=model_config["num_layers"],
             dropout=model_config["dropouts"])
-        self.classifier.load_state_dict(torch.load(model_checkpoint))
+        self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
         self.debug = False
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
 
