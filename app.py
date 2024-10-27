@@ -20,7 +20,7 @@ from mmif.utils import video_document_helper as vdh
 from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
-from modeling import classify, stitch, negative_label, FRAME_TYPES
+from modeling import negative_label, FRAME_TYPES
 
 
 class SwtDetection(ClamsApp):
@@ -40,7 +40,6 @@ class SwtDetection(ClamsApp):
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
         self.configs = parameters.copy()
-        self._configure_postbin()
         for k, v in self.configs.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
@@ -63,29 +62,6 @@ class SwtDetection(ClamsApp):
             return None
         return videos[0]
 
-    def _configure_postbin(self):
-        """
-        Set the postbin property of the configs configuration dictionary, using the
-        label mapping parameters if there are any, otherwise using the label mapping from
-        the default configuration file.
-
-        This should set the postbin property to something like 
-
-            {'bars': ['B'],
-             'chyron': ['I', 'N', 'Y'],
-             'credit': ['C', 'R'],
-             'other_opening': ['W', 'L', 'O', 'M'],
-             'other_text': ['E', 'K', 'G', 'T', 'F'],
-             'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G']}
-
-        Note that the labels cannot have colons in them, but historically we did have
-        colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
-        have mappings like S:H:slate. This here assumes the mapping is S-H:slate and
-        that the dash is replaced with a colon. This is not good if we intend there to
-        be a dash.
-        """
-        self.configs['postbin'] = invert_mappings(self.configs['map'])
-        
     def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
         video = self._get_first_videodocument(mmif)
         if video is None:
@@ -103,7 +79,7 @@ class SwtDetection(ClamsApp):
         self._add_classifier_results_to_view(predictions, v)
 
     def _extract_images(self, video):
-        open_video(video)
+        vdh.capture(video)
         fps = video.get_property('fps')
         total_frames = video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
         total_ms = int(vdh.framenum_to_millisecond(video, total_frames))
@@ -122,6 +98,7 @@ class SwtDetection(ClamsApp):
         return extracted, positions, total_ms
 
     def _classify(self, extracted: list, positions: list, total_ms: int):
+        from modeling import classify
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
@@ -148,33 +125,6 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('classification', classification)
 
     def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
-        video = self._get_first_videodocument(mmif)
-        if video is None:
-            return mmif
-        tf_labels = list(self.configs['postbin'].keys())
-        predictions = list(mmif.get_annotations(AnnotationTypes.TimePoint))  # or something like this
-        
-        v = mmif.new_view()
-        self.sign_view(v, parameters)
-        v.new_contain(
-            AnnotationTypes.TimeFrame,
-            document=video.id, timeUnit='milliseconds', labelset=tf_labels)
-        stitcher = stitch.Stitcher(**self.configs)
-        self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
-        timeframes = stitcher.create_timeframes(predictions)
-        self._add_stitcher_results_to_view(timeframes, v)
-        
-    def _add_stitcher_results_to_view(self, timeframes: list, view: View):
-        for tf in timeframes:
-            targets = [target.annotation.long_id for target in tf.targets]
-            representatives = [p.annotation.long_id for p in tf.representative_predictions()]
-            timeframe_annotation = view.new_annotation(AnnotationTypes.TimeFrame)
-            timeframe_annotation.add_property("label", tf.label),
-            timeframe_annotation.add_property('classification', {tf.label: tf.score})
-            timeframe_annotation.add_property('targets', targets)
-            timeframe_annotation.add_property("representatives", representatives)
-    
-    def _alternative_annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
         TimeFrameTuple = namedtuple('TimeFrame', 
                                     ['label', 'tf_score', 'targets', 'representatives'])
         tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
@@ -263,33 +213,6 @@ class SwtDetection(ClamsApp):
                              classification={tf.label: tf.tf_score},
                              targets=tf.targets,
                              representatives=tf.representatives)
-
-def invert_mappings(mappings: dict) -> dict:
-    inverted_mappings = {}
-    for in_label, out_label in mappings.items():
-        in_label = restore_colon(in_label)
-        inverted_mappings.setdefault(out_label, []).append(in_label)
-    return inverted_mappings
-
-
-def restore_colon(label_in: str) -> str:
-    """Replace dashes with colons."""
-    return label_in.replace('-', ':')
-
-
-def open_video(video):
-    """Open the video using the video_document_helper MMIF utility. This is done
-    for the side effect of adding basic metadata properties to the video document."""
-    vdh.capture(video)
-
-
-def transform(classification: dict, postbin: dict):
-    """Transform a classification using basic prelables into a classification with
-    post labels only."""
-    transformed = {}
-    for postlabel, prelabels in postbin.items():
-        transformed[postlabel] = sum([classification[lbl] for lbl in prelabels])
-    return transformed
 
 
 def get_app():
