@@ -79,14 +79,14 @@ def appmetadata() -> AppMetadata:
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
     metadata.add_parameter(
-        name='tfminTPScore', type='number', default=0.01,
+        name='tfMinTPScore', type='number', default=0.01,
         description='Minimum score for a TimePoint to be included in a TimeFrame, only applies when `useStitcher=true`')
     metadata.add_parameter(
         name='tfMinTFScore', type='number', default=0.5,
         description='Minimum score for a TimeFrame, only applies when `useStitcher=true`')
     metadata.add_parameter(
-        name='tfMinTPCount', type='integer', default=2,
-        description='Minimum number of sampled frames required for a TimeFrame, only applies when `useStitcher=true`')
+        name='tfMinTFDuration', type='integer', default=2000,
+        description='Minimum duration of a TimeFrame in milliseconds, only applies when `useStitcher=true`')
     metadata.add_parameter(
         name='tfAllowOverlap', type='boolean', default=True,
         description='Allow overlapping time frames, only applies when `useStitcher=true`')

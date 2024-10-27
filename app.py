@@ -8,13 +8,16 @@ include slates, chyrons and credits.
 
 import argparse
 import logging
+import math
 import time
 import warnings
+from collections import namedtuple
 from typing import Union
 
 from clams import ClamsApp, Restifier
 from mmif import Mmif, View, AnnotationTypes, DocumentTypes, Annotation, Document
 from mmif.utils import video_document_helper as vdh
+from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
 from modeling import classify, stitch, negative_label, FRAME_TYPES
@@ -170,7 +173,96 @@ class SwtDetection(ClamsApp):
             timeframe_annotation.add_property('classification', {tf.label: tf.score})
             timeframe_annotation.add_property('targets', targets)
             timeframe_annotation.add_property("representatives", representatives)
+    
+    def _alternative_annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
+        TimeFrameTuple = namedtuple('TimeFrame', 
+                                    ['label', 'tf_score', 'targets', 'representatives'])
+        tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
+        if not tp_view:
+            self.logger.info("No TimePoint annotations found.")
+            return mmif
+        tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
 
+        # first, figure out time point sampling rate by looking at the first three annotations
+        # why 3? just as a sanity check
+        if len(tps) < 3:
+            raise ValueError("At least 3 TimePoint annotations are required to stitch.")
+        # and then figure out the time point sampling rate
+        testsamples = [vdh.convert_timepoint(mmif, tp, 'milliseconds') for tp in tps[:3]]
+        if parameters['useClassifier']:
+            tp_sampling_rate = parameters['tpSampleRate']
+        else:
+            tp_sampling_rate = testsamples[1] - testsamples[0]
+        tolerance = 1000 / mmif.get_document_by_id(tps[0].get_property('document')).get_property('fps')
+        self.logger.debug(f"TimePoint sampling rate 0-1: {tp_sampling_rate}")
+        self.logger.debug(f"TimePoint sampling rate 1-2: {testsamples[2] - testsamples[1]}")
+        if tp_sampling_rate - (testsamples[2] - testsamples[1]) > tolerance:
+            raise ValueError("TimePoint annotations are not uniformly sampled.")
+
+        # next, validate labels in the input annotations
+        src_labels = sqh.validate_labelset(tps)
+
+        # TODO: fill in `tfLabelMap` parameter value if a preset is used by the user
+        self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
+        label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
+
+        # then, build the score lists
+        label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
+                                                  label_remapper=label_remapper, score_remap_op=max)
+
+        # keep track of the timepoints that have been included as TF targets
+        used_timepoints = set()
+
+        def has_overlapping_timeframes(timepoints: list):
+            """
+            Given a list of TPs, return True if there is a TP in the list that has already been used.
+            """
+            for timepoint in timepoints:
+                if timepoint in used_timepoints:
+                    return True
+            return False
+
+        all_tf = []
+        # and stitch the scores
+        for label, lidx in label_idx.items():
+            if label == sqh.NEG_LABEL:
+                continue
+            stitched = sqh.smooth_outlying_short_intervals(
+                scores[lidx],
+                # parameters['minTFDuration']/1000, 
+                math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate),
+                1,  # does not smooth negative intervals
+                parameters['tfMinTPScore']
+            )
+            self.logger.debug(f"\"{label}\" stitched: {stitched}")
+            for positive_interval in stitched:
+                tp_scores = scores[lidx][positive_interval[0]:positive_interval[1]]
+                tf_score = tp_scores.mean()
+                rep_idx = tp_scores.argmax() + positive_interval[0]
+                if tf_score >= parameters['tfMinTFScore']:
+                    target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
+                    all_tf.append(TimeFrameTuple(label=label, tf_score=tf_score, targets=target_list,
+                                                 representatives=[tps[rep_idx].long_id]))
+        if not parameters['tfAllowOverlap']:
+            overlap_filter = []
+            for tf in sorted(all_tf, key=lambda x: x.tf_score, reverse=True):
+                if has_overlapping_timeframes(tf.targets):
+                    continue
+                for target_id in tf.targets:
+                    used_timepoints.add(target_id)
+                overlap_filter.append(tf)
+            all_tf = overlap_filter
+
+        # finally add everything to the output view
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(AnnotationTypes.TimeFrame, labelset=list(set(label_remapper.values())))
+        for tf in sorted(all_tf, key=lambda x: x.targets[0]):
+            v.new_annotation(AnnotationTypes.TimeFrame,
+                             label=tf.label,
+                             classification={tf.label: tf.tf_score},
+                             targets=tf.targets,
+                             representatives=tf.representatives)
 
 def invert_mappings(mappings: dict) -> dict:
     inverted_mappings = {}
