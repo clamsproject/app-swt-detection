@@ -15,12 +15,11 @@ from collections import namedtuple
 from typing import Union
 
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, AnnotationTypes, DocumentTypes, Annotation, Document
+from mmif import Mmif, AnnotationTypes, DocumentTypes, Document
 from mmif.utils import video_document_helper as vdh
 from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
-from modeling import negative_label, FRAME_TYPES
 
 
 class SwtDetection(ClamsApp):
@@ -103,13 +102,11 @@ class SwtDetection(ClamsApp):
             AnnotationTypes.TimePoint,
             document=video.id, timeUnit='milliseconds', labelset=classifier.training_labels)
         # add classifier results to view
-        for prediction in predictions:
+        for position, prediction in zip(positions, predictions):
             timepoint_annotation = v.new_annotation(AnnotationTypes.TimePoint)
-            prediction.annotation = timepoint_annotation
-            scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-            classification = {l: s for l, s in zip(prediction.labels, scores)}
+            classification = {lbl: prob.item() for lbl, prob in zip(classifier.training_labels, prediction)}
             label = max(classification, key=classification.get)
-            timepoint_annotation.add_property('timePoint', prediction.timepoint)
+            timepoint_annotation.add_property('timePoint', position)
             timepoint_annotation.add_property('label', label)
             timepoint_annotation.add_property('classification', classification)
 
