@@ -39,8 +39,7 @@ class SwtDetection(ClamsApp):
     def _annotate(self, mmif: Mmif, **parameters) -> Mmif:
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
-        self.configs = parameters.copy()
-        for k, v in self.configs.items():
+        for k, v in parameters.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
@@ -67,7 +66,7 @@ class SwtDetection(ClamsApp):
         if video is None:
             return mmif
         tp_labels = FRAME_TYPES + [negative_label]
-        extracted, positions, total_ms = self._extract_images(video)
+        extracted, positions, total_ms = self._extract_images(video, start_ms=parameters['tpStartAt'], final_ms=parameters['tpStopAt'], sample_rate=parameters['tpSampleRate'])
 
         v = mmif.new_view()
         self.sign_view(v, parameters)
@@ -75,20 +74,20 @@ class SwtDetection(ClamsApp):
             AnnotationTypes.TimePoint,
             document=video.id, timeUnit='milliseconds', labelset=tp_labels)
 
-        predictions = self._classify(extracted, positions, total_ms)
+        predictions = self._classify(extracted, positions, total_ms, parameters['tpModelName'], parameters['tpUsePosModel'])
         self._add_classifier_results_to_view(predictions, v)
 
-    def _extract_images(self, video):
+    def _extract_images(self, video, start_ms, final_ms, sample_rate):
         vdh.capture(video)
         fps = video.get_property('fps')
         total_frames = video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
         total_ms = int(vdh.framenum_to_millisecond(video, total_frames))
-        start_ms = max(0, self.configs['startAt'])
-        final_ms = min(total_ms, self.configs['stopAt'])
+        start_ms = max(0, start_ms)
+        final_ms = min(total_ms, final_ms)
         sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
-        sampled = vdh.sample_frames(sframe, eframe, self.configs['sampleRate'] / 1000 * fps)
+        sampled = vdh.sample_frames(sframe, eframe, sample_rate / 1000 * fps)
         self.logger.info(f'Sampled {len(sampled)} frames ' +
-                         f'btw {start_ms} - {final_ms} ms (every {self.configs["sampleRate"]} ms)')
+                         f'btw {start_ms} - {final_ms} ms (every {sample_rate} ms)')
         t = time.perf_counter()
         positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in sampled]
         extracted = vdh.extract_frames_as_images(video, sampled, as_PIL=True)
@@ -97,12 +96,12 @@ class SwtDetection(ClamsApp):
         # one video at a time     
         return extracted, positions, total_ms
 
-    def _classify(self, extracted: list, positions: list, total_ms: int):
+    def _classify(self, extracted: list, positions: list, total_ms: int, model_name: str, use_pos_model: bool):
         from modeling import classify
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
-            f"*.{self.configs['modelName']}.pos{'T' if self.configs['usePosModel'] else 'F'}.pt")).stem
+            f"*.{model_name}.pos{'T' if use_pos_model else 'F'}.pt")).stem
         self.logger.info(f"Initiating classifier with {model_filestem}")
         classifier = classify.Classifier(default_model_storage / model_filestem, 
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
