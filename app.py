@@ -62,59 +62,49 @@ class SwtDetection(ClamsApp):
         return videos[0]
 
     def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
+        # assuming the app is processing only one video at a time     
         video = self._get_first_videodocument(mmif)
         if video is None:
             return mmif
-        tp_labels = FRAME_TYPES + [negative_label]
-        extracted, positions, total_ms = self._extract_images(video, start_ms=parameters['tpStartAt'], final_ms=parameters['tpStopAt'], sample_rate=parameters['tpSampleRate'])
-
-        v = mmif.new_view()
-        self.sign_view(v, parameters)
-        v.new_contain(
-            AnnotationTypes.TimePoint,
-            document=video.id, timeUnit='milliseconds', labelset=tp_labels)
-
-        predictions = self._classify(extracted, positions, total_ms, parameters['tpModelName'], parameters['tpUsePosModel'])
-        self._add_classifier_results_to_view(predictions, v)
-
-    def _extract_images(self, video, start_ms, final_ms, sample_rate):
+        
+        # extract images
         vdh.capture(video)
-        fps = video.get_property('fps')
-        total_frames = video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
-        total_ms = int(vdh.framenum_to_millisecond(video, total_frames))
-        start_ms = max(0, start_ms)
-        final_ms = min(total_ms, final_ms)
+        total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
+        start_ms = max(0, parameters['tpStartAt'])
+        final_ms = min(total_ms, parameters['tpStopAt'])
         sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
-        sampled = vdh.sample_frames(sframe, eframe, sample_rate / 1000 * fps)
+        sampled = vdh.sample_frames(sframe, eframe, parameters['tpSampleRate'] / 1000 * video.get_property('fps'))
         self.logger.info(f'Sampled {len(sampled)} frames ' +
-                         f'btw {start_ms} - {final_ms} ms (every {sample_rate} ms)')
+                         f'btw {start_ms} - {final_ms} ms (every {parameters["tpSampleRate"]} ms)')
         t = time.perf_counter()
         positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in sampled]
         extracted = vdh.extract_frames_as_images(video, sampled, as_PIL=True)
         self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
-        # the last `total_ms` (as a fixed value) only works since the app is processing only
-        # one video at a time     
-        return extracted, positions, total_ms
 
-    def _classify(self, extracted: list, positions: list, total_ms: int, model_name: str, use_pos_model: bool):
+        # classify images
+        # isolate this import so that when running in stitcher mode, we don't need to import torch
         from modeling import classify
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
-            f"*.{model_name}.pos{'T' if use_pos_model else 'F'}.pt")).stem
+            f"*.{parameters['tpModelName']}.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
         self.logger.info(f"Initiating classifier with {model_filestem}")
-        classifier = classify.Classifier(default_model_storage / model_filestem, 
+        classifier = classify.Classifier(default_model_storage / model_filestem,
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         predictions = classifier.classify_images(extracted, positions, total_ms)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Processing took {time.perf_counter() - t:.2f} seconds")
-        return predictions
 
-    def _add_classifier_results_to_view(self, predictions: list, view: View):
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(
+            AnnotationTypes.TimePoint,
+            document=video.id, timeUnit='milliseconds', labelset=classifier.training_labels)
+        # add classifier results to view
         for prediction in predictions:
-            timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
+            timepoint_annotation = v.new_annotation(AnnotationTypes.TimePoint)
             prediction.annotation = timepoint_annotation
             scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
             classification = {l: s for l, s in zip(prediction.labels, scores)}
