@@ -61,28 +61,27 @@ class SwtDetection(ClamsApp):
         return videos[0]
 
     def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
+        # isolate this import so that when running in stitcher mode, we don't need to import torch
+        from modeling import classify
+        import torch
+        
         # assuming the app is processing only one video at a time     
         video = self._get_first_videodocument(mmif)
         if video is None:
             return mmif
         
-        # extract images
+        batch_size = 2000
         vdh.capture(video)
         total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
         start_ms = max(0, parameters['tpStartAt'])
         final_ms = min(total_ms, parameters['tpStopAt'])
+        seek_time = 0
+        clss_time = 0
         sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
         sampled = vdh.sample_frames(sframe, eframe, parameters['tpSampleRate'] / 1000 * video.get_property('fps'))
         self.logger.info(f'Sampled {len(sampled)} frames ' +
                          f'btw {start_ms} - {final_ms} ms (every {parameters["tpSampleRate"]} ms)')
-        t = time.perf_counter()
-        positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in sampled]
-        extracted = vdh.extract_frames_as_images(video, sampled, as_PIL=True)
-        self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
-
-        # classify images
-        # isolate this import so that when running in stitcher mode, we don't need to import torch
-        from modeling import classify
+        all_preds = None
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
@@ -92,9 +91,26 @@ class SwtDetection(ClamsApp):
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
-        predictions = classifier.classify_images(extracted, positions, total_ms)
+        for i, batch in enumerate(range(0, len(sampled), batch_size)):
+            self.logger.info(f"Extracting batch {i + 1} of size {batch_size} from {batch} to {min(batch + batch_size, len(sampled))}")
+            batched_sampled = sampled[batch:batch + batch_size]
+            positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
+            # extract images
+            t = time.perf_counter()
+            extracted = vdh.extract_frames_as_images(video, batched_sampled, as_PIL=True)
+            seek_time += time.perf_counter() - t
+
+            # classify images
+            t = time.perf_counter()
+            predictions = classifier.classify_images(extracted, positions, total_ms)
+            if all_preds is None:
+                all_preds = predictions
+            else:
+                all_preds = torch.cat((all_preds, predictions), dim=0)
+            clss_time += time.perf_counter() - t
         if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Processing took {time.perf_counter() - t:.2f} seconds")
+            self.logger.debug(f"Image extraction took: {seek_time:.2f} seconds\n")
+            self.logger.debug(f"Classification took {clss_time:.2f} seconds")
 
         v = mmif.new_view()
         self.sign_view(v, parameters)
