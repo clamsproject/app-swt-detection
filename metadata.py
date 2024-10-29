@@ -91,6 +91,11 @@ def appmetadata() -> AppMetadata:
         name='tfAllowOverlap', type='boolean', default=True,
         description='Allow overlapping time frames, only applies when `useStitcher=true`')
     metadata.add_parameter(
+        name='tfDynamicSceneLabels', type='string', multivalued=True, default=['credit', 'credits'],
+        description='Labels that are considered dynamic scenes. For dynamic scenes, TimeFrame annotations contains '
+                    'multiple representative points to follow any changes in the scene. '
+                    'Only applies when `useStitcher=true`')
+    metadata.add_parameter(
         # TODO: do we want to use the old default labelMap from the configuration here or
         # do we truly want an empty mapping and use the pass-through, as hinted at in the
         # description (which is now not in sync with the code).

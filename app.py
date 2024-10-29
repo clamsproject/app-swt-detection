@@ -165,20 +165,30 @@ class SwtDetection(ClamsApp):
                 continue
             stitched = sqh.smooth_outlying_short_intervals(
                 scores[lidx],
-                # parameters['minTFDuration']/1000, 
                 math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate),
-                1,  # does not smooth negative intervals
+                # 1,  # does not smooth negative intervals
+                math.ceil(1000 / tp_sampling_rate),  # smooth negative window shorter than 1 sec
                 parameters['tfMinTPScore']
             )
-            self.logger.debug(f"\"{label}\" stitched: {stitched}")
+            self.logger.debug(f"\"{label}\" stitched: {' '.join([str((s, e, e - s)) for s, e in stitched])}")
             for positive_interval in stitched:
                 tp_scores = scores[lidx][positive_interval[0]:positive_interval[1]]
                 tf_score = tp_scores.mean()
+                self.logger.debug(f"\"{label}\" interval {positive_interval} score: {tf_score} / {parameters['tfMinTFScore']}")
                 rep_idx = tp_scores.argmax() + positive_interval[0]
                 if tf_score >= parameters['tfMinTFScore']:
                     target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
+                    if label not in parameters['tfDynamicSceneLabels']:
+                        reps = [tps[rep_idx].long_id]
+                    else:
+                        # TODO (krim @ 10/28/24): before this was done by picking every third TP regardless of the 
+                        # sampling rate, this new impl is sill very arbitrary and should be improved in the future
+                        
+                        # we pick every TP from 2 * minTFDuration time window
+                        rep_gap = 2 * math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate)
+                        reps = list(map(lambda x: x.long_id, tps[positive_interval[0]:positive_interval[1]:rep_gap]))
                     all_tf.append(TimeFrameTuple(label=label, tf_score=tf_score, targets=target_list,
-                                                 representatives=[tps[rep_idx].long_id]))
+                                                 representatives=reps))
         if not parameters['tfAllowOverlap']:
             overlap_filter = []
             for tf in sorted(all_tf, key=lambda x: x.tf_score, reverse=True):
@@ -193,7 +203,9 @@ class SwtDetection(ClamsApp):
         v = mmif.new_view()
         self.sign_view(v, parameters)
         v.new_contain(AnnotationTypes.TimeFrame, labelset=list(set(label_remapper.values())))
-        for tf in sorted(all_tf, key=lambda x: x.targets[0]):
+        # this will not work because tf_10 < tf_2 by string comparison
+        # for tf in sorted(all_tf, key=lambda x: x.targets[0]):
+        for tf in sorted(all_tf, key=lambda x: int(x.targets[0].split('_')[-1])):
             v.new_annotation(AnnotationTypes.TimeFrame,
                              label=tf.label,
                              classification={tf.label: tf.tf_score},
