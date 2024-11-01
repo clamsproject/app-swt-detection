@@ -40,12 +40,6 @@ class SwtDetection(ClamsApp):
         # validated and casted at this point.
         for k, v in parameters.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
-        videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
-        if not videos:
-            warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
-            return mmif
-        video = videos[0]
-        self.logger.info(f"Processing video {video.id} at {video.location_path()}")
         if parameters.get('useClassifier'):
             self._annotate_timepoints(mmif, **parameters)
         if parameters.get('useStitcher'):
@@ -82,6 +76,7 @@ class SwtDetection(ClamsApp):
         self.logger.info(f'Sampled {len(sampled)} frames ' +
                          f'btw {start_ms} - {final_ms} ms (every {parameters["tpSampleRate"]} ms)')
         all_preds = None
+        all_positions = []
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
@@ -107,6 +102,7 @@ class SwtDetection(ClamsApp):
                 all_preds = predictions
             else:
                 all_preds = torch.cat((all_preds, predictions), dim=0)
+            all_positions.extend(positions)
             clss_time += time.perf_counter() - t
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Image extraction took: {seek_time:.2f} seconds\n")
@@ -118,7 +114,7 @@ class SwtDetection(ClamsApp):
             AnnotationTypes.TimePoint,
             document=video.id, timeUnit='milliseconds', labelset=classifier.training_labels)
         # add classifier results to view
-        for position, prediction in zip(positions, predictions):
+        for position, prediction in zip(all_positions, all_preds):
             timepoint_annotation = v.new_annotation(AnnotationTypes.TimePoint)
             classification = {lbl: prob.item() for lbl, prob in zip(classifier.training_labels, prediction)}
             label = max(classification, key=classification.get)
@@ -134,6 +130,7 @@ class SwtDetection(ClamsApp):
             self.logger.info("No TimePoint annotations found.")
             return mmif
         tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
+        self.logger.debug(f"Found {len(tps)} TimePoint annotations.")
 
         # first, figure out time point sampling rate by looking at the first three annotations
         # why 3? just as a sanity check
