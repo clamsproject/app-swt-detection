@@ -79,16 +79,16 @@ def appmetadata() -> AppMetadata:
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints')
     metadata.add_parameter(
-        name='tfMinTPScore', type='number', default=0.01,
+        name='tfMinTPScore', type='number', default=0.5,
         description='Minimum score for a TimePoint to be included in a TimeFrame, only applies when `useStitcher=true`')
     metadata.add_parameter(
-        name='tfMinTFScore', type='number', default=0.5,
+        name='tfMinTFScore', type='number', default=0.9,
         description='Minimum score for a TimeFrame, only applies when `useStitcher=true`')
     metadata.add_parameter(
-        name='tfMinTFDuration', type='integer', default=2000,
+        name='tfMinTFDuration', type='integer', default=5000,
         description='Minimum duration of a TimeFrame in milliseconds, only applies when `useStitcher=true`')
     metadata.add_parameter(
-        name='tfAllowOverlap', type='boolean', default=True,
+        name='tfAllowOverlap', type='boolean', default=False,
         description='Allow overlapping time frames, only applies when `useStitcher=true`')
     metadata.add_parameter(
         name='tfDynamicSceneLabels', type='string', multivalued=True, default=['credit', 'credits'],
