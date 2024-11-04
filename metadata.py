@@ -57,36 +57,42 @@ def appmetadata() -> AppMetadata:
 
     metadata.add_parameter(
         name='useClassifier', type='boolean', default=True,
-        description='Use the image classifier model to generate TimePoint annotations')
+        description='Use the image classifier model to generate TimePoint annotations.')
     metadata.add_parameter(
         name='tpModelName', type='string',
         default='convnext_lg',
         choices=list(set(m.stem.split('.')[1] for m in available_models)),
-        description='model name to use for classification, only applies when `useClassifier=true`')
+        description='Model name to use for classification, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='tpUsePosModel', type='boolean', default=True,
-        description='Use the model trained with positional features, only applies when `useClassifier=true`')
+        description='Use the model trained with positional features, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='tpStartAt', type='integer', default=0,
-        description='Number of milliseconds into the video to start processing, only applies when `useClassifier=true`')
+        description='Number of milliseconds into the video to start processing, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='tpStopAt', type='integer', default=sys.maxsize,
-        description='Number of milliseconds into the video to stop processing, only applies when `useClassifier=true`')
+        description='Number of milliseconds into the video to stop processing, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='tpSampleRate', type='integer', default=1000,
-        description='Milliseconds between sampled frames, only applies when `useClassifier=true`')
+        description='Milliseconds between sampled frames, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
-        description='Use the stitcher after classifying the TimePoints')
+        description='Use the stitcher after classifying the TimePoints.')
     metadata.add_parameter(
         name='tfMinTPScore', type='number', default=0.5,
-        description='Minimum score for a TimePoint to be included in a TimeFrame, only applies when `useStitcher=true`')
+        description='Minimum score for a TimePoint to be included in a TimeFrame. '
+                    'A lower value will include more TimePoints in the TimeFrame '
+                    '(increasing recall in exchange for precision). '
+                    'Only applies when `useStitcher=true`.')
     metadata.add_parameter(
         name='tfMinTFScore', type='number', default=0.9,
-        description='Minimum score for a TimeFrame, only applies when `useStitcher=true`')
+        description='Minimum score for a TimeFrame. '
+                    'A lower value will include more TimeFrames in the output '
+                    '(increasing recall in exchange for precision). '
+                    'Only applies when `useStitcher=true`')
     metadata.add_parameter(
         name='tfMinTFDuration', type='integer', default=5000,
-        description='Minimum duration of a TimeFrame in milliseconds, only applies when `useStitcher=true`')
+        description='Minimum duration of a TimeFrame in milliseconds, only applies when `useStitcher=true`.')
     metadata.add_parameter(
         name='tfAllowOverlap', type='boolean', default=False,
         description='Allow overlapping time frames, only applies when `useStitcher=true`')
@@ -96,17 +102,13 @@ def appmetadata() -> AppMetadata:
                     'multiple representative points to follow any changes in the scene. '
                     'Only applies when `useStitcher=true`')
     metadata.add_parameter(
-        # TODO: do we want to use the old default labelMap from the configuration here or
-        # do we truly want an empty mapping and use the pass-through, as hinted at in the
-        # description (which is now not in sync with the code).
         name='tfLabelMap', type='map', default=labelMap,
         description=(
-            'Mapping of a label in the input annotations to a new label. Must be formatted as '
-            'IN_LABEL:OUT_LABEL (with a colon). To pass multiple mappings, use this parameter '
-            'multiple times. By default, all the input labels are passed as is, including any '
-            'negative labels (with default value being no remapping at all). However, when '
-            'at least one label is remapped, all the other "unset" labels are discarded as '
-            'a negative label. Only applies when `useStitcher=true`'))
+            'Mapping of a label in the input annotations to a new label. Must be formatted as IN_LABEL:OUT_LABEL (with '
+            'a colon). To pass multiple mappings, use this parameter multiple times. When no remap is used, all the '
+            'input labels are passed as is, including any negative labels (`-`). However, when at least one label is '
+            'remapped, all the other "unset" labels are remapped to the negative label (`-`). '
+            'Only applies when `useStitcher=true`'))
 
     return metadata
 
