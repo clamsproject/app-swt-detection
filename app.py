@@ -8,16 +8,18 @@ include slates, chyrons and credits.
 
 import argparse
 import logging
+import math
 import time
 import warnings
+from collections import namedtuple
 from typing import Union
 
 from clams import ClamsApp, Restifier
-from mmif import Mmif, View, AnnotationTypes, DocumentTypes
+from mmif import Mmif, AnnotationTypes, DocumentTypes, Document
 from mmif.utils import video_document_helper as vdh
+from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
-from modeling import classify, stitch, negative_label, FRAME_TYPES
 
 
 class SwtDetection(ClamsApp):
@@ -33,149 +35,195 @@ class SwtDetection(ClamsApp):
         # using metadata.py
         pass
 
-    def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
+    def _annotate(self, mmif: Mmif, **parameters) -> Mmif:
         # parameters here is a "refined" dict, so hopefully its values are properly
         # validated and casted at this point.
-        self.configs = parameters
-        self._configure_postbin()
-        for k, v in self.configs.items():
+        for k, v in parameters.items():
             self.logger.debug(f"Final Configuration: {k} :: {v}")
-        tp_labels = FRAME_TYPES + [negative_label]
-        tf_labels = list(self.configs['postbin'].keys())
-
+        if parameters.get('useClassifier'):
+            self._annotate_timepoints(mmif, **parameters)
+        if parameters.get('useStitcher'):
+            self._annotate_timeframes(mmif, **parameters)
+        return mmif
+    
+    @staticmethod
+    def _get_first_videodocument(mmif: Mmif) -> Union[Document, None]:
         videos = mmif.get_documents_by_type(DocumentTypes.VideoDocument)
         if not videos:
             warnings.warn('There were no video documents referenced in the MMIF file', UserWarning)
+            return None
+        return videos[0]
+
+    def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
+        # isolate this import so that when running in stitcher mode, we don't need to import torch
+        from modeling import classify
+        import torch
+        
+        # assuming the app is processing only one video at a time     
+        video = self._get_first_videodocument(mmif)
+        if video is None:
             return mmif
-        video = videos[0]
-        self.logger.info(f"Processing video {video.id} at {video.location_path()}")
-
-        extracted, positions, total_ms = self._extract_images(video)
-
-        swt_view: View = mmif.new_view()
-        self.sign_view(swt_view, self.configs)
-        swt_view.new_contain(
-            AnnotationTypes.TimePoint,
-            document=video.id, timeUnit='milliseconds', labelset=tp_labels)
-
-        predictions = self._classify(extracted, positions, total_ms)
-        self._add_classifier_results_to_view(predictions, swt_view)
-        if self.configs.get('useStitcher'):
-            swt_view.new_contain(
-                AnnotationTypes.TimeFrame,
-                document=video.id, timeUnit='milliseconds', labelset=tf_labels)
-            stitcher = stitch.Stitcher(**self.configs)
-            self.logger.info('Minimum time frame score: %s', stitcher.min_timeframe_score)
-            timeframes = stitcher.create_timeframes(predictions)
-            self._add_stitcher_results_to_view(timeframes, swt_view)
-
-        return mmif
-
-    def _configure_postbin(self):
-        """
-        Set the postbin property of the the configs configuration dictionary, using the
-        label mapping parameters if there are any, otherwise using the label mapping from
-        the default configuration file.
-
-        This should set the postbin property to something like 
-
-            {'bars': ['B'],
-             'chyron': ['I', 'N', 'Y'],
-             'credit': ['C', 'R'],
-             'other_opening': ['W', 'L', 'O', 'M'],
-             'other_text': ['E', 'K', 'G', 'T', 'F'],
-             'slate': ['S', 'S:H', 'S:C', 'S:D', 'S:G']}
-
-        Note that the labels cannot have colons in them, but historically we did have
-        colons in the SWT annotation for subtypes of "slate". Syntactically, we cannot
-        have mappings like S:H:slate. This here assumes the mapping is S-H:slate and
-        that the dash is replaced with a colon. This is not good if we intend there to
-        be a dash.
-        """
-        self.configs['postbin'] = invert_mappings(self.configs['map'])
-
-    def _extract_images(self, video):
-        open_video(video)
-        fps = video.get_property('fps')
-        total_frames = video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)
-        total_ms = int(vdh.framenum_to_millisecond(video, total_frames))
-        start_ms = max(0, self.configs['startAt'])
-        final_ms = min(total_ms, self.configs['stopAt'])
+        
+        batch_size = 2000
+        vdh.capture(video)
+        total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
+        start_ms = max(0, parameters['tpStartAt'])
+        final_ms = min(total_ms, parameters['tpStopAt'])
+        seek_time = 0
+        clss_time = 0
         sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
-        sampled = vdh.sample_frames(sframe, eframe, self.configs['sampleRate'] / 1000 * fps)
+        sampled = vdh.sample_frames(sframe, eframe, parameters['tpSampleRate'] / 1000 * video.get_property('fps'))
         self.logger.info(f'Sampled {len(sampled)} frames ' +
-                         f'btw {start_ms} - {final_ms} ms (every {self.configs["sampleRate"]} ms)')
-        t = time.perf_counter()
-        positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in sampled]
-        extracted = vdh.extract_frames_as_images(video, sampled, as_PIL=True)
-        self.logger.debug(f"Seeking time: {time.perf_counter() - t:.2f} seconds\n")
-        # the last `total_ms` (as a fixed value) only works since the app is processing only
-        # one video at a time     
-        return extracted, positions, total_ms
-
-    def _classify(self, extracted: list, positions: list, total_ms: int):
+                         f'btw {start_ms} - {final_ms} ms (every {parameters["tpSampleRate"]} ms)')
+        all_preds = None
+        all_positions = []
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
         model_filestem = next(default_model_storage.glob(
-            f"*.{self.configs['modelName']}.pos{'T' if self.configs['usePosModel'] else 'F'}.pt")).stem
+            f"*.{parameters['tpModelName']}.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
         self.logger.info(f"Initiating classifier with {model_filestem}")
-        classifier = classify.Classifier(default_model_storage / model_filestem, 
+        classifier = classify.Classifier(default_model_storage / model_filestem,
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
-        predictions = classifier.classify_images(extracted, positions, total_ms)
-        if self.logger.isEnabledFor(logging.DEBUG):
-            self.logger.debug(f"Processing took {time.perf_counter() - t:.2f} seconds")
-        return predictions
+        for i, batch in enumerate(range(0, len(sampled), batch_size)):
+            self.logger.info(f"Extracting batch {i + 1} of size {batch_size} from {batch} to {min(batch + batch_size, len(sampled))}")
+            batched_sampled = sampled[batch:batch + batch_size]
+            positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
+            # extract images
+            t = time.perf_counter()
+            extracted = vdh.extract_frames_as_images(video, batched_sampled, as_PIL=True)
+            seek_time += time.perf_counter() - t
 
-    def _add_classifier_results_to_view(self, predictions: list, view: View):
-        for prediction in predictions:
-            timepoint_annotation = view.new_annotation(AnnotationTypes.TimePoint)
-            prediction.annotation = timepoint_annotation
-            scores = [prediction.score_for_label(lbl) for lbl in prediction.labels]
-            classification = {l: s for l, s in zip(prediction.labels, scores)}
+            # classify images
+            t = time.perf_counter()
+            predictions = classifier.classify_images(extracted, positions, total_ms)
+            if all_preds is None:
+                all_preds = predictions
+            else:
+                all_preds = torch.cat((all_preds, predictions), dim=0)
+            all_positions.extend(positions)
+            clss_time += time.perf_counter() - t
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Image extraction took: {seek_time:.2f} seconds\n")
+            self.logger.debug(f"Classification took {clss_time:.2f} seconds")
+
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(
+            AnnotationTypes.TimePoint,
+            document=video.id, timeUnit='milliseconds', labelset=classifier.training_labels)
+        # add classifier results to view
+        for position, prediction in zip(all_positions, all_preds):
+            timepoint_annotation = v.new_annotation(AnnotationTypes.TimePoint)
+            classification = {lbl: prob.item() for lbl, prob in zip(classifier.training_labels, prediction)}
             label = max(classification, key=classification.get)
-            timepoint_annotation.add_property('timePoint', prediction.timepoint)
+            timepoint_annotation.add_property('timePoint', position)
             timepoint_annotation.add_property('label', label)
             timepoint_annotation.add_property('classification', classification)
 
-    def _add_stitcher_results_to_view(self, timeframes: list, view: View):
-        for tf in timeframes:
-            targets = [target.annotation.long_id for target in tf.targets]
-            representatives = [p.annotation.long_id for p in tf.representative_predictions()]
-            timeframe_annotation = view.new_annotation(AnnotationTypes.TimeFrame)
-            timeframe_annotation.add_property("label", tf.label),
-            timeframe_annotation.add_property('classification', {tf.label: tf.score})
-            timeframe_annotation.add_property('targets', targets)
-            timeframe_annotation.add_property("representatives", representatives)
+    def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
+        TimeFrameTuple = namedtuple('TimeFrame', 
+                                    ['label', 'tf_score', 'targets', 'representatives'])
+        tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
+        if not tp_view:
+            self.logger.info("No TimePoint annotations found.")
+            return mmif
+        tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
+        self.logger.debug(f"Found {len(tps)} TimePoint annotations.")
 
+        # first, figure out time point sampling rate by looking at the first three annotations
+        # why 3? just as a sanity check
+        if len(tps) < 3:
+            raise ValueError("At least 3 TimePoint annotations are required to stitch.")
+        # and then figure out the time point sampling rate
+        testsamples = [vdh.convert_timepoint(mmif, tp, 'milliseconds') for tp in tps[:3]]
+        if parameters['useClassifier']:
+            tp_sampling_rate = parameters['tpSampleRate']
+        else:
+            tp_sampling_rate = testsamples[1] - testsamples[0]
+        tolerance = 1000 / mmif.get_document_by_id(tps[0].get_property('document')).get_property('fps')
+        self.logger.debug(f"TimePoint sampling rate 0-1: {tp_sampling_rate}")
+        self.logger.debug(f"TimePoint sampling rate 1-2: {testsamples[2] - testsamples[1]}")
+        if tp_sampling_rate - (testsamples[2] - testsamples[1]) > tolerance:
+            raise ValueError("TimePoint annotations are not uniformly sampled.")
 
-def invert_mappings(mappings: dict) -> dict:
-    inverted_mappings = {}
-    for in_label, out_label in mappings.items():
-        in_label = restore_colon(in_label)
-        inverted_mappings.setdefault(out_label, []).append(in_label)
-    return inverted_mappings
+        # next, validate labels in the input annotations
+        src_labels = sqh.validate_labelset(tps)
 
+        # TODO: fill in `tfLabelMap` parameter value if a preset is used by the user
+        self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
+        label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
 
-def restore_colon(label_in: str) -> str:
-    """Replace dashes with colons."""
-    return label_in.replace('-', ':')
+        # then, build the score lists
+        label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
+                                                  label_remapper=label_remapper, score_remap_op=max)
 
+        # keep track of the timepoints that have been included as TF targets
+        used_timepoints = set()
 
-def open_video(video):
-    """Open the video using the video_document_helper MMIF utility. This is done
-    for the side effect of adding basic metadata properties to the video document."""
-    vdh.capture(video)
+        def has_overlapping_timeframes(timepoints: list):
+            """
+            Given a list of TPs, return True if there is a TP in the list that has already been used.
+            """
+            for timepoint in timepoints:
+                if timepoint in used_timepoints:
+                    return True
+            return False
 
+        all_tf = []
+        # and stitch the scores
+        for label, lidx in label_idx.items():
+            if label == sqh.NEG_LABEL:
+                continue
+            stitched = sqh.smooth_outlying_short_intervals(
+                scores[lidx],
+                math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate),
+                # 1,  # does not smooth negative intervals
+                math.ceil(1000 / tp_sampling_rate),  # smooth negative window shorter than 1 sec
+                parameters['tfMinTPScore']
+            )
+            self.logger.debug(f"\"{label}\" stitched: {' '.join([str((s, e, e - s)) for s, e in stitched])}")
+            for positive_interval in stitched:
+                tp_scores = scores[lidx][positive_interval[0]:positive_interval[1]]
+                tf_score = tp_scores.mean()
+                self.logger.debug(f"\"{label}\" interval {positive_interval} score: {tf_score} / {parameters['tfMinTFScore']}")
+                rep_idx = tp_scores.argmax() + positive_interval[0]
+                if tf_score >= parameters['tfMinTFScore']:
+                    target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
+                    if label not in parameters['tfDynamicSceneLabels']:
+                        reps = [tps[rep_idx].long_id]
+                    else:
+                        # TODO (krim @ 10/28/24): before this was done by picking every third TP regardless of the 
+                        # sampling rate, this new impl is sill very arbitrary and should be improved in the future
+                        
+                        # we pick every TP from 2 * minTFDuration time window
+                        rep_gap = 2 * math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate)
+                        reps = list(map(lambda x: x.long_id, tps[positive_interval[0]:positive_interval[1]:rep_gap]))
+                    all_tf.append(TimeFrameTuple(label=label, tf_score=tf_score, targets=target_list,
+                                                 representatives=reps))
+        if not parameters['tfAllowOverlap']:
+            overlap_filter = []
+            for tf in sorted(all_tf, key=lambda x: x.tf_score, reverse=True):
+                if has_overlapping_timeframes(tf.targets):
+                    continue
+                for target_id in tf.targets:
+                    used_timepoints.add(target_id)
+                overlap_filter.append(tf)
+            all_tf = overlap_filter
 
-def transform(classification: dict, postbin: dict):
-    """Transform a classification using basic prelables into a classification with
-    post labels only."""
-    transformed = {}
-    for postlabel, prelabels in postbin.items():
-        transformed[postlabel] = sum([classification[lbl] for lbl in prelabels])
-    return transformed
+        # finally add everything to the output view
+        v = mmif.new_view()
+        self.sign_view(v, parameters)
+        v.new_contain(AnnotationTypes.TimeFrame, labelset=list(set(label_remapper.values())))
+        # this will not work because tf_10 < tf_2 by string comparison
+        # for tf in sorted(all_tf, key=lambda x: x.targets[0]):
+        for tf in sorted(all_tf, key=lambda x: int(x.targets[0].split('_')[-1])):
+            v.new_annotation(AnnotationTypes.TimeFrame,
+                             label=tf.label,
+                             classification={tf.label: tf.tf_score},
+                             targets=tf.targets,
+                             representatives=tf.representatives)
 
 
 def get_app():
