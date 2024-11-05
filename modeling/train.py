@@ -18,7 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 import modeling
-from modeling import data_loader, gridsearch, FRAME_TYPES
+from modeling import data_loader, gridsearch, bins, FRAME_TYPES
 from modeling.validate import validate
 
 logging.basicConfig(
@@ -312,7 +312,7 @@ if __name__ == "__main__":
         backbonename = config['img_enc_name']
         if isinstance(config['prebin'], str):
             prebin_name = config['prebin']
-            config['prebin'] = gridsearch.binning_schemes[prebin_name]
+            config['prebin'] = bins.binning_schemes[prebin_name]
         else:
             prebin_name = ''
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
