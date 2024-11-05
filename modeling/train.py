@@ -303,7 +303,7 @@ if __name__ == "__main__":
         configs = [load_config(args.config)]
     else:
         import modeling.gridsearch
-        configs = modeling.gridsearch.configs
+        configs = list(modeling.gridsearch.get_classifier_training_grids())
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
