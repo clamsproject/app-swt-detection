@@ -18,7 +18,9 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 import modeling
-from modeling import data_loader, gridsearch, bins, FRAME_TYPES
+import modeling.config.batches
+from modeling import data_loader, gridsearch, FRAME_TYPES
+from modeling.config import bins
 from modeling.validate import validate
 
 logging.basicConfig(
@@ -168,7 +170,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
 
     # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
     if configs['split_size'] >= len(train_all_guids):
-        valid_guids = gridsearch.guids_for_fixed_validation_set
+        valid_guids = modeling.config.batches.guids_for_fixed_validation_set
         train_all_guids = train_all_guids - set(valid_guids)
         # prepare_datasets seems to work fine with empty validation set
         train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs)
@@ -303,17 +305,20 @@ if __name__ == "__main__":
         import modeling.gridsearch
         configs = modeling.gridsearch.configs
 
-    import os
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
     for config in configs:
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
-        if isinstance(config['prebin'], str):
+        if len(config['prebin']) == 0:  # empty binning = no binning
+            config.pop('prebin')
+            prebin_name = 'nobinning'
+        elif isinstance(config['prebin'], str):
             prebin_name = config['prebin']
             config['prebin'] = bins.binning_schemes[prebin_name]
         else:
+            # "regular" fully-custom binning config via a proper dict - can't set a name for this
             prebin_name = ''
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
         train(

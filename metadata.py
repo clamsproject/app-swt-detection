@@ -10,7 +10,7 @@ from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
 
 from modeling import FRAME_TYPES
-import modeling.bins
+import modeling.config.bins
 
 default_model_storage = Path(__file__).parent / 'modeling/models'
 
@@ -107,11 +107,11 @@ def appmetadata() -> AppMetadata:
     labelMapPresetsReformat = {schname: str([f'`{lbl}`:`{binname}`' 
                                              for binname, lbls in scheme.items() 
                                              for lbl in lbls]) 
-                               for schname, scheme in modeling.bins.binning_schemes.items()}
+                               for schname, scheme in modeling.config.bins.binning_schemes.items()}
     labelMapPresetsMarkdown = '\n'.join([f"- `{k}`: {v}" for k, v in labelMapPresetsReformat.items()])
     metadata.add_parameter(
         name='tfLabelMapPreset', type='string', default='relaxed',
-        choices=list(modeling.bins.binning_schemes.keys()),
+        choices=list(modeling.config.bins.binning_schemes.keys()),
         description=f'(See also `tfLabelMap`) Preset alias of a label mapping. If not `nopreset`, this parameter will '
                     f'override the `tfLabelMap` parameter. Available presets are:\n{labelMapPresetsMarkdown}\n\n '
                     f'Only applies when `useStitcher=true`.')

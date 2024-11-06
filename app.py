@@ -123,7 +123,7 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('classification', classification)
 
     def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
-        from modeling import bins
+        from modeling.config import bins
         
         TimeFrameTuple = namedtuple('TimeFrame', 
                                     ['label', 'tf_score', 'targets', 'representatives'])
