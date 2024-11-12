@@ -308,7 +308,8 @@ if __name__ == "__main__":
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
-    for config in configs:
+    for i, config in enumerate(configs):
+        print(f'training with config {i+1}/{len(configs)}')
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
         if len(config['prebin']) == 0:  # empty binning = no binning
