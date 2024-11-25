@@ -79,8 +79,10 @@ class SwtDetection(ClamsApp):
         all_positions = []
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
+        ## naming convention from train.py + gridsearch.py = {timestamp}.{backbonename}.{prebinname}.pos{T/F}.pt
+        ## right now, `prebinname` is fixed to `nomap` as we don't use prebinning
         model_filestem = next(default_model_storage.glob(
-            f"*.{parameters['tpModelName']}.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
+            f"*.{parameters['tpModelName']}.*.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
         self.logger.info(f"Initiating classifier with {model_filestem}")
         classifier = classify.Classifier(default_model_storage / model_filestem,
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
@@ -123,6 +125,8 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('classification', classification)
 
     def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
+        from modeling.config import bins
+        
         TimeFrameTuple = namedtuple('TimeFrame', 
                                     ['label', 'tf_score', 'targets', 'representatives'])
         tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
@@ -152,6 +156,13 @@ class SwtDetection(ClamsApp):
         src_labels = sqh.validate_labelset(tps)
 
         # TODO: fill in `tfLabelMap` parameter value if a preset is used by the user
+        # first fill in labelMap parameter value if a preset is used by the user
+        label_map = bins.binning_schemes.get(parameters['tfLabelMapPreset'])
+        if label_map is None:
+            label_map = parameters['tfLabelMap']
+        else:
+            label_map = {lbl: binname for binname, lbls in label_map.items() for lbl in lbls}
+        parameters['tfLabelMap'] = label_map
         self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
         label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
 

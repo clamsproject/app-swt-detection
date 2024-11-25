@@ -212,6 +212,8 @@ class TrainingDataPreprocessor(object):
                                          label=row[2],
                                          subtype_label=row[3],
                                          mod=row[4].lower() == 'true') for row in reader if row[1] == 'true']
+        frame_list.sort(key=lambda x: x.filename)
+        print(f'found {len(frame_list)} annotated frames')
         # CSV rows with mod=True should be discarded (taken as "unseen")
         # maybe we can throw away the video with the least (88) frames annotation from B2 
         # to make 20/20 split on dense vs sparse annotation

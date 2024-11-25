@@ -46,16 +46,6 @@ class ExtractorModel:
 # TODO/REVIEW - do we want to be able to change the weight versions (IMAGENET1K_V1 etc)
 # ==========================================|
 # ConvNext Models
-class ConvnextBaseExtractor(ExtractorModel):
-    name = "convnext_base"
-    dim = 1024
-
-    def __init__(self):
-        self.model = convnext_base(weights=ConvNeXt_Base_Weights.IMAGENET1K_V1)
-        self.model.classifier[-1] = torch.nn.Identity()
-        self.preprocess = ConvNeXt_Base_Weights.IMAGENET1K_V1.transforms()
-
-
 class ConvnextTinyExtractor(ExtractorModel):
     name = "convnext_tiny"
     dim = 768
@@ -74,6 +64,16 @@ class ConvnextSmallExtractor(ExtractorModel):
         self.model = convnext_small(weights=ConvNeXt_Small_Weights.IMAGENET1K_V1)
         self.model.classifier[-1] = torch.nn.Identity()
         self.preprocess = ConvNeXt_Small_Weights.IMAGENET1K_V1.transforms()
+
+
+class ConvnextBaseExtractor(ExtractorModel):
+    name = "convnext_base"
+    dim = 1024
+
+    def __init__(self):
+        self.model = convnext_base(weights=ConvNeXt_Base_Weights.IMAGENET1K_V1)
+        self.model.classifier[-1] = torch.nn.Identity()
+        self.preprocess = ConvNeXt_Base_Weights.IMAGENET1K_V1.transforms()
 
 
 class ConvnextLargeExtractor(ExtractorModel):

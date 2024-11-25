@@ -20,7 +20,7 @@ class Classifier:
         model_config_file = f"{model_stem}.yml"
         model_checkpoint = f"{model_stem}.pt"
         model_config = yaml.safe_load(open(model_config_file))
-        self.training_labels = train.pretraining_binned_label(model_config)
+        self.training_labels = train.get_prebinned_labelset(model_config)
         self.featurizer = data_loader.FeatureExtractor(**model_config)
         label_count = len(FRAME_TYPES) + 1
         if 'bins' in model_config:

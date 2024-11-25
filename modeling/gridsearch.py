@@ -1,55 +1,74 @@
 import itertools
+import math
 
 import modeling.backbones
+import modeling.config.bins
+from modeling.config.batches import unintersting_guids, aapb_collaboration_27_b, aapb_collaboration_27_c, \
+    aapb_collaboration_27_e
 
+
+## TP classifier training grid search
 # parameter values from the best performing models in v5.0
-num_splits = {1}
+split_size = {math.inf}
 num_epochs = {10}
-num_layers = {2}
-pos_length = {6000000}
+num_layers = {4}
 pos_unit = {60000}
-dropouts = {0.1}
+dropouts = {0.3}
 # img_enc_name = modeling.backbones.model_map.keys()
-img_enc_name = {'convnext_lg', 'convnext_tiny'}
+img_enc_name = {'convnext_lg', 'convnext_small', 'convnext_tiny'}
 
+# positional encoding configuration best performed as of v6.0
+pos_length = {6000000}
 pos_abs_th_front = {5}
 pos_abs_th_end = {10}
 pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
-block_guids_train = [
-    ["cpb-aacip-254-75r7szdz"],     # always block this the most "uninteresting" video (88/882 frames annotated)
-]
-block_guids_valid = [
-    [                               # block all loosely-annotated videos
-        "cpb-aacip-254-75r7szdz",
-        "cpb-aacip-259-4j09zf95",
-        "cpb-aacip-526-hd7np1xn78",
-        "cpb-aacip-75-72b8h82x",
-        "cpb-aacip-fe9efa663c6",
-        "cpb-aacip-f5847a01db5",
-        "cpb-aacip-f2a88c88d9d",
-        "cpb-aacip-ec590a6761d",
-        "cpb-aacip-c7c64922fcd",
-        "cpb-aacip-f3fa7215348",
-        "cpb-aacip-f13ae523e20",
-        "cpb-aacip-e7a25f07d35",
-        "cpb-aacip-ce6d5e4bd7f",
-        "cpb-aacip-690722078b2",
-        "cpb-aacip-e649135e6ec",
-        "cpb-aacip-15-93gxdjk6",
-        "cpb-aacip-512-4f1mg7h078",
-        "cpb-aacip-512-4m9183583s",
-        "cpb-aacip-512-4b2x34nt7g",
-        "cpb-aacip-512-3n20c4tr34",
-        "cpb-aacip-512-3f4kk9534t",
-    ]
-    # {"cpb-aacip-254-75r7szdz"},  # effectively no block except
-]
-# we no longer use bins, keeping this just for historical reference
-# bins = [{'pre': {'slate': ['S'], 'chyron': ['I', 'N', 'Y'], 'credit': ['C']}}]
 
-param_keys = ['num_splits', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 'block_guids_train', 'block_guids_valid']
+# to see effect of training data size
+block_guids_train = [
+    
+    # aapb_collaboration_27_a + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e,  # no training data
+    ## 20 + 21 + 20 + 60 = 121 videos (excluding `d` batch) with 1 uninsteresting video and 40 videos in `pbd` subset in `e` batch
+    # unintersting_guids + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e,  # only the first "dense" annotations (shown as 0101@xxx in the bar plotting from see_results.py )
+    # unintersting_guids + aapb_collaboration_27_c + aapb_collaboration_27_e,  # adding "sparse" annotations (shown as 0061@xxx)
+    # unintersting_guids + aapb_collaboration_27_e,  # adding the second "dense" annotations (shown as 0081@xxx)
+    unintersting_guids,  # adding the "challenging" images, this is the "full" size (shown as 0001@xxx, but really using 80 guids from `a` + `b` + `c` + `bm`)
+    # note that the "uninstresting" video is never used in all training sets
+]
+# since we now do validation on a fixed set, this parameter has no effect, keeping it for historical reasons
+block_guids_valid = [
+    aapb_collaboration_27_b + aapb_collaboration_27_e,  # block all loosely-annotated videos and the challenging images
+    #  unintersting_guids,  # effectively no block except
+]
+
+# "prebin" configurations. 
+# NOTE that postbin is not a part of the CV model, so is not handled here
+# for single binning configuration, just use the binning dict
+# for multiple binning configurations (for experimental reasons), use the binning scheme names (str)
+prebin = ['noprebin']
+# prebin = []
+
+clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 
+                   'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
+                   'block_guids_train', 'block_guids_valid', 
+                   'prebin']
+
+## TF stitching grid search (for future)
+tfMinTPScores = set()
+tfMinTFScores = set()
+tfLabelMapFns = set()
+tfMinNegTFDurations = set()
+tfMinTFDurations = set()
+tfAllowOverlaps = set()
+
+stit_param_keys = [
+    "tfMinTPScores", "tfMinTFScores", "tfMinTFDurations", 
+    # "tfAllowOverlaps"  # we don't have a proper evaluator for overlapping TFs
+]
+
 l = locals()
-configs = []
-for vals in itertools.product(*[l[key] for key in param_keys]):
-    configs.append(dict(zip(param_keys, vals)))
+
+
+def get_classifier_training_grids():
+    for vals in itertools.product(*[l[key] for key in clss_param_keys]):
+        yield dict(zip(clss_param_keys, vals))
 

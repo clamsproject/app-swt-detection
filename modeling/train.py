@@ -7,18 +7,21 @@ import platform
 import shutil
 import time
 from pathlib import Path
-from typing import Union
+from typing import Union, List
 
 import numpy as np
 import torch
 import torch.nn as nn
 import yaml
+from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 import modeling
-from modeling import data_loader, FRAME_TYPES
-from modeling.evaluate import evaluate
+import modeling.config.batches
+from modeling import data_loader, gridsearch, FRAME_TYPES
+from modeling.config import bins
+from modeling.validate import validate
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -31,7 +34,7 @@ RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
-    def __init__(self, backbone_model_name, labels, vectors):
+    def __init__(self, backbone_model_name: str, labels: List[int], vectors: List[Tensor]):
         self.img_enc_name = backbone_model_name
         self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
         self.labels = labels
@@ -56,12 +59,12 @@ def get_guids(data_dir):
 
 
 def pretraining_bin(label, specs):
-    if specs is None or "bins" not in specs:
+    if specs is None or "prebin" not in specs:
         return int_encode(label)
-    for i, ptbin in enumerate(specs["bins"].values()):
+    for i, ptbin in enumerate(specs["prebin"].values()):
         if label and label in ptbin:
             return i
-    return len(specs["bins"].keys())
+    return len(specs["prebin"].keys())
 
 
 def load_config(config):
@@ -108,16 +111,12 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     1. positional encodings are applied.
     2. 'gold' labels are attached to each vector.
     3. split of vectors into training and validation sets (at video-level, meaning all frames from a video are either in training or validation set).
-    returns training dataset, validation dataset, and the number of labels (after "pre"-binning)
+    returns training dataset, validation dataset
     """
     train_vectors = []
     train_labels = []
     valid_vectors = []
     valid_labels = []
-    if configs and 'bins' in configs:
-        pre_bin_size = len(configs['bins'].keys()) + 1
-    else:
-        pre_bin_size = len(FRAME_TYPES) + 1
     train_vimg = valid_vimg = 0
 
     extractor = data_loader.FeatureExtractor(**config)
@@ -144,66 +143,72 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     logger.info(f'train: {len(train_guids)} videos, {train_vimg} images, valid: {len(validation_guids)} videos, {valid_vimg} images')
     train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
-    return train, valid, pre_bin_size
+    return train, valid
 
 
-def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     os.makedirs(outdir, exist_ok=True)
 
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
     logger.info(f'Using config: {configs}')
-    len_val = len(guids) // configs['num_splits']
+    train_all_guids = set(guids) - set(configs['block_guids_train'])
     val_set_spec = []
     p_scores = []
     r_scores = []
     f_scores = []
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # if num_splits == 1, validation is empty. single fold training.
-    if configs['num_splits'] == 1:
-        train_guids = set(guids)
-        validation_guids = set([])
-        for block in configs['block_guids_train']:
-            train_guids.discard(block)
+    
+    # the number of labels (after "pre"-binning)
+    if configs and 'prebin' in configs and len(configs['prebin']) > 0:
+        num_labels = len(configs['prebin'].keys()) + 1
+    else:
+        num_labels = len(FRAME_TYPES) + 1
+    labelset = get_prebinned_labelset(configs)
+
+    # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
+    if configs['split_size'] >= len(train_all_guids):
+        valid_guids = modeling.config.batches.guids_for_fixed_validation_set
+        train_all_guids = train_all_guids - set(valid_guids)
         # prepare_datasets seems to work fine with empty validation set
-        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
-        train_loader = DataLoader(train, batch_size=len(guids), shuffle=True)
-        export_model_file = f"{outdir}/{train_id}.pt"
+        train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs)
+        train_loader = DataLoader(train, batch_size=len(train_all_guids), shuffle=True)
+        valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=False)   
+        base_fname = f"{outdir}/{train_id}"
+        export_model_file = f"{base_fname}.pt"
         model = train_model(
-            get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
+            get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
             loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
-        p_config = Path(f'{outdir}/{train_id}.yml')
-        export_kfold_config(config_file, configs, p_config)
+        p_config = Path(f'{base_fname}.yml')
+        validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
+        export_train_config(config_file, configs, p_config)
         return
-    # otherwise, do k-fold training, where k = 'num_splits'
-    for i in range(0, configs['num_splits']):
-        validation_guids = set(guids[i*len_val:(i+1)*len_val])
-        train_guids = set(guids) - validation_guids
-        for block in configs['block_guids_valid']:
-            validation_guids.discard(block)
-        for block in configs['block_guids_train']:
-            train_guids.discard(block)
+    # otherwise, do k-fold training with k's size = split_size
+    valid_all_guids = sorted(list(train_all_guids - set(configs['block_guids_valid'])))
+    for j, i in enumerate(range(0, len(valid_all_guids), configs['split_size'])):
+        validation_guids = set(valid_all_guids[i:i + configs['split_size']])
+        train_guids = train_all_guids - validation_guids
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid, labelset_size = prepare_datasets(indir, train_guids, validation_guids, configs)
+        train, valid = prepare_datasets(indir, train_guids, validation_guids, configs)
         # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
         if not train.has_data() or not valid.has_data():
-            logger.info(f"Skipping fold {i} due to lack of data")
+            logger.info(f"Skipping fold {j} due to lack of data")
             continue
         train_loader = DataLoader(train, batch_size=40, shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
-        logger.info(f'Split {i}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{outdir}/{train_id}.kfold_{i:03d}.csv"
-        export_model_file = f"{outdir}/{train_id}.kfold_{i:03d}.pt"
+        logger.info(f'Split {j}: training on {len(train_guids)} videos, validating on {validation_guids}')
+        export_csv_file = f"{outdir}/{train_id}.kfold_{j:03d}.csv"
+        export_model_file = f"{outdir}/{train_id}.kfold_{j:03d}.pt"
         model = train_model(
-                get_net(train.feat_dim, labelset_size, configs['num_layers'], configs['dropouts']),
+                get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
                 loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
-        p, r, f = evaluate(model, valid_loader, pretraining_binned_label(config), export_fname=export_csv_file)
+        p, r, f = validate(model, valid_loader, labelset, export_fname=export_csv_file)
         val_set_spec.append(validation_guids)
         p_scores.append(p)
         r_scores.append(r)
@@ -211,11 +216,11 @@ def k_fold_train(indir, outdir, config_file, configs, train_id=time.strftime("%Y
     p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
     p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
     p_results.parent.mkdir(parents=True, exist_ok=True)
-    export_kfold_config(config_file, configs, p_config)
+    export_train_config(config_file, configs, p_config)
     export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results)
 
 
-def export_kfold_config(config_file: str, configs: dict, outfile: Union[str, Path]):
+def export_train_config(config_file: str, configs: dict, outfile: Union[str, Path]):
     if config_file is None:
         configs_copy = copy.deepcopy(configs)
         with open(outfile, 'w') as fh:
@@ -244,9 +249,9 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
         out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
-def pretraining_binned_label(config):
-    if 'bins' in config:
-        return list(config["bins"].keys()) + [modeling.negative_label]
+def get_prebinned_labelset(config):
+    if 'prebin' in config and len(config['prebin']) > 0:
+        return list(config["prebin"].keys()) + [modeling.negative_label]
     return modeling.FRAME_TYPES + [modeling.negative_label]
 
 
@@ -298,13 +303,26 @@ if __name__ == "__main__":
         configs = [load_config(args.config)]
     else:
         import modeling.gridsearch
-        configs = modeling.gridsearch.configs
+        configs = list(modeling.gridsearch.get_classifier_training_grids())
+
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
-    for config in configs:
+    for i, config in enumerate(configs):
+        print(f'training with config {i+1}/{len(configs)}')
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         backbonename = config['img_enc_name']
+        if len(config['prebin']) == 0:  # empty binning = no binning
+            config.pop('prebin')
+            prebin_name = 'noprebin'
+        elif isinstance(config['prebin'], str):
+            prebin_name = config['prebin']
+            config['prebin'] = bins.binning_schemes[prebin_name]
+        else:
+            # "regular" fully-custom binning config via a proper dict - can't set a name for this
+            prebin_name = 'custom'
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
-        k_fold_train(
+        train(
             indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id='.'.join([timestamp, backbonename, positionalencoding])
+            train_id='.'.join(filter(None, [timestamp, backbonename, prebin_name, positionalencoding]))
         )

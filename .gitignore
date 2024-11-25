@@ -257,10 +257,7 @@ $RECYCLE.BIN/
 
 # Files created by data_ingestion or visualization
 modeling/features
-modeling/results*/*.pt
-modeling/results*/*.csv
-modeling/results*/*.txt
-modeling/results*/*.yml
+modeling/results*
 modeling/vectorized/*
 modeling/html
 
