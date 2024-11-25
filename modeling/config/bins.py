@@ -29,6 +29,13 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Other-text": label_bins["Other-text-sm"],
     },
 
+    "simpler": {
+        "Bars": label_bins["Bars"],
+        "Slate": label_bins["Slate"],
+        "Chyron": label_bins["Chyron-person"],
+        "Credits": label_bins["Credits"],
+    },
+    
     "simple": {
         "Bars": label_bins["Bars"],
         "Slate": label_bins["Slate"],
