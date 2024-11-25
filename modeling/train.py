@@ -162,7 +162,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # the number of labels (after "pre"-binning)
-    if configs and 'prebin' in configs:
+    if configs and 'prebin' in configs and len(configs['prebin']) > 0:
         num_labels = len(configs['prebin'].keys()) + 1
     else:
         num_labels = len(FRAME_TYPES) + 1
@@ -250,7 +250,7 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
 
 
 def get_prebinned_labelset(config):
-    if 'prebin' in config:
+    if 'prebin' in config and len(config['prebin']) > 0:
         return list(config["prebin"].keys()) + [modeling.negative_label]
     return modeling.FRAME_TYPES + [modeling.negative_label]
 
@@ -314,13 +314,13 @@ if __name__ == "__main__":
         backbonename = config['img_enc_name']
         if len(config['prebin']) == 0:  # empty binning = no binning
             config.pop('prebin')
-            prebin_name = 'nobinning'
+            prebin_name = 'noprebin'
         elif isinstance(config['prebin'], str):
             prebin_name = config['prebin']
             config['prebin'] = bins.binning_schemes[prebin_name]
         else:
             # "regular" fully-custom binning config via a proper dict - can't set a name for this
-            prebin_name = ''
+            prebin_name = 'custom'
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
         train(
             indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,

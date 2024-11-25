@@ -79,8 +79,10 @@ class SwtDetection(ClamsApp):
         all_positions = []
         t = time.perf_counter()
         # in the following, the .glob() should always return only one, otherwise we have a problem
+        ## naming convention from train.py + gridsearch.py = {timestamp}.{backbonename}.{prebinname}.pos{T/F}.pt
+        ## right now, `prebinname` is fixed to `nomap` as we don't use prebinning
         model_filestem = next(default_model_storage.glob(
-            f"*.{parameters['tpModelName']}.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
+            f"*.{parameters['tpModelName']}.*.pos{'T' if parameters['tpUsePosModel'] else 'F'}.pt")).stem
         self.logger.info(f"Initiating classifier with {model_filestem}")
         classifier = classify.Classifier(default_model_storage / model_filestem,
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)

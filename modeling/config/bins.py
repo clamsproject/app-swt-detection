@@ -16,6 +16,7 @@ label_bins = {
 }
 
 binning_schemes: Dict[str, Dict[str, List[str]]] = {
+    "noprebin": nobinning,
     "nomap": nobinning,
 
     "strict": {

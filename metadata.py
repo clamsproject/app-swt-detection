@@ -51,7 +51,7 @@ def appmetadata() -> AppMetadata:
         description='Use the image classifier model to generate TimePoint annotations.')
     metadata.add_parameter(
         name='tpModelName', type='string',
-        default='convnext_lg',
+        default='convnext_small',
         choices=list(set(m.stem.split('.')[1] for m in available_models)),
         description='Model name to use for classification, only applies when `useClassifier=true`.')
     metadata.add_parameter(

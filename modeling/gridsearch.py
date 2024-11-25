@@ -13,10 +13,9 @@ split_size = {math.inf}
 num_epochs = {10}
 num_layers = {4}
 pos_unit = {60000}
-pos_enc_dim = {256}
-dropouts = {0.1}
+dropouts = {0.3}
 # img_enc_name = modeling.backbones.model_map.keys()
-img_enc_name = {'convnext_lg', 'convnext_base', 'convnext_small', 'convnext_tiny'}
+img_enc_name = {'convnext_lg', 'convnext_small', 'convnext_tiny'}
 
 # positional encoding configuration best performed as of v6.0
 pos_length = {6000000}
@@ -45,7 +44,7 @@ block_guids_valid = [
 # NOTE that postbin is not a part of the CV model, so is not handled here
 # for single binning configuration, just use the binning dict
 # for multiple binning configurations (for experimental reasons), use the binning scheme names (str)
-prebin = [modeling.config.bins.nobinning]
+prebin = ['noprebin']
 # prebin = []
 
 clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 
