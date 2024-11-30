@@ -59,7 +59,7 @@ def get_guids(data_dir):
 
 
 def pretraining_bin(label, specs):
-    if specs is None or "prebin" not in specs:
+    if specs is None or "prebin" not in specs or not specs["prebin"]:
         return int_encode(label)
     for i, ptbin in enumerate(specs["prebin"].values()):
         if label and label in ptbin:
@@ -152,7 +152,11 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
-    logger.info(f'Using config: {configs}')
+    for k, v in configs.items():
+        if isinstance(v, list):
+            logger.info(f'Using config: {k}=({len(v)}) {v[:5]}...')
+        else:
+            logger.info(f'Using config: {k}={v}')
     train_all_guids = set(guids) - set(configs['block_guids_train'])
     val_set_spec = []
     p_scores = []
@@ -167,6 +171,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     else:
         num_labels = len(FRAME_TYPES) + 1
     labelset = get_prebinned_labelset(configs)
+    logger.info(f'Labels for training: ({num_labels}) {labelset}')
 
     # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
     if configs['split_size'] >= len(train_all_guids):

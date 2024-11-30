@@ -3,8 +3,7 @@ import math
 
 import modeling.backbones
 import modeling.config.bins
-from modeling.config.batches import unintersting_guids, aapb_collaboration_27_b, aapb_collaboration_27_c, \
-    aapb_collaboration_27_e
+from modeling.config.batches import unintersting_guids, aapb_collaboration_27_b, aapb_collaboration_27_c, aapb_collaboration_27_e, guids_with_confirmed_slates_images
 
 
 ## TP classifier training grid search
@@ -26,13 +25,13 @@ pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
 # to see effect of training data size
 block_guids_train = [
     
-    # aapb_collaboration_27_a + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e,  # no training data
-    ## 20 + 21 + 20 + 60 = 121 videos (excluding `d` batch) with 1 uninsteresting video and 40 videos in `pbd` subset in `e` batch
-    # unintersting_guids + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e,  # only the first "dense" annotations (shown as 0101@xxx in the bar plotting from see_results.py )
-    # unintersting_guids + aapb_collaboration_27_c + aapb_collaboration_27_e,  # adding "sparse" annotations (shown as 0061@xxx)
-    # unintersting_guids + aapb_collaboration_27_e,  # adding the second "dense" annotations (shown as 0081@xxx)
-    unintersting_guids,  # adding the "challenging" images, this is the "full" size (shown as 0001@xxx, but really using 80 guids from `a` + `b` + `c` + `bm`)
+    # aapb_collaboration_27_a + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e + guids_with_confirmed_slates_images,  # exclude all training data
+    # First, count of GUIDs in annotation batches: a + b + c + e + f(?) = 20 + 21 + 20 + 60 + 1118 = 1239 videos 
+    # excluding `d` batch (reserved for evaluation),  including 1 uninsteresting video in `27-b` batch 
+    unintersting_guids,  # this is the "full" size (hashed as 0001@xxx in the result visualization)
+    unintersting_guids + guids_with_confirmed_slates_images,  # OLD v7.1rc training set (hashed as 1119@xxx)
     # note that the "uninstresting" video is never used in all training sets
+    # also note that when `split_size` is very large, no k-fold is performed, and the `pbd` set is used for fixed validation
 ]
 # since we now do validation on a fixed set, this parameter has no effect, keeping it for historical reasons
 block_guids_valid = [
