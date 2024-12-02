@@ -1,3 +1,5 @@
+# this file is mostly irrelevant now, as the team is only using gridsearch.py for training. 
+# keeping it here for just for reference and historical reasons.
 num_epochs: 5
 num_splits: 5
 
