@@ -111,7 +111,7 @@ def appmetadata() -> AppMetadata:
     labelMapPresetsMarkdown = '\n'.join([f"- `{k}`: {v}" for k, v in labelMapPresetsReformat.items()])
     metadata.add_parameter(
         name='tfLabelMapPreset', type='string', default='relaxed',
-        choices=list(modeling.config.bins.binning_schemes.keys()),
+        choices=list(modeling.config.bins.binning_schemes.keys()) + ['nopreset'],
         description=f'(See also `tfLabelMap`) Preset alias of a label mapping. If not `nopreset`, this parameter will '
                     f'override the `tfLabelMap` parameter. Available presets are:\n{labelMapPresetsMarkdown}\n\n '
                     f'Only applies when `useStitcher=true`.')
