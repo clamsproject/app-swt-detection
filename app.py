@@ -144,6 +144,7 @@ class SwtDetection(ClamsApp):
             self.logger.info("No TimePoint annotations found.")
             return mmif
         tps = list(tp_view.get_annotations(AnnotationTypes.TimePoint))
+        did = tps[0].get_property('document')
         self.logger.debug(f"Found {len(tps)} TimePoint annotations.")
 
         # first, figure out time point sampling rate by looking at the first three annotations
@@ -228,7 +229,7 @@ class SwtDetection(ClamsApp):
         # finally add everything to the output view
         v = mmif.new_view()
         self.sign_view(v, parameters)
-        v.new_contain(AnnotationTypes.TimeFrame, labelset=list(set(label_remapper.values())))
+        v.new_contain(AnnotationTypes.TimeFrame, labelset=list(set(label_remapper.values())), document=did)
         # this will not work because tf_10 < tf_2 by string comparison
         # for tf in sorted(all_tf, key=lambda x: x.targets[0]):
         for tf in sorted(all_tf, key=lambda x: int(x.targets[0].split('_')[-1])):
