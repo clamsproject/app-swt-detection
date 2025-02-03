@@ -106,6 +106,10 @@ class SwtDetection(ClamsApp):
             # extract images
             t = time.perf_counter()
             extracted = vdh.extract_frames_as_images(video, batched_sampled, as_PIL=True)
+            if not extracted:
+                # in a rare case, where the difference between 29.97 and 29.97002997002997 actually matters, we might 
+                # get 1+final_frame as the last sample, which will result in an empty list
+                continue
             seek_time += time.perf_counter() - t
 
             # classify images
