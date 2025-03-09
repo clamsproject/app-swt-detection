@@ -66,15 +66,15 @@ class SwtDetection(ClamsApp):
         return videos[0]
 
     def _annotate_timepoints(self, mmif: Mmif, **parameters) -> Mmif:
-        # isolate this import so that when running in stitcher mode, we don't need to import torch
-        from modeling import classify
-        import torch
-        
         # assuming the app is processing only one video at a time     
         video = self._get_first_videodocument(mmif)
         if video is None:
             return mmif
         
+        # isolate this import so that when running in stitcher mode, we don't need to import torch
+        from modeling import classify
+        import torch
+
         batch_size = 2000
         vdh.capture(video)
         total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
