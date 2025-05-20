@@ -120,21 +120,12 @@ class FeatureExtractor(object):
             img_vec = img_vec.to('cuda')
             self.img_encoder.model.to('cuda')
         with torch.no_grad():
-            output = self.img_encoder.model(img_vec)
-
-            # Case 1: Hugging Face model output object
-            if hasattr(output, "last_hidden_state"):
-                feature_vec = output.last_hidden_state.mean(dim=1)  # (1, dim)
-
-            # Case 2: Output is already a tensor
-            elif isinstance(output, torch.Tensor):
-                feature_vec = output  # (1, dim)
-
-            # pooled_vec = feature_vec.last_hidden_state.mean(dim=1)
+            feature_vec = self.img_encoder.model(img_vec)
+            pooled_vec = feature_vec.last_hidden_state.mean(dim=1)
         if as_numpy:
-            return feature_vec.cpu().numpy()
+            return pooled_vec.cpu().numpy()
         else:
-            return feature_vec.cpu()
+            return pooled_vec.cpu()
 
     def convert_position(self, cur, tot):
         if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:

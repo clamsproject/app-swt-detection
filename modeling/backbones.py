@@ -4,6 +4,8 @@ import sys
 from typing import Callable
 
 import torch
+# ConvNext V2 Models
+from transformers import AutoImageProcessor, ConvNextV2Model
 # ConvNext Models
 from torchvision.models import convnext_base, ConvNeXt_Base_Weights  # ConvNeXt BASE
 from torchvision.models import convnext_large, ConvNeXt_Large_Weights  # ConvNeXt LARGE
@@ -84,6 +86,54 @@ class ConvnextLargeExtractor(ExtractorModel):
         self.model = convnext_large(weights=ConvNeXt_Large_Weights.IMAGENET1K_V1)
         self.model.classifier[-1] = torch.nn.Identity()
         self.preprocess = ConvNeXt_Large_Weights.IMAGENET1K_V1.transforms()
+
+
+# ==========================================|
+# ConvNeXt V2 Models
+# TODO: Figure out if we should be using the 22k dataset or the 1k dataset, for now I'll use the 1k. Try both
+class ConvnextV2TinyExtractor(ExtractorModel):
+    name = "facebook/convnextv2-tiny-1k-224"
+    dim = 768
+
+    def __init__(self):
+        self.model = ConvNextV2Model.from_pretrained(self.name)
+        self.model.classifier = torch.nn.Identity()  # model classifier is just the final output for hugging face
+        processor = AutoImageProcessor.from_pretrained(self.name)
+
+        def preprocess(img):
+            return processor(img, return_tensors="pt")["pixel_values"].squeeze(0)
+
+        self.preprocess = preprocess
+
+# TODO: Add a huge or nano model?
+# class ConvnextV2SmallExtractor(ExtractorModel):
+#     name = "facebook/convnextv2-tiny-1k-224"
+#     dim = 768
+#
+#     def __init__(self):
+#         self.model = ConvNextV2Model.from_pretrained(name)
+#         self.model.classifier = torch.nn.Identity()  # model classifier is just the final output for hugging face
+#         self.preprocess = AutoImageProcessor.from_pretrained(name)
+
+# TODO: Get all the dimensions for these
+# class ConvnextV2BaseExtractor(ExtractorModel):
+#     name = "facebook/convnextv2-base-1k-224"
+#     dim = 768
+#
+#     def __init__(self):
+#         self.model = ConvNextV2Model.from_pretrained(name)
+#         self.model.classifier = torch.nn.Identity()  # model classifier is just the final output for hugging face
+#         self.preprocess = AutoImageProcessor.from_pretrained(name)
+#
+#
+# class ConvnextV2LargeExtractor(ExtractorModel):
+#     name = "facebook/convnextv2-large-1k-224"
+#     dim = 768
+#
+#     def __init__(self):
+#         self.model = ConvNextV2Model.from_pretrained(name)
+#         self.model.classifier = torch.nn.Identity()  # model classifier is just the final output for hugging face
+#         self.preprocess = AutoImageProcessor.from_pretrained(name)
 
 
 # ==========================================|
