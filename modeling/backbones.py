@@ -9,6 +9,8 @@ from torchvision.models import convnext_base, ConvNeXt_Base_Weights  # ConvNeXt 
 from torchvision.models import convnext_large, ConvNeXt_Large_Weights  # ConvNeXt LARGE
 from torchvision.models import convnext_small, ConvNeXt_Small_Weights  # ConvNeXt SMALL
 from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights  # ConvNeXt TINY
+# ConvNext V2 Models
+from transformers import AutoImageProcessor, ConvNextV2Model
 # DenseNet Models
 from torchvision.models import densenet121, DenseNet121_Weights  # DenseNet 121
 from torchvision.models import densenet161, DenseNet161_Weights  # DenseNet 161
@@ -37,7 +39,7 @@ from torchvision.models import vgg19_bn, VGG19_BN_Weights  # VGG19 (Batch Normal
 class ExtractorModel:
     name: str
     dim: int
-    model: torch.nn.Module
+    model: Callable
     preprocess: Callable
 
 
@@ -84,6 +86,55 @@ class ConvnextLargeExtractor(ExtractorModel):
         self.model = convnext_large(weights=ConvNeXt_Large_Weights.IMAGENET1K_V1)
         self.model.classifier[-1] = torch.nn.Identity()
         self.preprocess = ConvNeXt_Large_Weights.IMAGENET1K_V1.transforms()
+
+
+# ==========================================|
+# ConvNeXt V2 Models
+# Using pretrained/unsupervised ones from huggingface (facebook official) models
+# size variances; A F P N T B L H 
+
+class ConvnextV2ExtractorWrapper(ConvNextV2Model):
+    def __call__(self, pixel_values: torch.FloatTensor = None) -> torch.FloatTensor:
+        sup = super().forward(pixel_values, False, False)
+        return sup[1]
+
+
+# Mixin class for common Hugging Face ConvNextV2 initialization logic.
+# This class does NOT inherit from ExtractorModel, so it won't be picked up
+# by code in the main block iterating through ExtractorModel.__subclasses__().
+class _ConvnextV2ExtractorInitBase:
+    
+    def _init_hf_convnext_v2_components(self):
+        full_model_name = f"facebook/{self.name.replace('_', '-')}-22k-224"
+        self.model = ConvnextV2ExtractorWrapper.from_pretrained(full_model_name)
+        self.model.eval()
+        # self.preprocessor is stored as an instance variable, though only used within the lambda.
+        # This is fine, or the lambda could capture AutoImageProcessor.from_pretrained directly if preferred.
+        self.preprocessor = AutoImageProcessor.from_pretrained(full_model_name)
+        self.preprocess = lambda image_input: self.preprocessor(image_input, return_tensors="pt")["pixel_values"].squeeze(0)
+
+
+class ConvnextV2TinyExtractor(ExtractorModel, _ConvnextV2ExtractorInitBase):
+    name = "convnextv2_tiny"
+    dim = 768  # Output dimension for ConvNextV2-Tiny
+
+    def __init__(self):
+        self._init_hf_convnext_v2_components()
+
+
+class ConvnextV2BaseExtractor(ExtractorModel, _ConvnextV2ExtractorInitBase):
+    name = "convnextv2_base"
+    dim = 768
+
+    def __init__(self):
+        self._init_hf_convnext_v2_components()
+
+class ConvnextV2LargeExtractor(ExtractorModel, _ConvnextV2ExtractorInitBase):
+    name = "convnextv2_large"
+    dim = 768
+
+    def __init__(self):
+        self._init_hf_convnext_v2_components()
 
 
 # ==========================================|
