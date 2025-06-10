@@ -45,7 +45,7 @@ class Classifier:
         feat_list = []
         for pos, img in zip(positions, images):
             t = time.perf_counter()
-            features = self.featurizer.get_full_feature_vectors(img, pos, final_pos)
+            features = self.featurizer.get_full_feature_vectors(img, [[pos, final_pos] for pos in positions])
             if self.logger.isEnabledFor(logging.DEBUG):
                 featurizing_time += time.perf_counter() - t
             feat_list.append(features)

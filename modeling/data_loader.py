@@ -115,7 +115,8 @@ class FeatureExtractor(object):
 
     def get_img_vector(self, raw_img, as_numpy=True):
         img_vec = self.img_encoder.preprocess(raw_img)
-        img_vec = img_vec.unsqueeze(0)
+        if img_vec.ndim == 3:  # when a single image is passed
+            img_vec = img_vec.unsqueeze(0)
         if torch.cuda.is_available():
             img_vec = img_vec.to('cuda')
             self.img_encoder.model.to('cuda')
@@ -132,20 +133,21 @@ class FeatureExtractor(object):
         else:
             return cur * self.pos_vec_lookup.shape[0] // tot
 
-    def encode_position(self, cur_time, tot_time, img_vec):
+    def encode_position(self, position, img_vec):
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
-        img_vec = img_vec.squeeze(0)
-        pos_lookup_col = self.convert_position(cur_time, tot_time)
+        if img_vec.ndim == 3:  # when a single image is passed
+            img_vec = img_vec.unsqueeze(0)
+        pos_lookup_col = [self.convert_position(*pos) for pos in position]
         pos_vec = self.pos_vec_lookup[pos_lookup_col] * self.pos_vec_coeff
         return torch.add(img_vec, pos_vec)
 
     def feature_vector_dim(self):
         return self.img_encoder.dim
 
-    def get_full_feature_vectors(self, raw_img, cur_time, tot_time):
-        img_vecs = self.get_img_vector(raw_img, as_numpy=False)
-        return self.encode_position(cur_time, tot_time, img_vecs)
+    def get_full_feature_vectors(self, raw_imgs, *positions):
+        img_vecs = self.get_img_vector(raw_imgs, as_numpy=False)
+        return self.encode_position(positions, img_vecs)
 
 
 class TrainingDataPreprocessor(object):
