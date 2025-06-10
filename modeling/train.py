@@ -7,7 +7,7 @@ import platform
 import shutil
 import time
 from pathlib import Path
-from typing import Union, List
+from typing import Union, List, Tuple
 
 import numpy as np
 import torch
@@ -19,6 +19,7 @@ from tqdm import tqdm
 
 import modeling
 import modeling.config.batches
+from modeling.backbones import model_dim_map
 from modeling import data_loader, gridsearch, FRAME_TYPES
 from modeling.config import bins
 from modeling.validate import validate
@@ -34,10 +35,10 @@ RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
 class SWTDataset(Dataset):
-    def __init__(self, backbone_model_name: str, labels: List[int], vectors: List[Tensor]):
+    def __init__(self, backbone_model_name: str, labels: List[int], vectors: Tensor):
         self.img_enc_name = backbone_model_name
-        self.feat_dim = vectors[0].shape[0] if len(vectors) > 0 else None
-        self.labels = labels
+        self.feat_dim = model_dim_map[backbone_model_name]
+        self.labels = torch.tensor(labels)
         self.vectors = vectors
 
     def __len__(self):
@@ -104,7 +105,21 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     return net
 
 
-def prepare_datasets(indir, train_guids, validation_guids, configs):
+def prepare_datasets(indir, train_guids, validation_guids, training_params, extract_img_vectors_now=False):
+    if extract_img_vectors_now:
+        # this is the old way of doing things, where we extract image vectors on the fly
+        # this is very slow and should be avoided
+        return prepare_datasets_while_extracting(indir, train_guids, validation_guids, training_params)
+    else:
+        # this is the new way of doing things, where we load pre-computed image vectors
+        return prepare_datasets_from_precomputed(indir, train_guids, validation_guids, training_params)
+
+def prepare_datasets_while_extracting(indir, train_guids, validation_guids, configs):
+    NotImplementedError("This function is not implemented yet. Please use pre-computed image vectors instead.")
+
+
+
+def prepare_datasets_from_precomputed(indir, train_guids, validation_guids, configs):
     """
     Given a directory of pre-computed dense feature vectors, 
     prepare the training and validation datasets. The preparation includes
@@ -113,11 +128,9 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
     3. split of vectors into training and validation sets (at video-level, meaning all frames from a video are either in training or validation set).
     returns training dataset, validation dataset
     """
-    train_vectors = []
-    train_labels = []
-    valid_vectors = []
-    valid_labels = []
-    train_vimg = valid_vimg = 0
+    train_vectors, valid_vectors = None, None
+    train_labels, valid_labels = [], []
+    train_vector_num = valid_vector_num = 0
 
     extractor = data_loader.FeatureExtractor(**config)
 
@@ -125,22 +138,29 @@ def prepare_datasets(indir, train_guids, validation_guids, configs):
         guid = j.with_suffix("").name
         feature_vecs = np.load(Path(indir) / f"{guid}.{configs['img_enc_name']}.npy")
         labels = json.load(open(Path(indir) / f"{guid}.json"))
-        total_video_len = labels['duration']
+        pre_binned_labels = []
+        vectors = None
+        positions = []
         for i, vec in enumerate(feature_vecs):
-            if not labels['frames'][i]['mod']:  # "transitional" frames
-                pre_binned_label = pretraining_bin(labels['frames'][i]['label'], configs)
-                vector = torch.from_numpy(vec)
-                position = labels['frames'][i]['curr_time']
-                vector = extractor.encode_position(position, total_video_len, vector)
-                if guid in validation_guids:
-                    valid_vimg += 1
-                    valid_vectors.append(vector)
-                    valid_labels.append(pre_binned_label)
-                elif guid in train_guids:
-                    train_vimg += 1
-                    train_vectors.append(vector)
-                    train_labels.append(pre_binned_label)
-    logger.info(f'train: {len(train_guids)} videos, {train_vimg} images, valid: {len(validation_guids)} videos, {valid_vimg} images')
+            if labels['frames'][i]['mod']:  # "transitional" frames
+                continue
+            pre_binned_labels.append(pretraining_bin(labels['frames'][i]['label'], configs))
+            t = torch.from_numpy(vec)
+            vectors = t if vectors is None else torch.vstack((vectors, t))
+            positions.append(labels['frames'][i]['curr_time'])
+        if vectors is None:
+            # probably means all images in this GUID are transitional 
+            continue
+        feat_mat = extractor.encode_position([(position, labels['duration']) for position in positions], vectors)
+        if guid in validation_guids:
+            valid_vector_num += feat_mat.shape[0]
+            valid_vectors = feat_mat if valid_vectors is None else torch.vstack((valid_vectors, feat_mat))
+            valid_labels.extend(pre_binned_labels)
+        elif guid in train_guids:
+            train_vector_num += feat_mat.shape[0]
+            train_vectors = feat_mat if train_vectors is None else torch.vstack((train_vectors, feat_mat))
+            train_labels.extend(pre_binned_labels)
+    logger.info(f'train: {len(train_guids)} videos, {train_vector_num} images ({train_vectors.shape}), valid: {len(validation_guids)} videos, {valid_vector_num} images ({valid_vectors.shape})')
     train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
     valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
     return train, valid
