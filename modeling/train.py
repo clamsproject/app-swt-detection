@@ -12,6 +12,7 @@ from typing import Union, List, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torchvision
 import yaml
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
@@ -51,12 +52,36 @@ class SWTDataset(Dataset):
         return 0 < len(self.vectors) == len(self.labels)
 
 
+class SWTDatasetFeatExtrOnthefly(SWTDataset):
+    """
+    subclass of the dataset, that holds image vectors instead of (pre-computed) feature vectors. 
+    """
+    def __init__(self, backbone_model_name: str, labels: List[int], vectors: Tensor, positions: List[Tuple[int, int]], evalmode=False):
+        super().__init__(backbone_model_name, labels, vectors)
+        self.featurizer = data_loader.FeatureExtractor(img_enc_name=backbone_model_name)
+        self.positions = torch.tensor(positions)
+        if evalmode:
+            self.featurizer.img_encoder.model.eval()
+
+    def __getitem__(self, i):
+        # this is the slow part, extracting features on the fly, one by one use getitems will help
+        features = self.featurizer.get_full_feature_vectors(self.vectors[i], self.positions[i])
+        return features, self.labels[i]
+
+    def __getitems__(self, idxs):
+        features = self.featurizer.get_full_feature_vectors(self.vectors[idxs], self.positions[idxs])
+        labels = self.labels[idxs]
+        return list(zip(features, labels))
+
+
 def get_guids(data_dir):
-    guids = []
-    for j in Path(data_dir).glob('*.json'):
-        guid = j.with_suffix("").name
-        guids.append(guid)
-    return sorted(guids)
+    guids = set()
+    # iterate through *.json or *.csv 
+    for suffix in 'json csv'.split():
+        for j in Path(data_dir).glob(f'*.{suffix}'):
+            guid = j.with_suffix("").name
+            guids.add(guid)
+    return sorted(list(guids))
 
 
 def pretraining_bin(label, specs):
@@ -114,9 +139,46 @@ def prepare_datasets(indir, train_guids, validation_guids, training_params, extr
         # this is the new way of doing things, where we load pre-computed image vectors
         return prepare_datasets_from_precomputed(indir, train_guids, validation_guids, training_params)
 
-def prepare_datasets_while_extracting(indir, train_guids, validation_guids, configs):
-    NotImplementedError("This function is not implemented yet. Please use pre-computed image vectors instead.")
 
+def prepare_datasets_while_extracting(indir, train_guids, validation_guids, configs):
+    train_images, valid_images = [], []
+    train_labels, valid_labels = [], []
+    train_poss, valid_poss = [], []
+    train_image_num, valid_img_num = 0, 0
+    # TODO (krim @ 6/10/25): this heavily relies on the knowledge of the directory structure of 
+    # out data repo, so should be done in a different way
+    for c in Path(indir).glob('*.csv'):
+        guid = c.with_suffix("").name
+        if guid not in validation_guids and guid not in train_guids:
+            logger.warning(f'GUID {guid} is not in either training or validation set. Skipping.')
+            continue
+        src_file = Path(indir) / f'{guid}.mp4'  # video file
+        if not src_file.exists():
+            src_file = Path(indir) / guid  # pre-extracted still images in a directory
+        images, labels, poss = [], [], []
+        for img in data_loader.TrainingDataPreprocessor.get_stills(str(src_file.absolute()), c):
+            images.append(img.image)
+            labels.append(pretraining_bin(img.label, configs))
+            poss.append((img.curr_time, img.total_time))
+        if guid in validation_guids:
+            logger.info(f'found {guid} in valid set')
+            valid_img_num += len(images)
+            valid_images.extend(images)
+            valid_labels.extend(labels)
+            valid_poss.extend(poss)
+        elif guid in train_guids:
+            logger.info(f'found {guid} in train set')
+            train_image_num += len(images)
+            train_images.extend(images)
+            train_labels.extend(labels)
+            train_poss.extend(poss)
+    logger.info(f'train: {len(train_guids)} videos, {train_image_num} images (img: {len(train_images)}, pos: {len(train_poss)}, lbl: {len(train_labels)}) , valid: {len(validation_guids)} videos, {valid_img_num} images (img: {len(valid_images)}, pos: {len(valid_poss)}, lbl: {len(valid_labels)})')
+    train_img_tensor = torch.stack([torchvision.transforms.functional.pil_to_tensor(img) for img in train_images])
+    valid_img_tensor = torch.stack([torchvision.transforms.functional.pil_to_tensor(img) for img in valid_images])
+
+    train = SWTDatasetFeatExtrOnthefly(configs['img_enc_name'], train_labels, train_img_tensor, train_poss)
+    valid = SWTDatasetFeatExtrOnthefly(configs['img_enc_name'], valid_labels, valid_img_tensor, valid_poss, evalmode=True)
+    return train, valid
 
 
 def prepare_datasets_from_precomputed(indir, train_guids, validation_guids, configs):
@@ -166,7 +228,7 @@ def prepare_datasets_from_precomputed(indir, train_guids, validation_guids, conf
     return train, valid
 
 
-def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     os.makedirs(outdir, exist_ok=True)
 
     # need to implement "whitelist"?
@@ -198,7 +260,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
         valid_guids = modeling.config.batches.guids_for_fixed_validation_set
         train_all_guids = train_all_guids - set(valid_guids)
         # prepare_datasets seems to work fine with empty validation set
-        train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs)
+        train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs, featextr)
         train_loader = DataLoader(train, batch_size=len(train_all_guids), shuffle=True)
         valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=False)   
         base_fname = f"{outdir}/{train_id}"
@@ -219,7 +281,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
         logger.debug(f'After applied block lists:')
         logger.debug(f'train set: {train_guids}')
         logger.debug(f'dev set: {validation_guids}')
-        train, valid = prepare_datasets(indir, train_guids, validation_guids, configs)
+        train, valid = prepare_datasets(indir, train_guids, validation_guids, configs, featextr)
         # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
         if not train.has_data() or not valid.has_data():
             logger.info(f"Skipping fold {j} due to lack of data")
@@ -320,6 +382,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
+    parser.add_argument("-e", "--extract", action='store_true',
+                        help="run CNN feature extraction on the fly, meaning `indir` doesn't hold (npy+json) files, but (mp4/dir+csv) files instead")
     parser.add_argument("-c", "--config", metavar='FILE', help="the YAML model config file", default=None)
     parser.add_argument("-o", "--outdir", metavar='DIR', help="the results directory", default=RESULTS_DIR)
     args = parser.parse_args()
@@ -348,6 +412,6 @@ if __name__ == "__main__":
             prebin_name = 'custom'
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
         train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
+            indir=args.indir, outdir=args.outdir, featextr=args.extract, config_file=args.config, configs=config,
             train_id='.'.join(filter(None, [timestamp, backbonename, prebin_name, positionalencoding]))
         )
