@@ -83,4 +83,4 @@ def export_validation_results(out: IO, preds: Tensor, golds: Tensor, labelset: L
         out.write(f'{torch.sum(col_sums):>{lll}}\n')
     else:
         out.write(f'{"!!!":>{lll}}\n')
-    return p, r, f
+    return p_avg, r_avg, f_avg

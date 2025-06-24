@@ -22,6 +22,7 @@ class Classifier:
         model_config = yaml.safe_load(open(model_config_file))
         self.training_labels = train.get_prebinned_labelset(model_config)
         self.featurizer = data_loader.FeatureExtractor(**model_config)
+        self.featurizer.img_encoder.model.eval()
         label_count = len(FRAME_TYPES) + 1
         if 'bins' in model_config:
             label_count = len(model_config['bins'].keys()) + 1
@@ -31,6 +32,7 @@ class Classifier:
             num_layers=model_config["num_layers"],
             dropout=model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
+        self.classifier.eval()
         self.debug = False
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
 
