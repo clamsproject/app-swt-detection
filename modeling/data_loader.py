@@ -120,7 +120,10 @@ class FeatureExtractor(object):
             img_vec = img_vec.to('cuda')
             self.img_encoder.model.to('cuda')
         with torch.no_grad():
-            feature_vec = self.img_encoder.model(img_vec)
+            # for huggingface models, forward() will return 
+            # (last_hidden_state, global_average_pool) tuple,
+            # and we only care about GAP values.
+            feature_vec = self.img_encoder.model(img_vec, False, False)[1]
         if as_numpy:
             return feature_vec.cpu().numpy()
         else:
