@@ -1,26 +1,23 @@
 import argparse
+import collections
 import copy
-import json
 import logging
 import os
 import platform
 import shutil
 import time
 from pathlib import Path
-from typing import Union, List, Tuple
+from typing import Union, List, Dict
 
-import numpy as np
+import h5py
 import torch
 import torch.nn as nn
-import torchvision
 import yaml
-from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 import modeling
 import modeling.config.batches
-from modeling.backbones import model_dim_map
 from modeling import data_loader, gridsearch, FRAME_TYPES
 from modeling.config import bins
 from modeling.validate import validate
@@ -35,49 +32,112 @@ logger.setLevel(logging.INFO)
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 
-class SWTDataset(Dataset):
-    def __init__(self, backbone_model_name: str, labels: List[int], vectors: Tensor):
+class SWTH5Dataset(Dataset):
+    """
+    A PyTorch Dataset for loading image data from a collection of HDF5 files.
+
+    This dataset is designed to work with HDF5 files where each file contains
+    images from a single source (e.g., a video), and the images are organized
+    into groups based on a resizing strategy.
+    """
+
+    def __init__(self, 
+                 h5_dir: str,
+                 guids: List[str], 
+                 backbone_model_name: str,
+                 resize_strategy: str, 
+                 prebin: Dict = None, 
+                 evalmode=False):
+        """
+        Initializes the dataset. 
+
+        :param guids: A list of paths to the HDF5 files.
+        :param resize_strategy: The resizing strategy to use (e.g., 'distorted',
+                                'cropped256', 'cropped224'). This corresponds to
+                                the group name in the HDF5 files.
+        :param prebin: prebin strategy to use. 
+        """
+        self.guids = guids
+        self.image_group_name = f'images_{resize_strategy}'
+        self.h5_dir = Path(h5_dir)
+        self.index_map = []
+        self.total_images = 0
+        self.prebin = prebin
         self.img_enc_name = backbone_model_name
-        self.feat_dim = model_dim_map[backbone_model_name]
-        self.labels = torch.tensor(labels)
-        self.vectors = vectors
+        self.feat_extr = data_loader.FeatureExtractor(img_enc_name=self.img_enc_name)
+        self.feat_dim = self.feat_extr.feature_vector_dim()
+        if evalmode:
+            self.feat_extr.img_encoder.model.eval()
+
+        # Create a mapping from a global index to a file and an in-file index
+        for i, guid in enumerate(self.guids):
+            file_path = self.h5_dir / f"{guid}.h5"
+            if not file_path.exists():
+                continue
+            with h5py.File(file_path, 'r') as f:
+                if self.image_group_name not in f:
+                    logger.warning(f"Image group '{self.image_group_name}' not found in {file_path}. Skipping file.")
+                    continue
+                num_images = len(f[self.image_group_name])
+                image_keys = sorted(list(f[self.image_group_name].keys()))
+                for i in range(num_images):
+                    self.index_map.append((guid, image_keys[i]))
+                self.total_images += num_images
 
     def __len__(self):
-        return len(self.labels)
+        """
+        Returns the total number of images in the dataset.
+        """
+        return self.total_images
 
-    def __getitem__(self, i):
-        return self.vectors[i], self.labels[i]
-    
-    def has_data(self):
-        return 0 < len(self.vectors) == len(self.labels)
-
-
-class SWTDatasetFeatExtrOnthefly(SWTDataset):
-    """
-    subclass of the dataset, that holds image vectors instead of (pre-computed) feature vectors. 
-    """
-    def __init__(self, backbone_model_name: str, labels: List[int], vectors: Tensor, positions: List[Tuple[int, int]], evalmode=False):
-        super().__init__(backbone_model_name, labels, vectors)
-        self.featurizer = data_loader.FeatureExtractor(img_enc_name=backbone_model_name)
-        self.positions = torch.tensor(positions)
-        if evalmode:
-            self.featurizer.img_encoder.model.eval()
-
-    def __getitem__(self, i):
-        # this is the slow part, extracting features on the fly, one by one use getitems will help
-        features = self.featurizer.get_full_feature_vectors(self.vectors[i], self.positions[i])
-        return features, self.labels[i]
+    def __getitem__(self, idx):
+        # This is the standard method, kept for compatibility.
+        # It can simply call the plural version for a single item.
+        return self.__getitems__([idx])[0]
 
     def __getitems__(self, idxs):
-        features = self.featurizer.get_full_feature_vectors(self.vectors[idxs], self.positions[idxs])
-        labels = self.labels[idxs]
-        return list(zip(features, labels))
+        """
+        Retrieves an item from the dataset at the specified index.
+
+        :param idxs: The index of the item to retrieve.
+        :return: A tuple containing the image and its corresponding label.
+        """
+        # map from guid (file_id) to (datum_id, image_id) tuples
+        guid_to_idx = collections.defaultdict(list)
+        for zero_idx, idx in enumerate(idxs):
+            guid, image_key = self.index_map[idx]
+            guid_to_idx[guid].append((zero_idx, image_key))
+        # three tensor placeholders initiated with the exact "idxs" length
+        images = torch.empty((len(idxs), 3, 224, 224))
+        positions = torch.empty((len(idxs), 2))
+        labels = torch.empty((len(idxs),))
+        for guid, keys in guid_to_idx.items():
+            file_path = self.h5_dir / f"{guid}.h5"
+            with h5py.File(file_path, 'r') as f:
+                for idx, image_key in keys:
+                    # retrieve reshaped image vector and put in collection tensor
+                    # note that torch vision center_crop > ndarray is in (h, w, c) shape while 
+                    # convnext (hf) models are expecting (c, h, w), so need to permute
+                    images[idx] = torch.from_numpy(f[self.image_group_name][image_key][()]).permute(2, 0, 1)
+
+                    parts = image_key.split('_')
+                    
+                    # Create position tensor
+                    cur_time = int(parts[1])
+                    tot_time = int(parts[2])
+                    positions[idx] = torch.tensor([cur_time, tot_time])
+
+                    # Integer-encode the label
+                    label = pretraining_bin(parts[3], self.prebin)
+                    labels[idx] = label
+        features = self.feat_extr.get_full_feature_vectors(images, positions)
+        return list(zip(features, labels.to(torch.long)))
 
 
 def get_guids(data_dir):
     guids = set()
     # iterate through *.json or *.csv 
-    for suffix in 'json csv'.split():
+    for suffix in 'json csv zip h5'.split():
         for j in Path(data_dir).glob(f'*.{suffix}'):
             guid = j.with_suffix("").name
             guids.add(guid)
@@ -85,12 +145,12 @@ def get_guids(data_dir):
 
 
 def pretraining_bin(label, specs):
-    if specs is None or "prebin" not in specs or not specs["prebin"]:
+    if specs is None or len(specs) == 0:
         return int_encode(label)
-    for i, ptbin in enumerate(specs["prebin"].values()):
+    for i, ptbin in enumerate(specs.values()):
         if label and label in ptbin:
             return i
-    return len(specs["prebin"].keys())
+    return len(specs.keys())
 
 
 def load_config(config):
@@ -130,102 +190,19 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     return net
 
 
-def prepare_datasets(indir, train_guids, validation_guids, training_params, extract_img_vectors_now=False):
-    if extract_img_vectors_now:
-        # this is the old way of doing things, where we extract image vectors on the fly
-        # this is very slow and should be avoided
-        return prepare_datasets_while_extracting(indir, train_guids, validation_guids, training_params)
-    else:
-        # this is the new way of doing things, where we load pre-computed image vectors
-        return prepare_datasets_from_precomputed(indir, train_guids, validation_guids, training_params)
-
-
-def prepare_datasets_while_extracting(indir, train_guids, validation_guids, configs):
-    train_images, valid_images = [], []
-    train_labels, valid_labels = [], []
-    train_poss, valid_poss = [], []
-    train_image_num, valid_img_num = 0, 0
-    # TODO (krim @ 6/10/25): this heavily relies on the knowledge of the directory structure of 
-    # out data repo, so should be done in a different way
-    for c in Path(indir).glob('*.csv'):
-        guid = c.with_suffix("").name
-        if guid not in validation_guids and guid not in train_guids:
-            logger.warning(f'GUID {guid} is not in either training or validation set. Skipping.')
-            continue
-        src_file = Path(indir) / f'{guid}.mp4'  # video file
-        if not src_file.exists():
-            src_file = Path(indir) / guid  # pre-extracted still images in a directory
-        images, labels, poss = [], [], []
-        for img in data_loader.TrainingDataPreprocessor.get_stills(str(src_file.absolute()), c):
-            images.append(img.image)
-            labels.append(pretraining_bin(img.label, configs))
-            poss.append((img.curr_time, img.total_time))
-        if guid in validation_guids:
-            logger.info(f'found {guid} in valid set')
-            valid_img_num += len(images)
-            valid_images.extend(images)
-            valid_labels.extend(labels)
-            valid_poss.extend(poss)
-        elif guid in train_guids:
-            logger.info(f'found {guid} in train set')
-            train_image_num += len(images)
-            train_images.extend(images)
-            train_labels.extend(labels)
-            train_poss.extend(poss)
-    logger.info(f'train: {len(train_guids)} videos, {train_image_num} images (img: {len(train_images)}, pos: {len(train_poss)}, lbl: {len(train_labels)}) , valid: {len(validation_guids)} videos, {valid_img_num} images (img: {len(valid_images)}, pos: {len(valid_poss)}, lbl: {len(valid_labels)})')
-    train_img_tensor = torch.stack([torchvision.transforms.functional.pil_to_tensor(img) for img in train_images])
-    valid_img_tensor = torch.stack([torchvision.transforms.functional.pil_to_tensor(img) for img in valid_images])
-
-    train = SWTDatasetFeatExtrOnthefly(configs['img_enc_name'], train_labels, train_img_tensor, train_poss)
-    valid = SWTDatasetFeatExtrOnthefly(configs['img_enc_name'], valid_labels, valid_img_tensor, valid_poss, evalmode=True)
-    return train, valid
-
-
-def prepare_datasets_from_precomputed(indir, train_guids, validation_guids, configs):
+def prepare_datasets(indir, train_guids, validation_guids, training_params):
     """
-    Given a directory of pre-computed dense feature vectors, 
-    prepare the training and validation datasets. The preparation includes
-    1. positional encodings are applied.
-    2. 'gold' labels are attached to each vector.
-    3. split of vectors into training and validation sets (at video-level, meaning all frames from a video are either in training or validation set).
-    returns training dataset, validation dataset
+    Re-implementation of the dataset preparation for app version 8. Major difference is that 
+    files in the `indir` are no longer pre-computed CNN vectors, but are ndarrays of source 
+    images re-shaped to 224x224 via various resizing strategies (see data_loader.py).
     """
-    train_vectors, valid_vectors = None, None
-    train_labels, valid_labels = [], []
-    train_vector_num = valid_vector_num = 0
-
-    extractor = data_loader.FeatureExtractor(**config)
-
-    for j in Path(indir).glob('*.json'):
-        guid = j.with_suffix("").name
-        feature_vecs = np.load(Path(indir) / f"{guid}.{configs['img_enc_name']}.npy")
-        labels = json.load(open(Path(indir) / f"{guid}.json"))
-        pre_binned_labels = []
-        vectors = None
-        positions = []
-        for i, vec in enumerate(feature_vecs):
-            if labels['frames'][i]['mod']:  # "transitional" frames
-                continue
-            pre_binned_labels.append(pretraining_bin(labels['frames'][i]['label'], configs))
-            t = torch.from_numpy(vec)
-            vectors = t if vectors is None else torch.vstack((vectors, t))
-            positions.append(labels['frames'][i]['curr_time'])
-        if vectors is None:
-            # probably means all images in this GUID are transitional 
-            continue
-        feat_mat = extractor.encode_position([(position, labels['duration']) for position in positions], vectors)
-        if guid in validation_guids:
-            valid_vector_num += feat_mat.shape[0]
-            valid_vectors = feat_mat if valid_vectors is None else torch.vstack((valid_vectors, feat_mat))
-            valid_labels.extend(pre_binned_labels)
-        elif guid in train_guids:
-            train_vector_num += feat_mat.shape[0]
-            train_vectors = feat_mat if train_vectors is None else torch.vstack((train_vectors, feat_mat))
-            train_labels.extend(pre_binned_labels)
-    logger.info(f'train: {len(train_guids)} videos, {train_vector_num} images ({train_vectors.shape}), valid: {len(validation_guids)} videos, {valid_vector_num} images ({valid_vectors.shape})')
-    train = SWTDataset(configs['img_enc_name'], train_labels, train_vectors)
-    valid = SWTDataset(configs['img_enc_name'], valid_labels, valid_vectors)
-    return train, valid
+    img_enc_name = training_params['img_enc_name']
+    resize_strategy = training_params['resize_strategy']
+    prebin = training_params.get('prebin', None)
+    return (
+        SWTH5Dataset(indir, train_guids, img_enc_name, resize_strategy, prebin),
+        SWTH5Dataset(indir, validation_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
+    )
 
 
 def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
@@ -258,11 +235,16 @@ def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime(
     # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
     if configs['split_size'] >= len(train_all_guids):
         valid_guids = modeling.config.batches.guids_for_fixed_validation_set
-        train_all_guids = train_all_guids - set(valid_guids)
-        # prepare_datasets seems to work fine with empty validation set
-        train, valid = prepare_datasets(indir, train_all_guids, valid_guids, configs, featextr)
-        train_loader = DataLoader(train, batch_size=len(train_all_guids), shuffle=True)
-        valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=False)   
+        train_all_guids = list(train_all_guids - set(valid_guids))
+        img_enc_name = configs['img_enc_name']
+        resize_strategy = configs['resize_strategy']
+        prebin = configs.get('prebin', None)
+        train = SWTH5Dataset(indir, train_all_guids, img_enc_name, resize_strategy, prebin)
+        valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
+        logger.info(f'Instances for training: {str(len(train))}')
+        logger.info(f'Instances for validation: {str(len(valid))}')
+        train_loader = DataLoader(train, batch_size=1200, shuffle=True)
+        valid_loader = DataLoader(valid, batch_size=1200, shuffle=False)   
         base_fname = f"{outdir}/{train_id}"
         export_model_file = f"{base_fname}.pt"
         model = train_model(
@@ -292,7 +274,7 @@ def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime(
         export_csv_file = f"{outdir}/{train_id}.kfold_{j:03d}.csv"
         export_model_file = f"{outdir}/{train_id}.kfold_{j:03d}.pt"
         model = train_model(
-                get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
+                get_net(train.feat_dim, configs['num_layers'], configs['dropouts']),
                 loss, device, train_loader, configs)
         torch.save(model.state_dict(), export_model_file)
         p, r, f = validate(model, valid_loader, labelset, export_fname=export_csv_file)
@@ -411,7 +393,8 @@ if __name__ == "__main__":
             # "regular" fully-custom binning config via a proper dict - can't set a name for this
             prebin_name = 'custom'
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
+        resize_strategy = config['resize_strategy']
         train(
             indir=args.indir, outdir=args.outdir, featextr=args.extract, config_file=args.config, configs=config,
-            train_id='.'.join(filter(None, [timestamp, backbonename, prebin_name, positionalencoding]))
+            train_id='.'.join(filter(None, [timestamp, backbonename, resize_strategy, prebin_name, positionalencoding]))
         )

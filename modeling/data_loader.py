@@ -110,7 +110,7 @@ class FeatureExtractor(object):
         position_dim = int(pos_length / self.pos_unit)
         if position_dim % 2 == 1:
             position_dim += 1
-        self.pos_vec_lookup = self.get_sinusoidal_embeddings(position_dim, self.img_encoder.dim)
+        self.pos_vec_lookup = self.get_sinusoidal_embeddings(position_dim, self.feature_vector_dim())
 
     def get_sinusoidal_embeddings(self, n_pos, dim):
         if (n_pos, dim) in self.__class__.sinusoidal_embeddings:
@@ -123,8 +123,7 @@ class FeatureExtractor(object):
         self.__class__.sinusoidal_embeddings[(n_pos, dim)] = matrix
         return matrix
 
-    def get_img_vector(self, raw_img, as_numpy=True):
-        img_vec = self.img_encoder.preprocess(raw_img)
+    def get_img_vector(self, img_vec, as_numpy=True):
         if img_vec.ndim == 3:  # when a single image is passed
             img_vec = img_vec.unsqueeze(0)
         if torch.cuda.is_available():
@@ -142,24 +141,28 @@ class FeatureExtractor(object):
 
     def convert_position(self, cur, tot):
         if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:
-            return cur
+            pos = cur
         else:
-            return cur * self.pos_vec_lookup.shape[0] // tot
+            pos = cur * self.pos_vec_lookup.shape[0] // tot
+        return int(pos)
 
-    def encode_position(self, position, img_vec):
+    def encode_position(self, position: Tensor, img_vec):
         if isinstance(img_vec, np.ndarray):
             img_vec = torch.from_numpy(img_vec)
         if img_vec.ndim == 3:  # when a single image is passed
             img_vec = img_vec.unsqueeze(0)
-        pos_lookup_col = [self.convert_position(*pos) for pos in position]
+        pos_lookup_col = [self.convert_position(pos[0], pos[1]) for pos in position]
         pos_vec = self.pos_vec_lookup[pos_lookup_col] * self.pos_vec_coeff
         return torch.add(img_vec, pos_vec)
 
     def feature_vector_dim(self):
         return self.img_encoder.dim
 
-    def get_full_feature_vectors(self, raw_imgs, *positions):
+    def get_full_feature_vectors(self, raw_imgs, positions):
         img_vecs = self.get_img_vector(raw_imgs, as_numpy=False)
+        # having first element only [0] will work for train_loader, but get 
+        # `IndexError: too many indices for tensor of dimension 2` 
+        # for valid_loader
         return self.encode_position(positions, img_vecs)
 
 

@@ -15,6 +15,7 @@ dropouts = {0.3}
 # img_enc_name = modeling.backbones.model_map.keys()
 img_enc_name = {'convnext_lg', 'convnext_small', 'convnext_tiny'}
 
+resize_strategy = {'distorted', 'cropped256', 'cropped224'}
 # positional encoding configuration best performed as of v6.0
 pos_length = {6000000}
 pos_abs_th_front = {5}
@@ -33,7 +34,8 @@ block_guids_valid = []
 prebin = ['noprebin']
 # prebin = []
 
-clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 
+clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 
+                   'img_enc_name', 'resize_strategy',
                    'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
                    'block_guids_train', 'block_guids_valid', 
                    'prebin']
