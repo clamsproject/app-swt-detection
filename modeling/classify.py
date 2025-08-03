@@ -7,6 +7,7 @@ import yaml
 from PIL import Image
 
 from modeling import train, data_loader, FRAME_TYPES
+from modeling.train import BATCH_SIZE
 
 
 class Classifier:

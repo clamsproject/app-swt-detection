@@ -1,3 +1,6 @@
-pandas
-h5py
 dotenv
+h5py
+hiplot
+pandas
+torchmetrics
+tqdm

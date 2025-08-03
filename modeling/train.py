@@ -31,6 +31,7 @@ logger.setLevel(logging.INFO)
 
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
+BATCH_SIZE = 200  # convnext_large (v1) will use ~7GB of vram 
 
 class SWTH5Dataset(Dataset):
     """
@@ -126,7 +127,7 @@ class SWTH5Dataset(Dataset):
                     positions[idx] = torch.tensor([cur_time, tot_time])
 
                     # Integer-encode the label
-                    label = pretraining_bin(parts[3], self.prebin)
+                    label = pretraining_bin(parts[3][0], self.prebin)
                     labels[idx] = label
         features = self.feat_extr.get_full_feature_vectors(images, positions)
         return list(zip(features, labels.to(torch.long)))
@@ -220,17 +221,31 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
     logger.info(f'Instances for training: {str(len(train))}')
     logger.info(f'Instances for validation: {str(len(valid))}')
-    train_loader = DataLoader(train, batch_size=1200, shuffle=True)
-    valid_loader = DataLoader(valid, batch_size=1200, shuffle=False)   
+    
+    train_loader = DataLoader(train, batch_size=BATCH_SIZE, shuffle=True)
+    valid_loader = DataLoader(valid, batch_size=BATCH_SIZE, shuffle=False)
     base_fname = f"{outdir}/{train_id}"
     export_model_file = f"{base_fname}.pt"
-    model = train_model(
+    t = time.perf_counter()
+    model, epoch_losses = train_model(
         get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
         loss, device, train_loader, configs)
     torch.save(model.state_dict(), export_model_file)
     p_config = Path(f'{base_fname}.yml')
-    validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
+    train_elapsed = time.perf_counter() - t
+    _, _, _, valid_elapsed = validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
+    with open(f'{base_fname}.csv', 'a') as export_file:
+        export_file.write('\n\n')
+        export_file.write(f"training-time: {train_elapsed}\n")
+        export_file.write(f"validation-time: {valid_elapsed}\n")
+        export_file.write('\n\n')
+        for epoch, loss in enumerate(epoch_losses, 1):
+            export_file.write(f'Epoch {epoch}: {loss:.6f}\n')
     export_train_config(config_file, configs, p_config)
+    # then unload datasets and release gpu memory 
+    del model
+    del train
+    del valid
 
 
 def export_train_config(config_file: str, configs: dict, outfile: Union[str, Path]):
@@ -272,6 +287,8 @@ def train_model(model, loss_fn, device, train_loader, configs):
     since = time.perf_counter()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
+    epoch_losses = []  # List to store epoch losses
+
     for num_epoch in tqdm(range(configs['num_epochs'])):
 
         running_loss = 0.0
@@ -295,13 +312,14 @@ def train_model(model, loss_fn, device, train_loader, configs):
                 logger.debug(f'Loss: {loss.sum().item():.4f}')
 
         epoch_loss = running_loss / len(train_loader)
+        epoch_losses.append(epoch_loss)
 
         logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
     time_elapsed = time.perf_counter() - since
     logger.info(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
     
     model.eval()
-    return model
+    return model, epoch_losses  # Return the model and recorded losses
 
 
 if __name__ == "__main__":
@@ -321,6 +339,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
+    first_timestamp = time.strftime("%Y%m%d-%H%M%S")
     for i, config in enumerate(configs):
         print(f'training with config {i+1}/{len(configs)}')
         timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -338,5 +357,5 @@ if __name__ == "__main__":
         resize_strategy = config['resize_strategy']
         train(
             indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id='.'.join(filter(None, [timestamp, backbonename, resize_strategy, prebin_name, positionalencoding]))
+            train_id='.'.join(filter(None, [first_timestamp, timestamp, backbonename, resize_strategy, prebin_name, positionalencoding]))
         )

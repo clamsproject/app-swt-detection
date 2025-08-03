@@ -8,15 +8,23 @@ from typing import IO, List
 import torch
 from torch import Tensor
 from torchmetrics.functional import accuracy, precision, recall, f1_score, confusion_matrix
+import time
 
 
 def validate(model, valid_loader, labelset, export_fname=None):
     model.eval()
-    # valid_loader is currently expected to be a single batch
-    vfeats, vlabels = next(iter(valid_loader))
-    outputs = model(vfeats)
-    _, preds = torch.max(outputs, 1)
-
+    
+    all_preds = []
+    all_labels = []
+    t = time.perf_counter()
+    for vfeats, vlabels in valid_loader:
+        outputs = model(vfeats)
+        _, preds = torch.max(outputs, 1)
+        all_preds.append(preds)
+        all_labels.append(vlabels)
+    preds = torch.cat(all_preds)
+    vlabels = torch.cat(all_labels)
+    elapsed = time.perf_counter() - t
     if not export_fname:
         export_f = sys.stdout
     else:
@@ -26,7 +34,7 @@ def validate(model, valid_loader, labelset, export_fname=None):
     p, r, f = export_validation_results(out=export_f, preds=preds, golds=vlabels,
                                         labelset=labelset, img_enc_name=valid_loader.dataset.img_enc_name)
     logging.info(f"Exported to {export_f.name}")
-    return p, r, f
+    return p, r, f, elapsed
 
 
 def export_validation_results(out: IO, preds: Tensor, golds: Tensor, labelset: List[str], img_enc_name: str):
