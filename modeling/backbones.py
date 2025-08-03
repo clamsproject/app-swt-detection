@@ -49,7 +49,7 @@ class ConvnextTinyExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
 
 class ConvnextSmallExtractor(ExtractorModel, _ConvnextExtractorInitBase):
-    name = "convnext_small"
+    name = "convnext_base"
     dim = 1024
 
     def __init__(self):
@@ -57,7 +57,7 @@ class ConvnextSmallExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
 
 class ConvnextLargeExtractor(ExtractorModel, _ConvnextExtractorInitBase):
-    name = "convnext_lg"
+    name = "convnext_large"
     dim = 1536
 
     def __init__(self):
@@ -73,8 +73,8 @@ class ConvnextV2TinyExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
 
 class ConvnextV2SmallExtractor(ExtractorModel, _ConvnextExtractorInitBase):
-    name = "convnextv2_small"
-    dim = 768
+    name = "convnextv2_base"
+    dim = 1024
 
     def __init__(self):
         self._init_hf_convnext_components()
@@ -82,7 +82,7 @@ class ConvnextV2SmallExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
 class ConvnextV2LargeExtractor(ExtractorModel, _ConvnextExtractorInitBase):
     name = "convnextv2_large"
-    dim = 768
+    dim = 1536
 
     def __init__(self):
         self._init_hf_convnext_components()

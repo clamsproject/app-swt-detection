@@ -2,19 +2,24 @@ import itertools
 
 import modeling.backbones
 import modeling.config.bins
-from modeling.config.batches import excluded_guids
+from modeling.config import batches 
 
 
 ## TP classifier training grid search
 # parameter values from the best performing models in v5.0
-split_size = {math.inf}
 num_epochs = {10}
 num_layers = {4}
 pos_unit = {60000}
 dropouts = {0.3}
 # img_enc_name = modeling.backbones.model_map.keys()
-img_enc_name = {'convnext_lg', 'convnext_small', 'convnext_tiny'}
-
+img_enc_name = {
+    'convnext_tiny',
+    'convnextv2_tiny',
+    'convnext_base',
+    'convnextv2_base',
+    'convnext_large', 
+    'convnextv2_large',
+}
 resize_strategy = {'distorted', 'cropped256', 'cropped224'}
 # positional encoding configuration best performed as of v6.0
 pos_length = {6000000}
@@ -23,9 +28,15 @@ pos_abs_th_end = {10}
 pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
 
 # to see effect of training data size
-block_guids_train = [excluded_guids]
+block_guids_train = [
+    batches.excluded_guids
+    # batches.excluded_guids + batches.aapb_collaboration_27_a + batches.aapb_collaboration_27_b +\
+    # batches.aapb_collaboration_27_c + batches.aapb_collaboration_27_e + batches.aapb_collaboration_27_f +\
+    # batches.aapb_collaboration_27_bd01 + batches.aapb_collaboration_27_bd02 + batches.aapb_collaboration_27_bd03 +\
+    # batches.aapb_collaboration_27_bd04 + batches.aapb_collaboration_27_bd05 + batches.aapb_collaboration_27_bho
+    ]
 # since we now do validation on a fixed set, this parameter has no effect, keeping it for historical reasons
-block_guids_valid = []
+block_guids_valid = [batches.excluded_guids]
 
 # "prebin" configurations. 
 # NOTE that postbin is not a part of the CV model, so is not handled here
@@ -34,7 +45,7 @@ block_guids_valid = []
 prebin = ['noprebin']
 # prebin = []
 
-clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 
+clss_param_keys = ['num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 
                    'img_enc_name', 'resize_strategy',
                    'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
                    'block_guids_train', 'block_guids_valid', 

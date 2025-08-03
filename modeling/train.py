@@ -190,22 +190,7 @@ def get_net(in_dim, n_labels, num_layers, dropout=0.0):
     return net
 
 
-def prepare_datasets(indir, train_guids, validation_guids, training_params):
-    """
-    Re-implementation of the dataset preparation for app version 8. Major difference is that 
-    files in the `indir` are no longer pre-computed CNN vectors, but are ndarrays of source 
-    images re-shaped to 224x224 via various resizing strategies (see data_loader.py).
-    """
-    img_enc_name = training_params['img_enc_name']
-    resize_strategy = training_params['resize_strategy']
-    prebin = training_params.get('prebin', None)
-    return (
-        SWTH5Dataset(indir, train_guids, img_enc_name, resize_strategy, prebin),
-        SWTH5Dataset(indir, validation_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
-    )
-
-
-def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
+def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H%M%S")):
     os.makedirs(outdir, exist_ok=True)
 
     # need to implement "whitelist"?
@@ -217,10 +202,6 @@ def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime(
         else:
             logger.info(f'Using config: {k}={v}')
     train_all_guids = set(guids) - set(configs['block_guids_train'])
-    val_set_spec = []
-    p_scores = []
-    r_scores = []
-    f_scores = []
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -232,61 +213,26 @@ def train(indir, outdir, featextr, config_file, configs, train_id=time.strftime(
     labelset = get_prebinned_labelset(configs)
     logger.info(f'Labels for training: ({num_labels}) {labelset}')
 
-    # if split_size > #videos, nothing to "hold-out". Hence, single fold training and validate against the "fixed" set
-    if configs['split_size'] >= len(train_all_guids):
-        valid_guids = modeling.config.batches.guids_for_fixed_validation_set
-        train_all_guids = list(train_all_guids - set(valid_guids))
-        img_enc_name = configs['img_enc_name']
-        resize_strategy = configs['resize_strategy']
-        prebin = configs.get('prebin', None)
-        train = SWTH5Dataset(indir, train_all_guids, img_enc_name, resize_strategy, prebin)
-        valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
-        logger.info(f'Instances for training: {str(len(train))}')
-        logger.info(f'Instances for validation: {str(len(valid))}')
-        train_loader = DataLoader(train, batch_size=1200, shuffle=True)
-        valid_loader = DataLoader(valid, batch_size=1200, shuffle=False)   
-        base_fname = f"{outdir}/{train_id}"
-        export_model_file = f"{base_fname}.pt"
-        model = train_model(
-            get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
-            loss, device, train_loader, configs)
-        torch.save(model.state_dict(), export_model_file)
-        p_config = Path(f'{base_fname}.yml')
-        validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
-        export_train_config(config_file, configs, p_config)
-        return
-    # otherwise, do k-fold training with k's size = split_size
-    valid_all_guids = sorted(list(train_all_guids - set(configs['block_guids_valid'])))
-    for j, i in enumerate(range(0, len(valid_all_guids), configs['split_size'])):
-        validation_guids = set(valid_all_guids[i:i + configs['split_size']])
-        train_guids = train_all_guids - validation_guids
-        logger.debug(f'After applied block lists:')
-        logger.debug(f'train set: {train_guids}')
-        logger.debug(f'dev set: {validation_guids}')
-        train, valid = prepare_datasets(indir, train_guids, validation_guids, configs, featextr)
-        # `train` and `valid` vectors DO contain positional encoding after `split_dataset`
-        if not train.has_data() or not valid.has_data():
-            logger.info(f"Skipping fold {j} due to lack of data")
-            continue
-        train_loader = DataLoader(train, batch_size=40, shuffle=True)
-        valid_loader = DataLoader(valid, batch_size=len(valid), shuffle=True)
-        logger.info(f'Split {j}: training on {len(train_guids)} videos, validating on {validation_guids}')
-        export_csv_file = f"{outdir}/{train_id}.kfold_{j:03d}.csv"
-        export_model_file = f"{outdir}/{train_id}.kfold_{j:03d}.pt"
-        model = train_model(
-                get_net(train.feat_dim, configs['num_layers'], configs['dropouts']),
-                loss, device, train_loader, configs)
-        torch.save(model.state_dict(), export_model_file)
-        p, r, f = validate(model, valid_loader, labelset, export_fname=export_csv_file)
-        val_set_spec.append(validation_guids)
-        p_scores.append(p)
-        r_scores.append(r)
-        f_scores.append(f)
-    p_config = Path(f'{outdir}/{train_id}.kfold_config.yml')
-    p_results = Path(f'{outdir}/{train_id}.kfold_results.txt')
-    p_results.parent.mkdir(parents=True, exist_ok=True)
+    valid_guids = modeling.config.batches.guids_for_fixed_validation_set
+    train_all_guids = list(train_all_guids - set(valid_guids))
+    img_enc_name = configs['img_enc_name']
+    resize_strategy = configs['resize_strategy']
+    prebin = configs.get('prebin', None)
+    train = SWTH5Dataset(indir, train_all_guids, img_enc_name, resize_strategy, prebin)
+    valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
+    logger.info(f'Instances for training: {str(len(train))}')
+    logger.info(f'Instances for validation: {str(len(valid))}')
+    train_loader = DataLoader(train, batch_size=1200, shuffle=True)
+    valid_loader = DataLoader(valid, batch_size=1200, shuffle=False)   
+    base_fname = f"{outdir}/{train_id}"
+    export_model_file = f"{base_fname}.pt"
+    model = train_model(
+        get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
+        loss, device, train_loader, configs)
+    torch.save(model.state_dict(), export_model_file)
+    p_config = Path(f'{base_fname}.yml')
+    validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
     export_train_config(config_file, configs, p_config)
-    export_kfold_results(val_set_spec, p_scores, r_scores, f_scores, p_results)
 
 
 def export_train_config(config_file: str, configs: dict, outfile: Union[str, Path]):
@@ -364,8 +310,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
-    parser.add_argument("-e", "--extract", action='store_true',
-                        help="run CNN feature extraction on the fly, meaning `indir` doesn't hold (npy+json) files, but (mp4/dir+csv) files instead")
     parser.add_argument("-c", "--config", metavar='FILE', help="the YAML model config file", default=None)
     parser.add_argument("-o", "--outdir", metavar='DIR', help="the results directory", default=RESULTS_DIR)
     args = parser.parse_args()
@@ -395,6 +339,6 @@ if __name__ == "__main__":
         positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
         resize_strategy = config['resize_strategy']
         train(
-            indir=args.indir, outdir=args.outdir, featextr=args.extract, config_file=args.config, configs=config,
+            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
             train_id='.'.join(filter(None, [timestamp, backbonename, resize_strategy, prebin_name, positionalencoding]))
         )
