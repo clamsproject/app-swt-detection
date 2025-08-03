@@ -116,9 +116,7 @@ class SWTH5Dataset(Dataset):
             with h5py.File(file_path, 'r') as f:
                 for idx, image_key in keys:
                     # retrieve reshaped image vector and put in collection tensor
-                    # note that torch vision center_crop > ndarray is in (h, w, c) shape while 
-                    # convnext (hf) models are expecting (c, h, w), so need to permute
-                    images[idx] = torch.from_numpy(f[self.image_group_name][image_key][()]).permute(2, 0, 1)
+                    images[idx] = torch.from_numpy(f[self.image_group_name][image_key][()])
 
                     parts = image_key.split('_')
                     

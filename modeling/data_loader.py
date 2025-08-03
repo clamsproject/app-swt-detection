@@ -4,7 +4,7 @@ import os
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Tuple, Dict, ClassVar
+from typing import Tuple, Dict, ClassVar, List
 
 import h5py
 import numpy as np
@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from torch import Tensor
-from torchvision.transforms import functional as transform_functions
+from torchvision.transforms import Resize, CenterCrop, ToTensor, Normalize, Compose
 
 from modeling import backbones
 
@@ -55,13 +55,15 @@ class ImageResizeStrategy(enum.Enum):
         :param strategy_str: The string representation of the resize strategy.
         :return: A function that applies the specified resizing strategy.
         """
+        def to_normalized_tensor(preprocessing: List):
+            return Compose(preprocessing + [ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])  # ImageNet moments
         strategy = cls.from_string(strategy_str)
         if strategy == cls.DISTORTED:
-            return lambda img: transform_functions.resize(img, [224, 224])
+            return to_normalized_tensor([Resize([224, 224])])
         elif strategy == cls.CROPPED256:
-            return lambda img: transform_functions.center_crop(transform_functions.resize(img, [256]), [224])
+            return to_normalized_tensor([Resize([256]), CenterCrop([224])])
         elif strategy == cls.CROPPED224:
-            return lambda img: transform_functions.center_crop(transform_functions.resize(img, [224]), [224])
+            return to_normalized_tensor([Resize([224]), CenterCrop([224])])
         else:
             raise ValueError(f"Unknown resize strategy: {strategy_str}")
 
@@ -241,12 +243,11 @@ class TrainingDataPreprocessor(object):
                         reshaped_group = self._ensure_group(hdf5_file, f'images_{resize_strategy.value}')
 
                         # Resize and convert the image to an array
-                        img_resized = self._resize_image(img, resize_strategy)
-                        img_array = np.array(img_resized)
+                        img_resized = self._resize_image(img, resize_strategy).numpy()
 
                         # Avoid overwriting existing datasets, append if not present
                         if image_id not in reshaped_group:
-                            reshaped_group.create_dataset(image_id, data=img_array, compression="gzip")
+                            reshaped_group.create_dataset(image_id, data=img_resized, compression="gzip")
 
     @staticmethod
     def _resize_image(img, strategy):
