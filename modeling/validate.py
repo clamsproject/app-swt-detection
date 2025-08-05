@@ -1,6 +1,7 @@
 import csv
 import logging
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import IO, List
@@ -8,7 +9,6 @@ from typing import IO, List
 import torch
 from torch import Tensor
 from torchmetrics.functional import accuracy, precision, recall, f1_score, confusion_matrix
-import time
 
 
 def validate(model, valid_loader, labelset, export_fname=None):
@@ -34,6 +34,7 @@ def validate(model, valid_loader, labelset, export_fname=None):
     p, r, f = export_validation_results(out=export_f, preds=preds, golds=vlabels,
                                         labelset=labelset, img_enc_name=valid_loader.dataset.img_enc_name)
     logging.info(f"Exported to {export_f.name}")
+    export_f.close()
     return p, r, f, elapsed
 
 

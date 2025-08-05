@@ -27,7 +27,7 @@ logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
@@ -284,6 +284,7 @@ def get_prebinned_labelset(config):
 
 
 def train_model(model, loss_fn, device, train_loader, configs):
+    model.to(device)
     since = time.perf_counter()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -295,8 +296,8 @@ def train_model(model, loss_fn, device, train_loader, configs):
 
         model.train()
         for num_batch, (feats, labels) in enumerate(train_loader):
-            feats.to(device)
-            labels.to(device)
+            feats = feats.to(device)
+            labels = labels.to(device)
 
             with torch.set_grad_enabled(True):
                 optimizer.zero_grad()
@@ -306,12 +307,12 @@ def train_model(model, loss_fn, device, train_loader, configs):
                 loss.sum().backward()
                 optimizer.step()
 
-            running_loss += loss.sum().item() * feats.size(0)
+            running_loss += loss.sum().item()
             if num_batch % 100 == 0:
                 logger.debug(f'Batch {num_batch} of {len(train_loader)}')
-                logger.debug(f'Loss: {loss.sum().item():.4f}')
+                logger.debug(f'Loss: {loss.mean().item():.4f}')
 
-        epoch_loss = running_loss / len(train_loader)
+        epoch_loss = running_loss / len(train_loader.dataset)
         epoch_losses.append(epoch_loss)
 
         logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
@@ -320,6 +321,22 @@ def train_model(model, loss_fn, device, train_loader, configs):
     
     model.eval()
     return model, epoch_losses  # Return the model and recorded losses
+
+def get_train_id_suffix_from_config(config):
+    backbonename = config['img_enc_name']
+    if len(config['prebin']) == 0:  # empty binning = no binning
+        config.pop('prebin')
+        prebin_name = 'noprebin'
+    elif isinstance(config['prebin'], str):
+        prebin_name = config['prebin']
+        config['prebin'] = bins.binning_schemes[prebin_name]
+    else:
+        # "regular" fully-custom binning config via a proper dict - can't set a name for this
+        prebin_name = 'custom'
+    positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
+    resize_strategy = config['resize_strategy']
+    suffix = '.'.join(filter(None, [backbonename, resize_strategy, prebin_name, positionalencoding]))
+    return suffix if suffix else 'noconfig'
 
 
 if __name__ == "__main__":
@@ -343,19 +360,5 @@ if __name__ == "__main__":
     for i, config in enumerate(configs):
         print(f'training with config {i+1}/{len(configs)}')
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        backbonename = config['img_enc_name']
-        if len(config['prebin']) == 0:  # empty binning = no binning
-            config.pop('prebin')
-            prebin_name = 'noprebin'
-        elif isinstance(config['prebin'], str):
-            prebin_name = config['prebin']
-            config['prebin'] = bins.binning_schemes[prebin_name]
-        else:
-            # "regular" fully-custom binning config via a proper dict - can't set a name for this
-            prebin_name = 'custom'
-        positionalencoding = "pos" + ("F" if config["pos_vec_coeff"] == 0 else "T")
-        resize_strategy = config['resize_strategy']
-        train(
-            indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config,
-            train_id='.'.join(filter(None, [first_timestamp, timestamp, backbonename, resize_strategy, prebin_name, positionalencoding]))
-        )
+        train_id = '.'.join([first_timestamp, timestamp, get_train_id_suffix_from_config(config)])
+        train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
