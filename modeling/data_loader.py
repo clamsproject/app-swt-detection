@@ -105,6 +105,8 @@ class FeatureExtractor(object):
             raise ValueError("A image vector model must be specified")
         else:
             self.img_encoder: backbones.ExtractorModel = backbones.model_map[img_enc_name]()
+        if torch.cuda.is_available():
+            self.img_encoder.model.to('cuda')
         self.pos_unit = pos_unit
         self.pos_abs_th_front = pos_abs_th_front
         self.pos_abs_th_end = pos_abs_th_end
@@ -130,7 +132,6 @@ class FeatureExtractor(object):
             img_vec = img_vec.unsqueeze(0)
         if torch.cuda.is_available():
             img_vec = img_vec.to('cuda')
-            self.img_encoder.model.to('cuda')
         with torch.no_grad():
             # for huggingface models, forward() will return 
             # (last_hidden_state, global_average_pool) tuple,

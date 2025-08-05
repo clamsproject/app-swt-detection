@@ -11,19 +11,22 @@ from torch import Tensor
 from torchmetrics.functional import accuracy, precision, recall, f1_score, confusion_matrix
 
 
-def validate(model, valid_loader, labelset, export_fname=None):
+def validate(model, device, valid_loader, labelset, export_fname=None):
+    model = model.to(device)
+    logging.info(f"Validating on device {device}")
     model.eval()
     
     all_preds = []
     all_labels = []
     t = time.perf_counter()
     for vfeats, vlabels in valid_loader:
+        vfeats = vfeats.to(device)
         outputs = model(vfeats)
         _, preds = torch.max(outputs, 1)
         all_preds.append(preds)
         all_labels.append(vlabels)
-    preds = torch.cat(all_preds)
-    vlabels = torch.cat(all_labels)
+    preds = torch.cat(all_preds).cpu()
+    vlabels = torch.cat(all_labels).cpu()
     elapsed = time.perf_counter() - t
     if not export_fname:
         export_f = sys.stdout

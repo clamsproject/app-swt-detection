@@ -27,7 +27,7 @@ logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)-8s %(thread)d %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
@@ -233,14 +233,14 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     torch.save(model.state_dict(), export_model_file)
     p_config = Path(f'{base_fname}.yml')
     train_elapsed = time.perf_counter() - t
-    _, _, _, valid_elapsed = validate(model, valid_loader, labelset, export_fname=f'{base_fname}.csv')
+    _, _, _, valid_elapsed = validate(model, device, valid_loader, labelset, export_fname=f'{base_fname}.csv')
     with open(f'{base_fname}.csv', 'a') as export_file:
         export_file.write('\n\n')
-        export_file.write(f"training-time: {train_elapsed}\n")
-        export_file.write(f"validation-time: {valid_elapsed}\n")
+        export_file.write(f"training-time,{train_elapsed}\n")
+        export_file.write(f"validation-time,{valid_elapsed}\n")
         export_file.write('\n\n')
         for epoch, loss in enumerate(epoch_losses, 1):
-            export_file.write(f'Epoch {epoch}: {loss:.6f}\n')
+            export_file.write(f'Epoch {epoch} loss,{loss:.6f}\n')
     export_train_config(config_file, configs, p_config)
     # then unload datasets and release gpu memory 
     del model
@@ -318,8 +318,6 @@ def train_model(model, loss_fn, device, train_loader, configs):
         logger.debug(f'Loss: {epoch_loss:.4f} after {num_epoch+1} epochs')
     time_elapsed = time.perf_counter() - since
     logger.info(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-    
-    model.eval()
     return model, epoch_losses  # Return the model and recorded losses
 
 def get_train_id_suffix_from_config(config):
@@ -357,8 +355,28 @@ if __name__ == "__main__":
         os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
     first_timestamp = time.strftime("%Y%m%d-%H%M%S")
-    for i, config in enumerate(configs):
-        print(f'training with config {i+1}/{len(configs)}')
+    import multiprocessing
+
+    def train_worker(config, gpu_id, args, first_timestamp):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         train_id = '.'.join([first_timestamp, timestamp, get_train_id_suffix_from_config(config)])
-        train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
+        with torch.cuda.device(gpu_id):
+            # Call the train function with the correct parameters
+            train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
+
+    num_gpus = torch.cuda.device_count() or 1
+    print(f"Using {num_gpus} parallel workers (GPUs detected: {torch.cuda.device_count()})")
+    first_timestamp = time.strftime("%Y%m%d-%H%M%S")
+    processes = []
+    for i, config in enumerate(configs):
+        gpu_id = i % num_gpus
+        p = multiprocessing.Process(target=train_worker, args=(config, gpu_id, args, first_timestamp))
+        print(f"Training {i+1} of {len(configs)} configuration on GPU {gpu_id}")
+        p.start()
+        processes.append(p)
+        if len(processes) >= num_gpus:
+            for proc in processes:
+                proc.join()
+            processes = []
+    for proc in processes:
+        proc.join()
