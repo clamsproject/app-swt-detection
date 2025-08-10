@@ -234,8 +234,10 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     p_config = Path(f'{base_fname}.yml')
     train_elapsed = time.perf_counter() - t
     _, _, _, valid_elapsed = validate(model, device, valid_loader, labelset, export_fname=f'{base_fname}.csv')
+    vram_usage = log_peak_vram_usage()
     with open(f'{base_fname}.csv', 'a') as export_file:
         export_file.write('\n\n')
+        export_file.write(f"peak-vram-usage,{vram_usage}\n")
         export_file.write(f"training-time,{train_elapsed}\n")
         export_file.write(f"validation-time,{valid_elapsed}\n")
         export_file.write('\n\n')
@@ -277,6 +279,25 @@ def export_kfold_results(trial_specs, p_scores, r_scores, f_scores, p_results):
         out.write(f'\trecall = {sum(r_scores) / len(r_scores)}\n')
 
 
+def log_peak_vram_usage():
+    if not torch.cuda.is_available():
+        return "No CUDA available"
+    
+    num_gpus = torch.cuda.device_count()
+    vram_info = []
+    
+    for i in range(num_gpus):
+        device = torch.device(f"cuda:{i}")
+        gpu_name = torch.cuda.get_device_name(i)
+        
+        peak_bytes = torch.cuda.max_memory_allocated(device)
+        peak_mb = peak_bytes / (1024 * 1024)
+        
+        vram_info.append(f"GPU {i} ({gpu_name}): {peak_mb:.2f}MB peak")
+    
+    return "; ".join(vram_info)
+
+
 def get_prebinned_labelset(config):
     if 'prebin' in config and len(config['prebin']) > 0:
         return list(config["prebin"].keys()) + [modeling.negative_label]
@@ -285,6 +306,7 @@ def get_prebinned_labelset(config):
 
 def train_model(model, loss_fn, device, train_loader, configs):
     model.to(device)
+    torch.cuda.reset_peak_memory_stats(device)
     since = time.perf_counter()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
