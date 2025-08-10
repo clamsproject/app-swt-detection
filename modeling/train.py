@@ -320,6 +320,7 @@ def train_model(model, loss_fn, device, train_loader, configs):
     logger.info(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
     return model, epoch_losses  # Return the model and recorded losses
 
+
 def get_train_id_suffix_from_config(config):
     backbonename = config['img_enc_name']
     if len(config['prebin']) == 0:  # empty binning = no binning
@@ -337,12 +338,45 @@ def get_train_id_suffix_from_config(config):
     return suffix if suffix else 'noconfig'
 
 
+def check_results_exist(outdir, train_id_prefix, config):
+    """Check if results already exist for a given configuration."""
+    # Find all .yml config files that match the timestamp pattern
+    existing_config_files = list(Path(outdir).glob(f"{train_id_prefix}.*.yml"))
+    
+    # Compare each existing config with the current one
+    for existing_config_file in existing_config_files:
+        try:
+            with open(existing_config_file, 'r') as f:
+                existing_config = yaml.safe_load(f)
+            
+            # Compare configurations
+            if configs_match(config, existing_config):
+                # Check if the corresponding CSV results file exists
+                csv_file = existing_config_file.with_suffix('.csv')
+                if csv_file.exists():
+                    return True
+        except (yaml.YAMLError, FileNotFoundError, KeyError):
+            # Skip files that can't be read or parsed
+            continue
+    
+    return False
+
+
+def configs_match(config1, config2):
+    """Compare two configuration dictionaries for equivalence."""
+    for key in gridsearch.clss_param_keys:
+        if not (key in config1 and key in config2 and config1[key] == config2[key]):
+            return False
+    return True
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")
     parser.add_argument("-c", "--config", metavar='FILE', help="the YAML model config file", default=None)
     parser.add_argument("-o", "--outdir", metavar='DIR', help="the results directory", default=RESULTS_DIR)
+    parser.add_argument("-p", "--train-id-prefix", metavar='PREFIX', help="prefix for training IDs (default: current timestamp)", default=None)
     args = parser.parse_args()
 
     if args.config:
@@ -354,23 +388,35 @@ if __name__ == "__main__":
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
     print(f'training with {str(len(configs))} different configurations')
-    first_timestamp = time.strftime("%Y%m%d-%H%M%S")
+    
+    # Set train_id_prefix from argument or use current timestamp as fallback
+    train_id_prefix = args.train_id_prefix or time.strftime("%Y%m%d-%H%M%S")
+    print(f"Using train ID prefix: {train_id_prefix}")
+    
     import multiprocessing
 
-    def train_worker(config, gpu_id, args, first_timestamp):
+    def train_worker(config, gpu_id, args, train_id_prefix):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        train_id = '.'.join([first_timestamp, timestamp, get_train_id_suffix_from_config(config)])
+        train_id = '.'.join([train_id_prefix, timestamp, get_train_id_suffix_from_config(config)])
         with torch.cuda.device(gpu_id):
             # Call the train function with the correct parameters
             train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
 
     num_gpus = torch.cuda.device_count() or 1
     print(f"Using {num_gpus} parallel workers (GPUs detected: {torch.cuda.device_count()})")
-    first_timestamp = time.strftime("%Y%m%d-%H%M%S")
     processes = []
+    skipped_count = 0
+    
     for i, config in enumerate(configs):
+        # Check if results already exist for this configuration
+        if check_results_exist(args.outdir, train_id_prefix, config):
+            skipped_count += 1
+            suffix = get_train_id_suffix_from_config(config.copy())
+            print(f"Skipping {i+1} of {len(configs)} (results exist): {suffix}")
+            continue
+            
         gpu_id = i % num_gpus
-        p = multiprocessing.Process(target=train_worker, args=(config, gpu_id, args, first_timestamp))
+        p = multiprocessing.Process(target=train_worker, args=(config, gpu_id, args, train_id_prefix))
         print(f"Training {i+1} of {len(configs)} configuration on GPU {gpu_id}")
         p.start()
         processes.append(p)
@@ -380,3 +426,6 @@ if __name__ == "__main__":
             processes = []
     for proc in processes:
         proc.join()
+        
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} configurations with existing results")
