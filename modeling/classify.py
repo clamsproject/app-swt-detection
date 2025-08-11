@@ -7,6 +7,7 @@ import yaml
 from PIL import Image
 
 from modeling import train, data_loader, FRAME_TYPES
+from modeling.train import BATCH_SIZE
 
 
 class Classifier:
@@ -36,24 +37,20 @@ class Classifier:
         self.debug = False
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
 
-    def classify_images(self, images: List[Image.Image], positions: List[int], final_pos: int) -> torch.Tensor:
+    def classify_images(self, images: torch.Tensor, positions: List[int], final_pos: int) -> torch.Tensor:
         """
         Image classification for a set of extract images (in PIL.Image format). 
         Useful with using ``mmif.utils.video_document_handler.extract_frames_as_images()``
         """
         featurizing_time = 0
-        feat_list = []
-        for pos, img in zip(positions, images):
-            t = time.perf_counter()
-            features = self.featurizer.get_full_feature_vectors(img, pos, final_pos)
-            if self.logger.isEnabledFor(logging.DEBUG):
-                featurizing_time += time.perf_counter() - t
-            feat_list.append(features)
+        t = time.perf_counter()
+        feat_mat = self.featurizer.get_full_feature_vectors(images, [[pos, final_pos] for pos in positions])
+        if self.logger.isEnabledFor(logging.DEBUG):
+            featurizing_time += time.perf_counter() - t
         self.logger.debug(f'Featurizing time: {featurizing_time:.2f} seconds\n')
-        self.logger.debug(f'Instances: {len(feat_list)}, Features: {feat_list[0].shape}')
+        self.logger.debug(f'Instances: {feat_mat.shape[0]}, Features: {feat_mat.shape[1]}')
         softmax = torch.nn.Softmax(dim=1)
         t = time.perf_counter()
-        feat_mat = torch.stack(feat_list, dim=0)
         predictions = self.classifier(feat_mat).detach()
         self.logger.debug(f'Predictions: {predictions.shape}, first: {predictions[0]}')
         probabilities = softmax(predictions)

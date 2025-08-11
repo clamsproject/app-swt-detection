@@ -83,7 +83,7 @@ def clean_config(config, prebin_name=None):
     config['posenc'] = config['pos_vec_coeff'] > 0
     del config['pos_vec_coeff']
 
-    del config['split_size']
+    # del config['split_size']
     return config
 
 img_encer_sorter = backbone_sorter()

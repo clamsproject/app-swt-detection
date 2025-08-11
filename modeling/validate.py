@@ -1,6 +1,7 @@
 import csv
 import logging
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import IO, List
@@ -10,13 +11,23 @@ from torch import Tensor
 from torchmetrics.functional import accuracy, precision, recall, f1_score, confusion_matrix
 
 
-def validate(model, valid_loader, labelset, export_fname=None):
+def validate(model, device, valid_loader, labelset, export_fname=None):
+    model = model.to(device)
+    logging.info(f"Validating on device {device}")
     model.eval()
-    # valid_loader is currently expected to be a single batch
-    vfeats, vlabels = next(iter(valid_loader))
-    outputs = model(vfeats)
-    _, preds = torch.max(outputs, 1)
-
+    
+    all_preds = []
+    all_labels = []
+    t = time.perf_counter()
+    for vfeats, vlabels in valid_loader:
+        vfeats = vfeats.to(device)
+        outputs = model(vfeats)
+        _, preds = torch.max(outputs, 1)
+        all_preds.append(preds)
+        all_labels.append(vlabels)
+    preds = torch.cat(all_preds).cpu()
+    vlabels = torch.cat(all_labels).cpu()
+    elapsed = time.perf_counter() - t
     if not export_fname:
         export_f = sys.stdout
     else:
@@ -26,7 +37,8 @@ def validate(model, valid_loader, labelset, export_fname=None):
     p, r, f = export_validation_results(out=export_f, preds=preds, golds=vlabels,
                                         labelset=labelset, img_enc_name=valid_loader.dataset.img_enc_name)
     logging.info(f"Exported to {export_f.name}")
-    return p, r, f
+    export_f.close()
+    return p, r, f, elapsed
 
 
 def export_validation_results(out: IO, preds: Tensor, golds: Tensor, labelset: List[str], img_enc_name: str):
