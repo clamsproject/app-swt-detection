@@ -215,16 +215,16 @@ class SwtDetection(ClamsApp):
                 self.logger.debug(f"\"{label}\" interval {positive_interval} score: {tf_score} / {parameters['tfMinTFScore']}")
                 rep_idx = tp_scores.argmax() + positive_interval[0]
                 if tf_score >= parameters['tfMinTFScore']:
-                    target_list = [a.long_id for a in tps[positive_interval[0]:positive_interval[1]]]
+                    target_list = [a.id for a in tps[positive_interval[0]:positive_interval[1]]]
                     if label not in parameters['tfDynamicSceneLabels']:
-                        reps = [tps[rep_idx].long_id]
+                        reps = [tps[rep_idx].id]
                     else:
                         # TODO (krim @ 10/28/24): before this was done by picking every third TP regardless of the 
                         # sampling rate, this new impl is sill very arbitrary and should be improved in the future
                         
                         # we pick every TP from 2 * minTFDuration time window
                         rep_gap = 2 * math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate)
-                        reps = list(map(lambda x: x.long_id, tps[positive_interval[0]:positive_interval[1]:rep_gap]))
+                        reps = list(map(lambda x: x.id, tps[positive_interval[0]:positive_interval[1]:rep_gap]))
                     all_tf.append(TimeFrameTuple(label=label, tf_score=tf_score, targets=target_list,
                                                  representatives=reps))
         if not parameters['tfAllowOverlap']:
