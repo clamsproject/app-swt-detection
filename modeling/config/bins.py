@@ -79,81 +79,63 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
 
     # Human ambiguity-based binning schemes (summer 2025)
 
-    # 1) "Collapse human ambiguity"
-    # Idea: This binning comes from human observations about category ambiguity.
-    # These pre-bin categories are thought to be difficult/ambiguous for humans.
-    # This binning is not at all informed by training eval numbers, but based on
-    # observations about inter-labeler consistency during labeling and answering
-    # interns questions about labeling. This binning preserves most of the
-    # distinctions about which humans are reliable judges, and it preserves the
-    # most high value categorizations.
-    # Bin map: "GLOTW": ["G", "L", "O", "T", "W"]
-    "collapse-human-ambiguity": {
+    # 1) "Collapse close categories"
+    # Idea:  Collapse categories like G, L, O, T, that are ambiguous to
+    # humans, and group categories that depend on the content of the text.
+    "collapse-close": {
         "GLOTW": ["G", "L", "O", "T", "W"],
+        "CR": ["C", "R"],
+        "IN": ["I", "N"],
+        "KU": ["K", "U"],
         "B": ["B"],
         "S": ["S"],
-        "I": ["I"],
-        "C": ["C"],
-        "R": ["R"],
         "M": ["M"],
-        "N": ["N"],
         "Y": ["Y"],
-        "U": ["U"],
-        "K": ["K"],
         "F": ["F"],
         "E": ["E"],
         "P": ["P"]
     },
 
-    # 2) "Collapse human ambiguity and reduce difficulty"
-    # Idea: Further bin by combining a couple of the most challenging categories
-    # along with the ones they seem to visually resemble.
-    # Bin map: "GLOTW": ["G", "L", "O", "T", "W"], "CR": ["C", "R"], "IN": ["I", "N"]
-    "collapse-ambiguity-reduce-difficulty": {
+    # 2) "Collapse close categories and reduce difficulty"
+    # Idea: Reduce difficulty by grouping some lower thirds
+    "collapse-close-reduce-difficulty": {
         "GLOTW": ["G", "L", "O", "T", "W"],
         "CR": ["C", "R"],
-        "IN": ["I", "N"],
+        "IKNU": ["I", "K", "N", "U"],
         "B": ["B"],
         "S": ["S"],
         "M": ["M"],
         "Y": ["Y"],
-        "U": ["U"],
-        "K": ["K"],
         "F": ["F"],
         "E": ["E"],
         "P": ["P"]
     },
 
-    # 3) "Collapse human ambiguity and further reduce difficulty"
-    # Idea: Just like 2, except that it also expects that K and U are difficult
-    # categories and speculates that they are best collapsed with E.
-    # Bin map: "GLOTW": ["G", "L", "O", "T", "W"], "EKU": ["E", "K", "U"],
-    #          "CR": ["C", "R"], "IN": ["I", "N"]
-    "collapse-ambiguity-further-reduce": {
+    # 3) "Collapse close categories and group all lower thirds"
+    # Idea: Further reduce difficulty by grouping all lower thirds
+    "collapse-close-bin-lower-thirds": {
         "GLOTW": ["G", "L", "O", "T", "W"],
-        "EKU": ["E", "K", "U"],
         "CR": ["C", "R"],
-        "IN": ["I", "N"],
+        "IKNUY": ["I", "K", "N", "U", "Y"],
         "B": ["B"],
         "S": ["S"],
         "M": ["M"],
-        "Y": ["Y"],
         "F": ["F"],
+        "E": ["E"],
         "P": ["P"]
     },
 
-    # 4) "Ignore all difficult distinctions"
-    # Idea: Further bin by combining most of the tricky categories into a large
-    # catch-all SWT category.
-    # Bin map: "EGLMOTWY": ["E", "G", "L", "K", "M", "O", "T", "U", "W", "Y"],
-    #          "CR": ["C", "R"], "IN": ["I", "N"]
-    "ignore-difficult-distinctions": {
-        "EGLMOTWY": ["E", "G", "L", "K", "M", "O", "T", "U", "W", "Y"],
+    # 4) "Ignore difficult distinctions"
+    # Idea: Any more binning would reduce the value of categories too much
+    "ignore-difficulties": {
+        "GLMOTW": ["G", "L", "M", "O", "T", "W"],
         "CR": ["C", "R"],
-        "IN": ["I", "N"],
+        "IKNUY": ["I", "K", "N", "U", "Y"],
         "B": ["B"],
         "S": ["S"],
-        "P": ["P"],
-        "F": ["F"]
+        "F": ["F"],
+        "E": ["E"],
+        "P": ["P"]
     }
+
 }
