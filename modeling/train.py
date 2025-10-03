@@ -343,7 +343,10 @@ def train_model(model, loss_fn, device, train_loader, configs):
     return model, epoch_losses  # Return the model and recorded losses
 
 
-def get_train_id_suffix_from_config(config):
+def normalize_config_and_get_train_id_suffix_from_config(config):
+    """ 
+    This will alter config dict, so except right before calling a worker, use a copy of the config
+    """
     backbonename = config['img_enc_name']
     if len(config['prebin']) == 0:  # empty binning = no binning
         config.pop('prebin')
@@ -363,10 +366,12 @@ def get_train_id_suffix_from_config(config):
 def check_results_exist(outdir, train_id_prefix, config):
     """Check if results already exist for a given configuration."""
     # Find all .yml config files that match the timestamp pattern
-    existing_config_files = list(Path(outdir).glob(f"{train_id_prefix}.*.yml"))
+    suffix = normalize_config_and_get_train_id_suffix_from_config(config.copy())  # just to normalize the config
+    existing_config_files = list(Path(outdir).glob(f"{train_id_prefix}.*.{suffix}.yml"))
     
     # Compare each existing config with the current one
     for existing_config_file in existing_config_files:
+        print(f'Checking existing config: {existing_config_file}')
         try:
             with open(existing_config_file, 'r') as f:
                 existing_config = yaml.safe_load(f)
@@ -419,7 +424,7 @@ if __name__ == "__main__":
 
     def train_worker(config, gpu_id, args, train_id_prefix):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        train_id = '.'.join([train_id_prefix, timestamp, get_train_id_suffix_from_config(config)])
+        train_id = '.'.join([train_id_prefix, timestamp, normalize_config_and_get_train_id_suffix_from_config(config)])
         with torch.cuda.device(gpu_id):
             # Call the train function with the correct parameters
             train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
@@ -433,10 +438,10 @@ if __name__ == "__main__":
         # Check if results already exist for this configuration
         if check_results_exist(args.outdir, train_id_prefix, config):
             skipped_count += 1
-            suffix = get_train_id_suffix_from_config(config.copy())
+            suffix = normalize_config_and_get_train_id_suffix_from_config(config.copy())
             print(f"Skipping {i+1} of {len(configs)} (results exist): {suffix}")
             continue
-            
+
         gpu_id = i % num_gpus
         p = multiprocessing.Process(target=train_worker, args=(config, gpu_id, args, train_id_prefix))
         print(f"Training {i+1} of {len(configs)} configuration on GPU {gpu_id}")

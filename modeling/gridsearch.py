@@ -71,3 +71,14 @@ def get_classifier_training_grids():
     for vals in itertools.product(*[l[key] for key in clss_param_keys]):
         yield dict(zip(clss_param_keys, vals))
 
+if __name__ == '__main__':
+    import json
+    grids = list(get_classifier_training_grids())
+    # block_guids_train and block_guids_valid contain lists, which are just too noisy to print all 
+    for grid in grids:
+        grid['block_guids_train'] = f"<{len(grid['block_guids_train'])} GUIDs>"
+        grid['block_guids_valid'] = f"<{len(grid['block_guids_valid'])} GUIDs>"
+    print(json.dumps(grids, indent=2))
+    for key in clss_param_keys:
+        print(f"{key}: {len(l[key])} options")
+    print(f"Total classifier training grid search configurations: {len(grids)}")
