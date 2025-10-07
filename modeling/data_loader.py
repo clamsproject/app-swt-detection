@@ -133,10 +133,11 @@ class FeatureExtractor(object):
         if torch.cuda.is_available():
             img_vec = img_vec.to('cuda')
         with torch.no_grad():
-            # for huggingface models, forward() will return 
-            # (last_hidden_state, global_average_pool) tuple,
-            # and we only care about GAP values.
-            feature_vec = self.img_encoder.model(img_vec, False, False)[1]
+            # for huggingface models, forward() will return
+            # BaseModelOutputWithPoolingAndNoAttention with pooler_output
+            # which is the global average pool values we need
+            output = self.img_encoder.model(img_vec)
+            feature_vec = output.pooler_output
         if as_numpy:
             return feature_vec.cpu().numpy()
         else:

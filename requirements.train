@@ -4,3 +4,5 @@ hiplot
 pandas
 torchmetrics
 tqdm
+pytest
+tabulate
