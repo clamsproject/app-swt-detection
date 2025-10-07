@@ -5,6 +5,7 @@ import logging
 import os
 import platform
 import shutil
+import hashlib
 import time
 from pathlib import Path
 from typing import Union, List, Dict
@@ -32,6 +33,14 @@ logger.setLevel(logging.INFO)
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
 
 BATCH_SIZE = 200  # convnext_large (v1) will use ~7GB of vram 
+    # # these sizes are for A6000 GPU
+    # if 'tiny' in img_enc_name:
+    #     batch_size = 1600
+    # elif 'base' in img_enc_name:
+    #     batch_size = 1600
+    # elif 'large' in img_enc_name:
+    #     batch_size = 800
+
 
 class SWTH5Dataset(Dataset):
     """
@@ -423,8 +432,14 @@ if __name__ == "__main__":
     import multiprocessing
 
     def train_worker(config, gpu_id, args, train_id_prefix):
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        train_id = '.'.join([train_id_prefix, timestamp, normalize_config_and_get_train_id_suffix_from_config(config)])
+        # Generate a unique hash for the config to ensure unique train_id
+        config_str = str(sorted(config.items())) # Convert config to a sorted string for consistent hashing
+        config_hash = hashlib.sha256(config_str.encode('utf-8')).hexdigest()[:12] # Take first 12 chars
+        
+        # Combine prefix, hash, and normalized config suffix
+        train_id = '.'.join([train_id_prefix, config_hash, normalize_config_and_get_train_id_suffix_from_config(config)])
+        
+        logger.info(f"Starting training with ID: {train_id} on GPU {gpu_id}")
         with torch.cuda.device(gpu_id):
             # Call the train function with the correct parameters
             train(indir=args.indir, outdir=args.outdir, config_file=args.config, configs=config, train_id=train_id)
