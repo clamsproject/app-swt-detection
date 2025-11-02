@@ -1,0 +1,8 @@
+dotenv
+h5py
+hiplot
+pandas
+torchmetrics
+tqdm
+pytest
+tabulate

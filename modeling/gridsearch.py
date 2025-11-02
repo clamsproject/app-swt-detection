@@ -1,21 +1,26 @@
 import itertools
-import math
 
 import modeling.backbones
 import modeling.config.bins
-from modeling.config.batches import unintersting_guids, aapb_collaboration_27_b, aapb_collaboration_27_c, aapb_collaboration_27_e, guids_with_confirmed_slates_images
+from modeling.config import batches 
 
 
 ## TP classifier training grid search
 # parameter values from the best performing models in v5.0
-split_size = {math.inf}
 num_epochs = {10}
 num_layers = {4}
 pos_unit = {60000}
 dropouts = {0.3}
 # img_enc_name = modeling.backbones.model_map.keys()
-img_enc_name = {'convnext_lg', 'convnext_small', 'convnext_tiny'}
-
+img_enc_name = {
+    'convnext_tiny',
+    'convnextv2_tiny',
+    'convnext_base',
+    'convnextv2_base',
+    'convnext_large', 
+    'convnextv2_large',
+}
+resize_strategy = {'distorted', 'cropped256', 'cropped224'}
 # positional encoding configuration best performed as of v6.0
 pos_length = {6000000}
 pos_abs_th_front = {5}
@@ -24,21 +29,14 @@ pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
 
 # to see effect of training data size
 block_guids_train = [
-    
-    # aapb_collaboration_27_a + aapb_collaboration_27_b + aapb_collaboration_27_c + aapb_collaboration_27_e + guids_with_confirmed_slates_images,  # exclude all training data
-    # First, count of GUIDs in annotation batches: a + b + c + e + f(?) = 20 + 21 + 20 + 60 + 1118 = 1239 videos 
-    # excluding `d` batch (reserved for evaluation),  including 1 uninsteresting video in `27-b` batch 
-    # (`d` batch has a single GUID, and never "vectorized" to `npy` files, hence not explicitly specified here)
-    # unintersting_guids,  # this used to be the "full" size (hashed as 0001@xxx in the result visualization until v7.5)
-    unintersting_guids + guids_with_confirmed_slates_images,  # OLD v7.1rc training set (hashed as 1119@xxx), now this is the "full" training set that we decided to hold "confirmed-slate" set out for evaluation of KIE task (see https://github.com/clamsproject/aapb-collaboration/issues/27#issuecomment-2841848595)
-    # note that the "uninstresting" video is never used in all training sets
-    # also note that when `split_size` is very large, no k-fold is performed, and the `pbd` set is used for fixed validation
-]
+    batches.excluded_guids
+    # batches.excluded_guids + batches.aapb_collaboration_27_a + batches.aapb_collaboration_27_b +\
+    # batches.aapb_collaboration_27_c + batches.aapb_collaboration_27_e + batches.aapb_collaboration_27_f +\
+    # batches.aapb_collaboration_27_bd01 + batches.aapb_collaboration_27_bd02 + batches.aapb_collaboration_27_bd03 +\
+    # batches.aapb_collaboration_27_bd04 + batches.aapb_collaboration_27_bd05 + batches.aapb_collaboration_27_bho
+    ]
 # since we now do validation on a fixed set, this parameter has no effect, keeping it for historical reasons
-block_guids_valid = [
-    unintersting_guids + aapb_collaboration_27_b + aapb_collaboration_27_e + guids_with_confirmed_slates_images,  # block all loosely-annotated videos and the challenging images
-    #  unintersting_guids,  # effectively no block except
-]
+block_guids_valid = [batches.excluded_guids]
 
 # "prebin" configurations. 
 # NOTE that postbin is not a part of the CV model, so is not handled here
@@ -47,7 +45,8 @@ block_guids_valid = [
 prebin = ['noprebin']
 # prebin = []
 
-clss_param_keys = ['split_size', 'num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 'img_enc_name', 
+clss_param_keys = ['num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 
+                   'img_enc_name', 'resize_strategy',
                    'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
                    'block_guids_train', 'block_guids_valid', 
                    'prebin']
@@ -72,3 +71,14 @@ def get_classifier_training_grids():
     for vals in itertools.product(*[l[key] for key in clss_param_keys]):
         yield dict(zip(clss_param_keys, vals))
 
+if __name__ == '__main__':
+    import json
+    grids = list(get_classifier_training_grids())
+    # block_guids_train and block_guids_valid contain lists, which are just too noisy to print all 
+    for grid in grids:
+        grid['block_guids_train'] = f"<{len(grid['block_guids_train'])} GUIDs>"
+        grid['block_guids_valid'] = f"<{len(grid['block_guids_valid'])} GUIDs>"
+    print(json.dumps(grids, indent=2))
+    for key in clss_param_keys:
+        print(f"{key}: {len(l[key])} options")
+    print(f"Total classifier training grid search configurations: {len(grids)}")

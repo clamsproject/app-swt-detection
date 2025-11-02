@@ -21,6 +21,7 @@ from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
 from modeling.config import bins
+from modeling.data_loader import ImageResizeStrategy
 
 
 class SwtDetection(ClamsApp):
@@ -75,7 +76,7 @@ class SwtDetection(ClamsApp):
         from modeling import classify
         import torch
 
-        batch_size = 2000
+        batch_size = classify.BATCH_SIZE
         vdh.capture(video)
         total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
         start_ms = max(0, parameters['tpStartAt'])
@@ -114,7 +115,13 @@ class SwtDetection(ClamsApp):
 
             # classify images
             t = time.perf_counter()
-            predictions = classifier.classify_images(extracted, positions, total_ms)
+            # Note that we are not using the built-in "preprocess" of the 
+            # CNN models to experiment with different resize strategies.
+            # Hence we do this preprocessing manually and when images are 
+            # passed to the classifier, they are resized and normalized.
+            resizer = ImageResizeStrategy.get_transform_function('distorted')
+            resized = torch.stack(tuple(map(resizer, extracted)))
+            predictions = classifier.classify_images(resized, positions, total_ms)
             if all_preds is None:
                 all_preds = predictions
             else:
