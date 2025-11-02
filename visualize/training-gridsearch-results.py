@@ -80,8 +80,8 @@ def clean_config(config, prebin_name=None):
     else:
         config['prebin'] = 'None'
 
-    config['posenc'] = config['pos_vec_coeff'] > 0
-    del config['pos_vec_coeff']
+    # Keep pos_vec_coeff as numeric value instead of binary
+    # (no deletion, keep the actual coefficient)
 
     # del config['split_size']
     return config
@@ -171,7 +171,7 @@ for k, v in data.items():
     p = hip.Experiment.from_iterable(v)
     # p.parameters_definition = hyperparams
     for hp in hyperparams:
-        if hp == 'score' or hp.startswith('num_'):
+        if hp == 'score' or hp.startswith('num_') or hp in ('pos_vec_coeff', 'dropouts'):
             p.parameters_definition[hp] = hip.ValueDef(value_type=hip.ValueType.NUMERIC, colormap='interpolateTurbo')
         elif hp in ('img_enc_name', 'block_guids_train', 'block_guids_valid', 'prebin'):
             p.parameters_definition[hp] = hip.ValueDef(value_type=hip.ValueType.CATEGORICAL, colormap='interpolateViridis')
