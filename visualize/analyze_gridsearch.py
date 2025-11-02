@@ -75,7 +75,7 @@ def extract_all_data_from_files(csv_files):
         params = {
             'img_enc_name': config.get('img_enc_name'),
             'resize_strategy': config.get('resize_strategy'),
-            'posenc': config.get('pos_vec_coeff', 0) > 0,  # posenc is True if pos_vec_coeff > 0
+            'pos_vec_coeff': config.get('pos_vec_coeff', 0),  # Keep as numeric value
             'dropouts': config.get('dropouts'),
             'num_epochs': config.get('num_epochs'),
             'num_layers': config.get('num_layers'),
@@ -113,7 +113,7 @@ def extract_all_data_from_files(csv_files):
                                     'filename': Path(csv_file).name,
                                     'img_enc_name': params['img_enc_name'],
                                     'resize_strategy': params['resize_strategy'],
-                                    'posenc': params['posenc'],
+                                    'pos_vec_coeff': params['pos_vec_coeff'],
                                     'dropouts': params['dropouts'],
                                     'num_epochs': params['num_epochs'],
                                     'num_layers': params['num_layers'],
@@ -162,7 +162,7 @@ def extract_all_data_from_files(csv_files):
                             'filename': Path(csv_file).name,
                             'img_enc_name': params['img_enc_name'],
                             'resize_strategy': params['resize_strategy'],
-                            'posenc': params['posenc'],
+                            'pos_vec_coeff': params['pos_vec_coeff'],
                             'prebin': params['prebin'],
                             'matrix': np.array(matrix_data),
                             'labels': labels
@@ -183,7 +183,7 @@ def extract_all_data_from_files(csv_files):
                     'filename': Path(csv_file).name,
                     'img_enc_name': params['img_enc_name'],
                     'resize_strategy': params['resize_strategy'],
-                    'posenc': params['posenc'],
+                    'pos_vec_coeff': params['pos_vec_coeff'],
                     'prebin': params['prebin'],
                     'vram_peak_mb': vram_mb,
                     'training_time_sec': float(train_time_match.group(1)),
@@ -266,7 +266,7 @@ def analyze_confusion_patterns(matrix, labels):
 def merge_performance_and_resources(df, profiling_data):
     """Merge grid search performance with resource usage data"""
     # Calculate average performance by parameter combination
-    gs_avg = df.groupby(['img_enc_name', 'resize_strategy', 'posenc'])['f1_score'].mean().reset_index()
+    gs_avg = df.groupby(['img_enc_name', 'resize_strategy', 'pos_vec_coeff'])['f1_score'].mean().reset_index()
     gs_avg = gs_avg.rename(columns={'f1_score': 'avg_f1'})
 
     # Create profiling dataframe
@@ -279,7 +279,7 @@ def merge_performance_and_resources(df, profiling_data):
         return pd.DataFrame()
 
     # Merge datasets
-    merged = prof_df.merge(gs_avg, on=['img_enc_name', 'resize_strategy', 'posenc'], how='inner')
+    merged = prof_df.merge(gs_avg, on=['img_enc_name', 'resize_strategy', 'pos_vec_coeff'], how='inner')
 
     if len(merged) > 0:
         # Calculate efficiency metrics
@@ -350,26 +350,22 @@ def _generate_executive_summary(df, best_params, matrices_data):
     grid_search_labels = [l for l in df['label'].unique() if l != '!AVG']
 
     # Get unique parameter combinations
-    params = ['img_enc_name', 'resize_strategy', 'posenc', 'prebin', 'dropouts', 'num_epochs', 'num_layers']
+    params = ['img_enc_name', 'resize_strategy', 'pos_vec_coeff', 'prebin', 'dropouts', 'num_epochs', 'num_layers']
     param_combos = df.groupby(params).size().reset_index(name='count')
 
     # Create grid table
     grid_table = "\n### Parameter Grid Coverage\n\n"
-    grid_table += "| Model | Resize Strategy | PosEnc | Prebin | Dropout | Epochs | Layers | Experiments |\n"
-    grid_table += "|-------|----------------|--------|--------|---------|--------|--------|-------------|\n"
+    grid_table += "| Model | Resize Strategy | PosEnc Coeff | Prebin | Dropout | Epochs | Layers | Experiments |\n"
+    grid_table += "|-------|----------------|--------------|--------|---------|--------|--------|-------------|\n"
 
     for _, row in param_combos.iterrows():
-        grid_table += f"| {row['img_enc_name']} | {row['resize_strategy']} | {row['posenc']} | {row['prebin']} | {row['dropouts']} | {row['num_epochs']} | {row['num_layers']} | {row['count']} |\n"
+        grid_table += f"| {row['img_enc_name']} | {row['resize_strategy']} | {row['pos_vec_coeff']} | {row['prebin']} | {row['dropouts']} | {row['num_epochs']} | {row['num_layers']} | {row['count']} |\n"
 
     # Summary statistics by parameter
     grid_table += "\n**Parameter Value Distribution:**\n"
     for param in params:
         unique_vals = df[param].unique()
-        if param == 'posenc':
-            unique_vals_str = ', '.join(map(str, sorted(list(set(map(bool, unique_vals))))))
-            grid_table += f"- **{param}**: {unique_vals_str}\n"
-        else:
-            grid_table += f"- **{param}**: {len(unique_vals)} unique values ({', '.join(map(str, sorted(unique_vals)))})\n"
+        grid_table += f"- **{param}**: {len(unique_vals)} unique values ({', '.join(map(str, sorted(unique_vals)))})\n"
 
     return f"""# Comprehensive Grid Search and Confusion Matrix Analysis
 
@@ -401,7 +397,7 @@ def _generate_performance_section(df, best_params):
 | Model | {best_params['img_enc_name']} |
 | Epochs | {best_params['num_epochs']} |
 | Layers | {best_params['num_layers']} |
-| Position Encoding | {best_params['posenc']} |
+| Position Encoding Coeff | {best_params['pos_vec_coeff']} |
 | Resize Strategy | {best_params['resize_strategy']} |
 | Prebin | {best_params['prebin']} |
 | Dropout | {best_params['dropouts']} |
@@ -507,7 +503,7 @@ For each `prebin` strategy, the single best-performing experiment was identified
 | Model | {best_run_params['img_enc_name']} |
 | Epochs | {best_run_params['num_epochs']} |
 | Layers | {best_run_params['num_layers']} |
-| Position Encoding | {best_run_params['posenc']} |
+| Position Encoding Coeff | {best_run_params['pos_vec_coeff']} |
 | Resize Strategy | {best_run_params['resize_strategy']} |
 | Dropout | {best_run_params['dropouts']} |
 """
@@ -620,7 +616,7 @@ Found **{len(pareto_df)} Pareto-optimal configurations** out of {len(resource_df
 | Rank | F1 Score | VRAM (MB) | Time (hours) | Model | Config |
 |------|----------|-----------|--------------|-------|--------|\n"""
         for i, (_, row) in enumerate(pareto_df.head(10).iterrows(), 1):
-            section += f"| {i} | {row['avg_f1']:.3f} | {row['vram_peak_mb']:.0f} | {row['training_time_hours']:.2f} | {row['img_enc_name']} | {row['resize_strategy']}, posenc={row['posenc']} |\n"
+            section += f"| {i} | {row['avg_f1']:.3f} | {row['vram_peak_mb']:.0f} | {row['training_time_hours']:.2f} | {row['img_enc_name']} | {row['resize_strategy']}, pos_coeff={row['pos_vec_coeff']} |\n"
 
         # Resource recommendations
         section += """
@@ -695,43 +691,58 @@ Generated on: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
 
 def _generate_posenc_impact_section(df):
-    """Generate a section analyzing the impact of posenc on labels in the 'none' prebin group."""
-    section = """## Positional Encoding Impact Analysis (prebin='none')
+    """Generate a section analyzing the impact of pos_vec_coeff on labels in the 'none' prebin group."""
+    section = """## Positional Encoding Coefficient Impact Analysis (prebin='none')
 
-This section analyzes the impact of the `posenc` parameter on the F1 score of each label, specifically for experiments where no pre-binning was used (`prebin='none'-`).
+This section analyzes the impact of different `pos_vec_coeff` values on the F1 score of each label, specifically for experiments where no pre-binning was used (`prebin='none'`).
 
 """
     try:
         # 1. Filter for prebin == 'none'
         none_df = df[df['prebin'] == 'none'].copy()
         if none_df.empty:
-            return section + "No data available for the `prebin='none'` group to analyze `posenc` impact.\n"
+            return section + "No data available for the `prebin='none'` group to analyze `pos_vec_coeff` impact.\n"
 
-        # 2. Group by label and posenc, calculate mean F1
-        posenc_impact_df = none_df.groupby(['label', 'posenc'])['f1_score'].mean().unstack()
-        posenc_impact_df.rename(columns={True: 'f1_posenc_true', False: 'f1_posenc_false'}, inplace=True)
+        # 2. Group by label and pos_vec_coeff, calculate mean F1
+        posenc_impact_df = none_df.groupby(['label', 'pos_vec_coeff'])['f1_score'].mean().unstack()
 
-        # 3. Calculate impact
-        posenc_impact_df.fillna(0, inplace=True) # Handle cases where a label only exists for one posenc value
-        posenc_impact_df['abs_impact'] = posenc_impact_df['f1_posenc_true'] - posenc_impact_df['f1_posenc_false']
-        posenc_impact_df['impact(%)'] = posenc_impact_df['abs_impact'] / (posenc_impact_df['f1_posenc_false'] + 1e-6)  # Avoid division by zero
-        posenc_impact_df['impact(%)'] = posenc_impact_df['impact(%)'].round(4)
-        ## then turn to percentage notation
-        posenc_impact_df['impact(%)'] = (posenc_impact_df['impact(%)'] * 100).round(2)
-        posenc_impact_df['abs_impact'] = posenc_impact_df['abs_impact'].abs()
+        # 3. Calculate impact - compare each non-zero coefficient to baseline (coeff=0)
+        if 0 in posenc_impact_df.columns:
+            baseline_col = 0
+            section += "### Impact vs Baseline (pos_vec_coeff=0)\n\n"
+            section += "| Label | " + " | ".join([f"F1@{c}" for c in sorted(posenc_impact_df.columns)]) + " | Best Coeff | Best Δ | Best Δ% |\n"
+            section += "|-------|" + "------|" * len(posenc_impact_df.columns) + "-----------|--------|--------|\n"
 
-        # 4. Sort by absolute impact
-        sorted_impact = posenc_impact_df.sort_values('impact(%)', ascending=False)
+            for label in posenc_impact_df.index:
+                row_data = []
+                baseline = posenc_impact_df.loc[label, baseline_col]
+                best_coeff = baseline_col
+                best_delta = 0
 
-        # 5. Present results
-        section += "### Impact of posenc=True\n"
-        section += "NOTE that in the current report generation, all values of positional encoding coefficient > 0 are treated as `posenc=True`, hence the numbers below show the _best_ impact of all posenc values.\n\n"
-        section += sorted_impact.to_markdown() + "\n\n"
+                # Add F1 scores for each coefficient
+                for coeff in sorted(posenc_impact_df.columns):
+                    f1 = posenc_impact_df.loc[label, coeff]
+                    row_data.append(f"{f1:.3f}")
+
+                    # Track best improvement
+                    delta = f1 - baseline
+                    if delta > best_delta:
+                        best_delta = delta
+                        best_coeff = coeff
+
+                # Calculate percentage change
+                best_delta_pct = (best_delta / (baseline + 1e-6)) * 100 if baseline > 0 else 0
+
+                section += f"| {label} | " + " | ".join(row_data) + f" | {best_coeff} | {best_delta:+.3f} | {best_delta_pct:+.1f}% |\n"
+        else:
+            # No baseline, just show the performance at each coefficient
+            section += "### Performance at Different Coefficients\n\n"
+            section += posenc_impact_df.to_markdown() + "\n\n"
 
     except Exception as e:
-        section += f"An error occurred during posenc impact analysis: {e}\n"
-    
-    section += "---\n"
+        section += f"An error occurred during pos_vec_coeff impact analysis: {e}\n"
+
+    section += "\n---\n"
     return section
 
 def generate_markdown_report(df, best_params, matrices_data, resource_df, overall_scores_data):
@@ -794,7 +805,7 @@ def main():
         sys.exit(1)
 
     # Calculate best parameters
-    params = ['dropouts', 'img_enc_name', 'num_epochs', 'num_layers', 'posenc', 'resize_strategy', 'prebin']
+    params = ['dropouts', 'img_enc_name', 'num_epochs', 'num_layers', 'pos_vec_coeff', 'resize_strategy', 'prebin']
     avg_scores = df.groupby(params)['f1_score'].agg(['mean', 'std', 'count']).reset_index()
     avg_scores = avg_scores.sort_values('mean', ascending=False)
     best_params = avg_scores.iloc[0]

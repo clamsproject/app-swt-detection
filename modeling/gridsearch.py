@@ -6,44 +6,53 @@ from modeling.config import batches
 
 
 ## TP classifier training grid search
-# parameter values from the best performing models in v5.0
-num_epochs = {10}
-num_layers = {4}
+# Updated based on v8.0 r1, r2, r3 results. 
+# Best overall config: convnextv2_large, 8 epochs, 4 layers, cropped224, no posenc
+# Key findings: 8 epochs optimal, moderate depth (2-4 layers) better than deep (8 layers)
+num_epochs = {8}  # Analysis shows 8 epochs is optimal (vs 16 which overfits)
+num_layers = {6}  # Testing 4-6 layers range
 pos_unit = {60000}
-dropouts = {0.3}
-# img_enc_name = modeling.backbones.model_map.keys()
+dropouts = {0.3}  # Keep existing optimal dropout
+# Focus on convnextv2 models, compare large vs tiny performance
 img_enc_name = {
-    'convnext_tiny',
-    'convnextv2_tiny',
-    'convnext_base',
-    'convnextv2_base',
-    'convnext_large', 
-    'convnextv2_large',
+    'convnextv2_large',    # Best performer (0.517 avg F1)
+    'convnextv2_tiny',     # Compare tiny model performance
 }
-resize_strategy = {'distorted', 'cropped256', 'cropped224'}
-# positional encoding configuration best performed as of v6.0
+resize_strategy = {'distorted'}  # Top 2 strategies from analysis
+# positional encoding configuration - keep requested values
 pos_length = {6000000}
 pos_abs_th_front = {5}
 pos_abs_th_end = {10}
-pos_vec_coeff = {0, 0.5}  # when 0, positional encoding is not enabled
+pos_vec_coeff = {0, 0.3}  # 0=disabled, reduced positional weight from .5 to .3
 
 # to see effect of training data size
 block_guids_train = [
-    batches.excluded_guids
-    # batches.excluded_guids + batches.aapb_collaboration_27_a + batches.aapb_collaboration_27_b +\
-    # batches.aapb_collaboration_27_c + batches.aapb_collaboration_27_e + batches.aapb_collaboration_27_f +\
-    # batches.aapb_collaboration_27_bd01 + batches.aapb_collaboration_27_bd02 + batches.aapb_collaboration_27_bd03 +\
-    # batches.aapb_collaboration_27_bd04 + batches.aapb_collaboration_27_bd05 + batches.aapb_collaboration_27_bho
+    batches.excluded_guids,  # full training set
+    #  batches.excluded_guids 
+    #  + batches.aapb_collaboration_27_a + batches.aapb_collaboration_27_b 
+    #  + batches.aapb_collaboration_27_c + batches.aapb_collaboration_27_e,  # balanced sets only
+    #  batches.excluded_guids 
+    #  + batches.aapb_collaboration_27_bd01 + batches.aapb_collaboration_27_bd02 + batches.aapb_collaboration_27_bd03 
+    #  + batches.aapb_collaboration_27_bd04 + batches.aapb_collaboration_27_bd05 + batches.aapb_collaboration_27_bd06,  # original sets only
+    #  batches.excluded_guids 
+    #  + batches.aapb_collaboration_27_a + batches.aapb_collaboration_27_b 
+    #  + batches.aapb_collaboration_27_c + batches.aapb_collaboration_27_e + batches.aapb_collaboration_27_f 
+    #  + batches.aapb_collaboration_27_bd01 + batches.aapb_collaboration_27_bd02 + batches.aapb_collaboration_27_bd03 
+    #  + batches.aapb_collaboration_27_bd04 + batches.aapb_collaboration_27_bd05 # + batches.aapb_collaboration_27_bd06 
     ]
 # since we now do validation on a fixed set, this parameter has no effect, keeping it for historical reasons
 block_guids_valid = [batches.excluded_guids]
 
-# "prebin" configurations. 
+# "prebin" configurations.
 # NOTE that postbin is not a part of the CV model, so is not handled here
-# for single binning configuration, just use the binning dict
-# for multiple binning configurations (for experimental reasons), use the binning scheme names (str)
-prebin = ['noprebin']
-# prebin = []
+# Including new human ambiguity-based binning schemes from issue #134
+prebin = [
+    #  'noprebin',  # Full granular classification (18 classes)
+    'collapse-close', 
+    #  'collapse-close-reduce-difficulty',
+    #  'collapse-close-bin-lower-thirds',
+    #  'ignore-difficulties'
+]
 
 clss_param_keys = ['num_epochs', 'num_layers', 'pos_length', 'pos_unit', 'dropouts', 
                    'img_enc_name', 'resize_strategy',

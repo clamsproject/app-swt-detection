@@ -7,4 +7,3 @@ huggingface_hub
 transformers
 opencv-python
 pyyaml
-av==10.*
