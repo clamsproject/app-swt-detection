@@ -239,6 +239,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     model, epoch_losses = train_model(
         get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
         loss, device, train_loader, configs)
+    model.to('cpu')  # move to cpu before saving to make device-agnostic when loading later
     torch.save(model.state_dict(), export_model_file)
     p_config = Path(f'{base_fname}.yml')
     train_elapsed = time.perf_counter() - t

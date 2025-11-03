@@ -8,15 +8,15 @@ nobinning = {}
 
 label_bins = {
     "Bars": ["B"],
-    "Chyron-other": ["Y", "U", "K"],
-    "Chyron-person": ["I", "N"],
-    "Credits": ["C", "R"],
+    "Chyron-other": ["Y", "U", "K", "KU"],
+    "Chyron-person": ["I", "N", "IN"],
+    "Credits": ["C", "R", "CR"],
     "Main": ["M"],
     "Opening": ["O", "W"],
     "Slate": ["S", "S:H", "S:C", "S:D", "S:B", "S:G"],
     "Other-text-sm": ["L", "G", "F", "E", "T"],
-    "Other-text-md": ["M", "O", "W", "L", "G", "F", "E", "T"],
-    "Other-text-lg": ["M", "O", "W", "Y", "U", "K", "L", "G", "F", "E", "T"],
+    "Other-text-md": ["M", "O", "W", "L", "G", "F", "E", "T", "GLOTW"],
+    "Other-text-lg": ["M", "O", "W", "Y", "U", "K", "L", "G", "F", "E", "T", "GLOTW"],
 }
 
 binning_schemes: Dict[str, Dict[str, List[str]]] = {
@@ -96,6 +96,18 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "P": ["P"]
     },
 
+    # WARN: the schemes below were experimental during v8.0 development and 
+    # no longer in use, kept here for historical reasons.
+    # unlike "collapse-close", at least one of the "collapsed" bin names in
+    # the following schemes contains multiple top-leve "label-bins" categories.
+    # hence they are not suitable for "post bin" 
+    
+    # e.g., INKU in "collapse-close-reduce-difficulty" contains both
+    # "Chyron-person" and "Chyron-other" categories
+    
+    # to handle this problem, for now I will just disable these schemes from
+    # being used as "post bin" schemes in the `tfLabelMapPreset` parameter.
+    
     # 2) "Collapse close categories and reduce difficulty"
     # Idea: Reduce difficulty by grouping some lower thirds
     "collapse-close-reduce-difficulty": {

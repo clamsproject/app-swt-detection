@@ -51,8 +51,8 @@ def appmetadata() -> AppMetadata:
         description='Use the image classifier model to generate TimePoint annotations.')
     metadata.add_parameter(
         name='tpModelName', type='string',
-        default='convnext_small',
-        choices=list(set(m.stem.split('.')[1] for m in available_models)),
+        default='convnextv2_tiny',
+        choices=list(set(m.stem.split('.')[2] for m in available_models)),
         description='Model name to use for classification, only applies when `useClassifier=true`.')
     metadata.add_parameter(
         name='tpUsePosModel', type='boolean', default=True,
@@ -107,7 +107,8 @@ def appmetadata() -> AppMetadata:
     labelMapPresetsReformat = {schname: str([f'`{lbl}`:`{binname}`' 
                                              for binname, lbls in scheme.items() 
                                              for lbl in lbls]) 
-                               for schname, scheme in modeling.config.bins.binning_schemes.items()}
+                               for schname, scheme in modeling.config.bins.binning_schemes.items() 
+                               if not (schname.startswith('collapse-') or schname == 'ignore-difficulties')}
     labelMapPresetsMarkdown = '\n'.join([f"- `{k}`: {v}" for k, v in labelMapPresetsReformat.items()])
     metadata.add_parameter(
         name='tfLabelMapPreset', type='string', default='relaxed',
