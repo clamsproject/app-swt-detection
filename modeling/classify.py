@@ -24,12 +24,9 @@ class Classifier:
         self.training_labels = train.get_prebinned_labelset(model_config)
         self.featurizer = data_loader.FeatureExtractor(**model_config)
         self.featurizer.img_encoder.model.eval()
-        label_count = len(FRAME_TYPES) + 1
-        if 'bins' in model_config:
-            label_count = len(model_config['bins'].keys()) + 1
         self.classifier = train.get_net(
             in_dim=self.featurizer.feature_vector_dim(),
-            n_labels=label_count,
+            n_labels=len(self.training_labels),
             num_layers=model_config["num_layers"],
             dropout=model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
