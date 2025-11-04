@@ -6,9 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Tuple, Dict, ClassVar, List
 
-import h5py
 import numpy as np
-import pandas as pd
 import torch
 from PIL import Image
 from torch import Tensor
@@ -266,6 +264,8 @@ class TrainingDataPreprocessor(object):
 
 
 def main():
+    import pandas as pd
+    import h5py
     # read csv directory and zip directory from .env file or os.environ
     try:
         csv_dir = os.getenv('ANNDIR')
