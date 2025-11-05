@@ -1,27 +1,23 @@
 import argparse
 import collections
 import copy
+import hashlib
 import logging
 import os
 import platform
 import shutil
-import hashlib
 import time
 from pathlib import Path
 from typing import Union, List, Dict
 
-import h5py
 import torch
 import torch.nn as nn
 import yaml
 from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
 
-import modeling
-import modeling.config.batches
-from modeling import data_loader, gridsearch, FRAME_TYPES
+from modeling import data_loader, gridsearch, FRAME_TYPES, get_prebinned_labelset
 from modeling.config import bins
-from modeling.validate import validate
+from modeling.config.batches import guids_for_fixed_validation_set
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -221,7 +217,7 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     labelset = get_prebinned_labelset(configs)
     logger.info(f'Labels for training: ({num_labels}) {labelset}')
 
-    valid_guids = modeling.config.batches.guids_for_fixed_validation_set
+    valid_guids = guids_for_fixed_validation_set
     train_all_guids = list(train_all_guids - set(valid_guids))
     img_enc_name = configs['img_enc_name']
     resize_strategy = configs['resize_strategy']
@@ -306,12 +302,6 @@ def log_peak_vram_usage():
         vram_info.append(f"GPU {i} ({gpu_name}): {peak_mb:.2f}MB peak")
     
     return "; ".join(vram_info)
-
-
-def get_prebinned_labelset(config):
-    if 'prebin' in config and len(config['prebin']) > 0:
-        return list(config["prebin"].keys()) + [modeling.negative_label]
-    return modeling.FRAME_TYPES + [modeling.negative_label]
 
 
 def train_model(model, loss_fn, device, train_loader, configs):
@@ -408,6 +398,11 @@ def configs_match(config1, config2):
 
 
 if __name__ == "__main__":
+    # imports only used in actual training runs (not in app.py)
+    import h5py
+    from tqdm import tqdm
+    
+    from .validate import validate
 
     parser = argparse.ArgumentParser()
     parser.add_argument("indir", help="root directory containing the vectors and labels to train on")

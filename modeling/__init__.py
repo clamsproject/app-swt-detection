@@ -15,3 +15,9 @@ FRAME_TYPES_WITH_SUBTYPES.remove('S')
 # move around or change as with rolling credits). These are frame names after
 # the label mapping.
 static_frames = ['bars', 'slate', 'chyron']
+
+
+def get_prebinned_labelset(config):
+    if 'prebin' in config and len(config['prebin']) > 0:
+        return list(config["prebin"].keys()) + [negative_label]
+    return FRAME_TYPES + [negative_label]

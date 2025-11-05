@@ -74,9 +74,10 @@ class SwtDetection(ClamsApp):
         
         # isolate this import so that when running in stitcher mode, we don't need to import torch
         from modeling import classify
+        from modeling import train
         import torch
 
-        batch_size = classify.BATCH_SIZE
+        batch_size = train.BATCH_SIZE
         vdh.capture(video)
         total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
         start_ms = max(0, parameters['tpStartAt'])

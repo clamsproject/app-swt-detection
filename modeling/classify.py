@@ -4,10 +4,8 @@ from typing import List
 
 import torch
 import yaml
-from PIL import Image
 
-from modeling import train, data_loader, FRAME_TYPES
-from modeling.train import BATCH_SIZE
+from modeling import train, data_loader, get_prebinned_labelset
 
 
 class Classifier:
@@ -21,7 +19,7 @@ class Classifier:
         model_config_file = f"{model_stem}.yml"
         model_checkpoint = f"{model_stem}.pt"
         model_config = yaml.safe_load(open(model_config_file))
-        self.training_labels = train.get_prebinned_labelset(model_config)
+        self.training_labels = get_prebinned_labelset(model_config)
         self.featurizer = data_loader.FeatureExtractor(**model_config)
         self.featurizer.img_encoder.model.eval()
         self.classifier = train.get_net(
