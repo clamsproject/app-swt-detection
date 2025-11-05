@@ -9,10 +9,48 @@ from clams.app import ClamsApp
 from clams.appmetadata import AppMetadata
 from mmif import DocumentTypes, AnnotationTypes
 
-from modeling import FRAME_TYPES
 import modeling.config.bins
 
 default_model_storage = Path(__file__).parent / 'modeling/models'
+# read yml files and find prebin options in the default_model_storage
+label_set_dict = {}
+for yml_file in default_model_storage.glob('*.yml'):
+    # because I don't want to install pyyaml just for this
+    # and the CICD system only installs standard CLAMS sdk to get the 
+    # metadata at the bulid time. I don't want to change the CICD, 
+    # we have to manually parse the file to find top-level "prebin" key and values
+    # TODO (krim @ 11/5/25): this is very brittle, consider switching to 
+    # json to store model config in the future.
+    with open(yml_file, 'r', encoding='utf8') as f:
+        lines = f.readlines()
+    in_prebin = False
+    prebin_labels = []
+    for line in lines:
+        stripped = line.strip()
+        if line.startswith('prebin:'):
+            in_prebin = True
+            continue
+        if in_prebin:
+            if line == '':
+                break
+            if line.startswith(' ') and ':' in line:
+                # this is the "from" keys of the prebin, which should be the `labelSet` used in classification
+                label = line.split(':', 1)[0].strip()
+                prebin_labels.append(label)
+            elif not line.startswith(' '):
+                # end of prebin section
+                break
+        
+    if prebin_labels:
+        hashable_labelset = tuple(sorted(prebin_labels))
+        label_set_dict[yml_file.stem] = hashable_labelset
+# now check if the found label sets are consistent
+all_label_sets = set(label_set_dict.values())
+if len(all_label_sets) == 1:
+    # all label sets are the same
+    consistent_label_set = list(all_label_sets.pop())
+else:
+    consistent_label_set = None
 
 
 def appmetadata() -> AppMetadata:
@@ -43,8 +81,13 @@ def appmetadata() -> AppMetadata:
 
     metadata.add_input(DocumentTypes.VideoDocument, required=True)
     metadata.add_output(AnnotationTypes.TimeFrame, timeUnit='milliseconds')
-    metadata.add_output(AnnotationTypes.TimePoint, 
-                        timeUnit='milliseconds', labelset=FRAME_TYPES)
+    # currently, only one "prebin" is used, so we can specify the labels here
+    # when in the future, multiple models are provided with different prebins, 
+    # we can't specify the labels here before a model is selected. 
+    if consistent_label_set:
+        metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds', labelset=consistent_label_set)
+    else:
+        metadata.add_output(AnnotationTypes.TimePoint, timeUnit='milliseconds')
 
     metadata.add_parameter(
         name='useClassifier', type='boolean', default=True,
