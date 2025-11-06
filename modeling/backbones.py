@@ -36,7 +36,7 @@ class _ConvnextExtractorInitBase:
             self.model = ConvNextModel.from_pretrained(full_model_name)
         # self.preprocessor is stored as an instance variable, though only used within the lambda.
         # This is fine, or the lambda could capture AutoImageProcessor.from_pretrained directly if preferred.
-        self.preprocessor = AutoImageProcessor.from_pretrained(full_model_name)
+        self.preprocessor = AutoImageProcessor.from_pretrained(full_model_name, use_fast=True)
         self.preprocess = lambda image_input: self.preprocessor(image_input, return_tensors="pt")["pixel_values"]  # will return [num_images, 3, 224, 224] shaped torsors
 
 
