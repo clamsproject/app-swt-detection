@@ -197,10 +197,9 @@ class SwtDetection(ClamsApp):
         label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
         
         # Remove invalid keys from label_remapper (keys that are not in src_labels)
-        if parameters['tfLabelMap']:
-            for key in list(label_remapper.keys()):
-                if key not in src_label_set:
-                    label_remapper.pop(key)
+        for key in list(label_remapper.keys()):
+            if key not in src_label_set:
+                label_remapper.pop(key)
 
         # then, build the score lists
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
