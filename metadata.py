@@ -110,6 +110,12 @@ def appmetadata() -> AppMetadata:
         name='tpSampleRate', type='integer', default=1000,
         description='Milliseconds between sampled frames, only applies when `useClassifier=true`.')
     metadata.add_parameter(
+        name='tpModelBatchSize', type='integer', default=200,
+        description='Number of images to process in a batch for classification. Smaller batch sizes will use less VRAM '
+                    'but may be slower. A batch size of 1 will use the minimum VRAM (~100-200MB for tiny models, ~1GB for large models), '
+                    'while larger batch sizes (e.g., 200) will use more VRAM (~3-4GB for tiny models, ~10GB for large models) '
+                    'but run faster. Only applies when `useClassifier=true`.')
+    metadata.add_parameter(
         name='useStitcher', type='boolean', default=True,
         description='Use the stitcher after classifying the TimePoints.')
     metadata.add_parameter(
