@@ -178,6 +178,20 @@ class SwtDetection(ClamsApp):
         # next, validate labels in the input annotations
         src_labels = sqh.validate_labelset(tps)
 
+        # validate user-provided tfLabelMap keys against actual TimePoint labels
+        if parameters['tfLabelMap']:
+            user_map_keys = set(parameters['tfLabelMap'].keys())
+            src_label_set = set(src_labels)
+            invalid_keys = user_map_keys - src_label_set
+            if invalid_keys:
+                error_msg = (
+                    f"Invalid label(s) in tfLabelMap: {sorted(invalid_keys)}. "
+                    f"Available TimePoint labels are: {sorted(src_label_set)}. "
+                    f"Please check your tfLabelMap parameter or tfLabelMapPreset."
+                )
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
+
         self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
         label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
 
