@@ -178,8 +178,28 @@ class SwtDetection(ClamsApp):
         # next, validate labels in the input annotations
         src_labels = sqh.validate_labelset(tps)
 
+        # validate user-provided tfLabelMap keys against actual TimePoint labels
+        if parameters['tfLabelMap']:
+            user_map_keys = set(parameters['tfLabelMap'].keys())
+            src_label_set = set(src_labels)
+            invalid_keys = user_map_keys - src_label_set
+            unmapped_keys = src_label_set - user_map_keys
+            if invalid_keys or unmapped_keys:
+                warning_msg = "tfLabelMap validation:"
+                if invalid_keys:
+                    warning_msg += f" Label(s) in tfLabelMap not found in TimePoint labelSet: {sorted(invalid_keys)}. These will be removed when generating TimeFrame annotations."
+                if unmapped_keys:
+                    warning_msg += f" TimePoint labelSet label(s) not mapped in tfLabelMap: {sorted(unmapped_keys)}. These will be mapped to the negative label."
+                warnings.warn(warning_msg, UserWarning)
+                self.logger.warning(warning_msg)
+
         self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
         label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
+        
+        # Remove invalid keys from label_remapper (keys that are not in src_labels)
+        for key in list(label_remapper.keys()):
+            if key not in src_label_set:
+                label_remapper.pop(key)
 
         # then, build the score lists
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
