@@ -74,10 +74,20 @@ class SwtDetection(ClamsApp):
         
         # isolate this import so that when running in stitcher mode, we don't need to import torch
         from modeling import classify
-        from modeling import train
         import torch
 
-        batch_size = train.BATCH_SIZE
+        # at 200 convnext_large (v1 & v2) will use ~8GB of vram 
+        # this is roughly the safe max for desktop GPUs with 12GB of vram
+        model_batch_size = parameters.get('tpModelBatchSize', 200)
+        # this separate batch size is to control how many RGN arrays are 
+        # loaded into memory at once before feeding into the CNN model
+        # min to be 2000 (~2G of the system RAM), but should be an integer 
+        # multiple of model_batch_size
+        if model_batch_size > 2000:
+            seek_batch_size = model_batch_size
+        else:
+            seek_batch_size = math.floor(2000 / model_batch_size) * model_batch_size
+        model_batches_in_seek_batch = seek_batch_size // model_batch_size
         vdh.capture(video)
         total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
         start_ms = max(0, parameters['tpStartAt'])
@@ -101,34 +111,45 @@ class SwtDetection(ClamsApp):
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
-        for i, batch in enumerate(range(0, len(sampled), batch_size)):
-            self.logger.info(f"Extracting batch {i + 1} of size {batch_size} from {batch} to {min(batch + batch_size, len(sampled))}")
-            batched_sampled = sampled[batch:batch + batch_size]
-            positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
-            # extract images
+        
+        # Create resizer once outside the loops for efficiency
+        resizer = ImageResizeStrategy.get_transform_function('distorted')
+
+        # now nested loop over seek_batch and model_batch 
+        # seek batch is guaranteed to be a multiple of model_batch
+        for i, seek_batch_start in enumerate(range(0, len(sampled), seek_batch_size)):
+            seek_batch_end = min(seek_batch_start + seek_batch_size, len(sampled))
+            self.logger.info(f"Loading more images from {seek_batch_start} to {seek_batch_end}")
             t = time.perf_counter()
-            extracted = vdh.extract_frames_as_images(video, batched_sampled, as_PIL=True)
+            # Extract only the current batch of frames, not all sampled frames
+            extracted = vdh.extract_frames_as_images(video, sampled[seek_batch_start:seek_batch_end], as_PIL=True)
             if not extracted:
+                # used when the extraction is done in batches, for the last batch; 
                 # in a rare case, where the difference between 29.97 and 29.97002997002997 actually matters, we might 
                 # get 1+final_frame as the last sample, which will result in an empty list
                 continue
             seek_time += time.perf_counter() - t
-
-            # classify images
-            t = time.perf_counter()
-            # Note that we are not using the built-in "preprocess" of the 
-            # CNN models to experiment with different resize strategies.
-            # Hence we do this preprocessing manually and when images are 
-            # passed to the classifier, they are resized and normalized.
-            resizer = ImageResizeStrategy.get_transform_function('distorted')
-            resized = torch.stack(tuple(map(resizer, extracted)))
-            predictions = classifier.classify_images(resized, positions, total_ms)
-            if all_preds is None:
-                all_preds = predictions
-            else:
-                all_preds = torch.cat((all_preds, predictions), dim=0)
-            all_positions.extend(positions)
-            clss_time += time.perf_counter() - t
+            for j, model_batch_start in enumerate(range(0, len(extracted), model_batch_size)):
+                model_batch_end = min(model_batch_start + model_batch_size, len(extracted))
+                self.logger.info(f"Classifying batch {i * model_batches_in_seek_batch + j} of size {model_batch_end - model_batch_start} from index {seek_batch_start + model_batch_start}")
+                # Extract batches correctly using combined indices
+                batched_sampled = sampled[seek_batch_start + model_batch_start:seek_batch_start + model_batch_end]
+                batched_extracted = extracted[model_batch_start:model_batch_end]
+                positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
+                # classify images
+                t = time.perf_counter()
+                # Note that we are not using the built-in "preprocess" of the 
+                # CNN models to experiment with different resize strategies.
+                # Hence we do this preprocessing manually and when images are 
+                # passed to the classifier, they are resized and normalized.
+                resized = torch.stack(tuple(map(resizer, batched_extracted)))
+                predictions = classifier.classify_images(resized, positions, total_ms)
+                if all_preds is None:
+                    all_preds = predictions
+                else:
+                    all_preds = torch.cat((all_preds, predictions), dim=0)
+                all_positions.extend(positions)
+                clss_time += time.perf_counter() - t
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Image extraction took: {seek_time:.2f} seconds\n")
             self.logger.debug(f"Classification took {clss_time:.2f} seconds")

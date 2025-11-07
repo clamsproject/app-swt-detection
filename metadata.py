@@ -98,6 +98,11 @@ def appmetadata() -> AppMetadata:
         choices=list(set(m.stem.split('.')[2] for m in available_models)),
         description='Model name to use for classification, only applies when `useClassifier=true`.')
     metadata.add_parameter(
+        name='tpModelBatchSize', type='integer', default=200,
+        description='Number of images to process in a batch for classification. Smaller batch sizes will use less '
+                    'memory but may be slower. The default value of 200 is set to be the safely maximum size for '
+                    '"large" model running on desktop-grade GPU (12GB VRAM). Only applies when `useClassifier=true`.')
+    metadata.add_parameter(
         name='tpUsePosModel', type='boolean', default=True,
         description='Use the model trained with positional features, only applies when `useClassifier=true`.')
     metadata.add_parameter(
