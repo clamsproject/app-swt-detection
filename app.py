@@ -183,17 +183,22 @@ class SwtDetection(ClamsApp):
             user_map_keys = set(parameters['tfLabelMap'].keys())
             src_label_set = set(src_labels)
             invalid_keys = user_map_keys - src_label_set
-            if invalid_keys:
-                error_msg = (
-                    f"Invalid label(s) in tfLabelMap: {sorted(invalid_keys)}. "
-                    f"Available TimePoint labels are: {sorted(src_label_set)}. "
-                    f"Please check your tfLabelMap parameter or tfLabelMapPreset."
-                )
-                self.logger.error(error_msg)
-                raise ValueError(error_msg)
+            unmapped_keys = src_label_set - user_map_keys
+            if invalid_keys or unmapped_keys:
+                warning_msg = "tfLabelMap validation issues detected:"
+                if invalid_keys:
+                    warning_msg += f" Invalid label(s) in tfLabelMap (not in TimePoint labels): {sorted(invalid_keys)}."
+                if unmapped_keys:
+                    warning_msg += f" TimePoint label(s) not mapped in tfLabelMap: {sorted(unmapped_keys)}."
+                warnings.warn(warning_msg, UserWarning)
+                self.logger.warning(warning_msg)
 
         self.logger.debug(f"Label map: {parameters['tfLabelMap']}")
         label_remapper = sqh.build_label_remapper(src_labels, parameters['tfLabelMap'])
+        
+        # Remove invalid keys from label_remapper (keys that are not in src_labels)
+        if parameters['tfLabelMap']:
+            label_remapper = {k: v for k, v in label_remapper.items() if k in src_label_set}
 
         # then, build the score lists
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
