@@ -8,16 +8,17 @@ nobinning = {}
 
 label_bins = {
     "Bars": ["B"],
-    "Chyron-other": ["Y", "U", "K", "KU"],
-    "Chyron-person": ["I", "N", "IN"],
-    "Credits": ["C", "R", "CR"],
+    "Chyron-other": ["Y", "KU"],  #"U", "K"],
+    "Chyron-person": ["IN"],  # ["I", "N"],
+    "Credits": ["CR"],  # ["C", "R"],
     "Main": ["M"],
     "Opening": ["O", "W"],
-    "Slate": ["S", "S:H", "S:C", "S:D", "S:B", "S:G"],
+    "Slate": ["S"],  # "S:H", "S:C", "S:D", "S:B", "S:G"],
     "Other-text-sm": ["L", "G", "F", "E", "T"],
-    "Other-text-md": ["M", "O", "W", "L", "G", "F", "E", "T", "GLOTW"],
-    "Other-text-lg": ["M", "O", "W", "Y", "U", "K", "L", "G", "F", "E", "T", "GLOTW"],
+    "Other-text-md": ["M", "F", "E", "GLOTW"],  #"W", "T", "O", "L", "G"],
+    "Neg": ["P", "-"],
 }
+label_bins["Other-text-lg"] = label_bins["Chyron-other"] + label_bins["Other-text-md"]
 
 binning_schemes: Dict[str, Dict[str, List[str]]] = {
     "noprebin": nobinning,
@@ -32,6 +33,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Opening": label_bins["Opening"],
         "Chyron-other": label_bins["Chyron-other"],
         "Other-text": label_bins["Other-text-sm"],
+        "-": label_bins["Neg"],
     },
 
     "simpler": {
@@ -39,6 +41,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Slate": label_bins["Slate"],
         "Chyron": label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
+        "Neg": label_bins["Neg"],
     },
     
     "simple": {
@@ -47,6 +50,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Chyron-person": label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
         "Other-text": label_bins["Other-text-lg"],
+        "Neg": label_bins["Neg"],
     },
 
     "relaxed": {
@@ -55,6 +59,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Chyron": label_bins["Chyron-other"] + label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
         "Other-text": label_bins["Other-text-md"],
+        "Neg": label_bins["Neg"],
     },
 
     "binary-bars": {
