@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 RESULTS_DIR = Path(__file__).parent / f"results-{platform.node().split('.')[0]}"
-
-BATCH_SIZE = 200  # convnext_large (v1) will use ~7GB of vram 
+# at 200 
+# convnext_large (v1 & v2) will use ~8GB of vram 
+# this is roughly the safe maximum for desktop GPUs with 12-16GB of vram
+BATCH_SIZE = 200  
     # # these sizes are for A6000 GPU
     # if 'tiny' in img_enc_name:
     #     batch_size = 1600
