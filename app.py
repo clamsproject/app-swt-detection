@@ -113,7 +113,7 @@ class SwtDetection(ClamsApp):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         
         # Create resizer once outside the loops for efficiency
-        resizer = ImageResizeStrategy.get_transform_function('distorted')
+        resizer = ImageResizeStrategy.get_transform_function(classifier.resize_strategy)
 
         # now nested loop over seek_batch and model_batch 
         # seek batch is guaranteed to be a multiple of model_batch

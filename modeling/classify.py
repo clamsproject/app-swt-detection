@@ -20,6 +20,7 @@ class Classifier:
         model_checkpoint = f"{model_stem}.pt"
         model_config = yaml.safe_load(open(model_config_file))
         self.training_labels = get_prebinned_labelset(model_config)
+        self.resize_strategy = model_config.get('resize_strategy', 'distorted')
         self.featurizer = data_loader.FeatureExtractor(**model_config)
         self.featurizer.img_encoder.model.eval()
         self.classifier = train.get_net(
