@@ -112,9 +112,6 @@ class SwtDetection(ClamsApp):
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         
-        # Create resizer once outside the loops for efficiency
-        resizer = ImageResizeStrategy.get_transform_function('distorted')
-
         # now nested loop over seek_batch and model_batch 
         # seek batch is guaranteed to be a multiple of model_batch
         for i, seek_batch_start in enumerate(range(0, len(sampled), seek_batch_size)):
@@ -138,12 +135,7 @@ class SwtDetection(ClamsApp):
                 positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
                 # classify images
                 t = time.perf_counter()
-                # Note that we are not using the built-in "preprocess" of the 
-                # CNN models to experiment with different resize strategies.
-                # Hence we do this preprocessing manually and when images are 
-                # passed to the classifier, they are resized and normalized.
-                resized = torch.stack(tuple(map(resizer, batched_extracted)))
-                predictions = classifier.classify_images(resized, positions, total_ms)
+                predictions = classifier.classify_images(batched_extracted, positions, total_ms)
                 if all_preds is None:
                     all_preds = predictions
                 else:

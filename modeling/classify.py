@@ -20,6 +20,9 @@ class Classifier:
         model_checkpoint = f"{model_stem}.pt"
         model_config = yaml.safe_load(open(model_config_file))
         self.training_labels = get_prebinned_labelset(model_config)
+        self.resizer = data_loader.ImageResizeStrategy.get_transform_function(
+            model_config.get("resize_strategy", "distorted")
+        )
         self.featurizer = data_loader.FeatureExtractor(**model_config)
         self.featurizer.img_encoder.model.eval()
         self.classifier = train.get_net(
@@ -36,9 +39,19 @@ class Classifier:
         """
         Image classification for a set of extract images (in PIL.Image format). 
         Useful with using ``mmif.utils.video_document_handler.extract_frames_as_images()``
+        
+        :param images: A tensor of PIL.Image images to classify
+        :param positions: A list of starting positions (in frames) corresponding to each image
+        :param final_pos: The final position (in frames) for all images
+        :return: A tensor of shape of (num_images x softmax vectors)
         """
         featurizing_time = 0
         t = time.perf_counter()
+        # Note that we are not using the built-in "preprocess" of the 
+        # CNN models to experiment with different resize strategies.
+        # Hence we do this preprocessing manually and when images are 
+        # passed to the classifier, they are resized and normalized.
+        images = torch.stack(tuple(map(self.resizer, images)))
         feat_mat = self.featurizer.get_full_feature_vectors(images, [[pos, final_pos] for pos in positions])
         if self.logger.isEnabledFor(logging.DEBUG):
             featurizing_time += time.perf_counter() - t

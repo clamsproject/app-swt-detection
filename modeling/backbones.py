@@ -25,18 +25,21 @@ class ExtractorModel:
 # This class does NOT inherit from ExtractorModel, so it won't be picked up
 # by code in the main block iterating through ExtractorModel.__subclasses__().
 class _ConvnextExtractorInitBase:
+    # declare name to help static analysis (subclasses override this)
+    name: str = ""
+
     def _init_hf_convnext_components(self):
         model_version = 2 if 'v2' in self.name else 1
 
         if model_version == 2:
             full_model_name = f"facebook/{self.name.replace('_', '-')}-22k-224"
-            self.model = ConvNextV2Model.from_pretrained(full_model_name)
+            self.model = ConvNextV2Model.from_pretrained(full_model_name, use_safetensors=True)
         else:
             full_model_name = f"facebook/{self.name.replace('_', '-')}-224"
-            self.model = ConvNextModel.from_pretrained(full_model_name)
+            self.model = ConvNextModel.from_pretrained(full_model_name, use_safetensors=True)
         # self.preprocessor is stored as an instance variable, though only used within the lambda.
         # This is fine, or the lambda could capture AutoImageProcessor.from_pretrained directly if preferred.
-        self.preprocessor = AutoImageProcessor.from_pretrained(full_model_name, use_fast=True)
+        self.preprocessor = AutoImageProcessor.from_pretrained(full_model_name, use_fast=True, use_safetensors=True)
         self.preprocess = lambda image_input: self.preprocessor(image_input, return_tensors="pt")["pixel_values"]  # will return [num_images, 3, 224, 224] shaped torsors
 
 
