@@ -113,6 +113,9 @@ class FeatureExtractor(object):
         if position_dim % 2 == 1:
             position_dim += 1
         self.pos_vec_lookup = self.get_sinusoidal_embeddings(position_dim, self.feature_vector_dim())
+        # Move positional embeddings to GPU if CUDA is available (same device as encoder)
+        if torch.cuda.is_available():
+            self.pos_vec_lookup = self.pos_vec_lookup.to('cuda')
 
     def get_sinusoidal_embeddings(self, n_pos, dim):
         if (n_pos, dim) in self.__class__.sinusoidal_embeddings:
@@ -139,7 +142,8 @@ class FeatureExtractor(object):
         if as_numpy:
             return feature_vec.cpu().numpy()
         else:
-            return feature_vec.cpu()
+            # Keep on GPU when returning as tensor for downstream GPU operations
+            return feature_vec
 
     def convert_position(self, cur, tot):
         if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:

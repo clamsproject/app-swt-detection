@@ -32,8 +32,12 @@ class Classifier:
             dropout=model_config["dropouts"])
         self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
         self.classifier.eval()
-        self.debug = False
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
+        # Move classifier to GPU once during initialization if CUDA is available
+        # Note: featurizer.img_encoder.model is already moved to GPU in FeatureExtractor.__init__()
+        if torch.cuda.is_available():
+            self.classifier = self.classifier.cuda()
+            self.logger.info(f'Classifier moved to CUDA: {next(self.classifier.parameters()).device}')
 
     def classify_images(self, images: torch.Tensor, positions: List[int], final_pos: int) -> torch.Tensor:
         """
@@ -46,6 +50,11 @@ class Classifier:
         :return: A tensor of shape of (num_images x softmax vectors)
         """
         featurizing_time = 0
+
+        # Only move input images to GPU; models are already on GPU from __init__()
+        if torch.cuda.is_available():
+            images = images.cuda()
+
         t = time.perf_counter()
         # Note that we are not using the built-in "preprocess" of the 
         # CNN models to experiment with different resize strategies.

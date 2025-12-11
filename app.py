@@ -17,6 +17,7 @@ from typing import Union
 from clams import ClamsApp, Restifier
 from mmif import Mmif, AnnotationTypes, DocumentTypes, Document
 from mmif.utils import video_document_helper as vdh
+from mmif.utils import timeunit_helper as tuh
 from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
@@ -89,7 +90,8 @@ class SwtDetection(ClamsApp):
             seek_batch_size = math.floor(2000 / model_batch_size) * model_batch_size
         model_batches_in_seek_batch = seek_batch_size // model_batch_size
         vdh.capture(video)
-        total_ms = int(vdh.framenum_to_millisecond(video, video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY)))
+        fps = vdh.get_framerate(video)
+        total_ms = tuh.convert(video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY), 'f', 'ms', fps)
         start_ms = max(0, parameters['tpStartAt'])
         final_ms = min(total_ms, parameters['tpStopAt'])
         seek_time = 0
@@ -132,7 +134,7 @@ class SwtDetection(ClamsApp):
                 # Extract batches correctly using combined indices
                 batched_sampled = sampled[seek_batch_start + model_batch_start:seek_batch_start + model_batch_end]
                 batched_extracted = extracted[model_batch_start:model_batch_end]
-                positions = [int(vdh.framenum_to_millisecond(video, sample)) for sample in batched_sampled]
+                positions = [tuh.convert(sample, 'f', 'ms', fps) for sample in batched_sampled]
                 # classify images
                 t = time.perf_counter()
                 predictions = classifier.classify_images(batched_extracted, positions, total_ms)
