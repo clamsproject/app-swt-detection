@@ -39,7 +39,7 @@ class Classifier:
             self.classifier = self.classifier.cuda()
             self.logger.info(f'Classifier moved to CUDA: {next(self.classifier.parameters()).device}')
 
-    def classify_images(self, images: torch.Tensor, positions: List[int], final_pos: int) -> torch.Tensor:
+    def classify_images(self, images, positions: List[int], final_pos: int) -> torch.Tensor:
         """
         Image classification for a set of extract images (in PIL.Image format). 
         Useful with using ``mmif.utils.video_document_handler.extract_frames_as_images()``
@@ -51,27 +51,27 @@ class Classifier:
         """
         featurizing_time = 0
 
-        # Only move input images to GPU; models are already on GPU from __init__()
-        if torch.cuda.is_available():
-            images = images.cuda()
-
         t = time.perf_counter()
         # Note that we are not using the built-in "preprocess" of the 
         # CNN models to experiment with different resize strategies.
-        # Hence we do this preprocessing manually and when images are 
+        # Hence, we do this preprocessing manually and when images are
         # passed to the classifier, they are resized and normalized.
-        images = torch.stack(tuple(map(self.resizer, images)))
+        images = torch.stack([self.resizer(img) for img in images])
+        # Move images to GPU if available
+        if torch.cuda.is_available():
+            images = images.cuda()
         feat_mat = self.featurizer.get_full_feature_vectors(images, [[pos, final_pos] for pos in positions])
         if self.logger.isEnabledFor(logging.DEBUG):
             featurizing_time += time.perf_counter() - t
-        self.logger.debug(f'Featurizing time: {featurizing_time:.2f} seconds\n')
-        self.logger.debug(f'Instances: {feat_mat.shape[0]}, Features: {feat_mat.shape[1]}')
+            self.logger.debug(f'Featurizing time: {time.perf_counter() - t:.2f} seconds\n')
+            self.logger.debug(f'Instances: {feat_mat.shape[0]}, Features: {feat_mat.shape[1]}')
         softmax = torch.nn.Softmax(dim=1)
         t = time.perf_counter()
         predictions = self.classifier(feat_mat).detach()
         self.logger.debug(f'Predictions: {predictions.shape}, first: {predictions[0]}')
-        probabilities = softmax(predictions)
+        probs = softmax(predictions)
         # sanity check
-        self.logger.debug(f'Probabilities: {probabilities.shape}, first: {probabilities[0]} (sum to {sum(probabilities[0])})')
-        self.logger.debug(f'Classifier time: {time.perf_counter() - t:.2f} seconds\n')
-        return probabilities
+        self.logger.debug(f'Probabilities: {probs.shape}, first: {probs[0]} (sum to {sum(probs[0])})')
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f'Classifier time: {time.perf_counter() - t:.2f} seconds\n')
+        return probs

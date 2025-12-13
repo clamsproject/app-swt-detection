@@ -111,7 +111,7 @@ class SwtDetection(ClamsApp):
         self.logger.info(f"Initiating classifier with {model_filestem}")
         classifier = classify.Classifier(default_model_storage / model_filestem,
                                          self.logger.name if self.logger.isEnabledFor(logging.DEBUG) else None)
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self.logger.isEnabledFor(logging.DEBUG):  # check again to avoid unnecessary perf_counter() call
             self.logger.debug(f"Classifier initiation took {time.perf_counter() - t:.2f} seconds")
         
         # now nested loop over seek_batch and model_batch 

@@ -76,6 +76,8 @@ def appmetadata() -> AppMetadata:
                     "TimeFrame annotations on them.",
         app_license="Apache 2.0",
         identifier="swt-detection",
+        est_gpu_mem_min=400,
+        est_gpu_mem_typ=2000,
         url="https://github.com/clamsproject/app-swt-detection"
     )
 

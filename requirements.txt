@@ -1,5 +1,5 @@
 # Make sure clams-python version is explicitly specified, at least the lower bound
-clams-python==1.3.3
+clams-python==1.4.0
 mmif-python[cv]
 torch==2.*
 torchvision
