@@ -29,7 +29,8 @@ class Classifier:
             in_dim=self.featurizer.feature_vector_dim(),
             n_labels=len(self.training_labels),
             num_layers=model_config["num_layers"],
-            dropout=model_config["dropouts"])
+            dropout=model_config["dropouts"],
+            hidden_dim=model_config.get("hidden_dim", 128))
         self.classifier.load_state_dict(torch.load(model_checkpoint, weights_only=True))
         self.classifier.eval()
         self.logger = logging.getLogger(logger_name if logger_name else self.__class__.__name__)
