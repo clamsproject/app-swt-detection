@@ -1,0 +1,46 @@
+Model_Name,Label,Accuracy,Precision,Recall,F1-Score
+convnextv2_large,Overall,0.2545980215072632,0.2545980215072632,0.2545980215072632,0.2545980215072632
+convnextv2_large,GLOTW,0.0,0.0,0.0,0.0
+convnextv2_large,CR,0.0,0.0,0.0,0.0
+convnextv2_large,IN,0.0,0.0,0.0,0.0
+convnextv2_large,KU,0.0,0.0,0.0,0.0
+convnextv2_large,B,0.0,0.0,0.0,0.0
+convnextv2_large,S,0.0,0.0,0.0,0.0
+convnextv2_large,M,0.0,0.0,0.0,0.0
+convnextv2_large,Y,0.0,0.0,0.0,0.0
+convnextv2_large,F,0.0,0.0,0.0,0.0
+convnextv2_large,E,0.0,0.0,0.0,0.0
+convnextv2_large,P,0.9929309487342834,0.2731896936893463,0.9929309487342834,0.428487628698349
+convnextv2_large,-,0.48200514912605286,0.1912289708852768,0.48200514912605286,0.2738225758075714
+
+
+Confusion Matrix (cols = preds, rows = golds)
+     ,GLOTW,   CR,   IN,   KU,    B,    S,    M,    Y,    F,    E,    P,    -,    +
+GLOTW,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  599,  430, 1029
+   CR,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  525,  363,  888
+   IN,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 1916,    6, 1922
+   KU,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   45,   10,   55
+    B,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   68,    0,   68
+    S,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  199,    5,  204
+    M,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   41,  121,  162
+    Y,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   65,   39,  104
+    F,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  262,  578,  840
+    E,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  735,   21,  756
+    P,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 1826,   13, 1839
+    -,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  403,  375,  778
+    +,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 6684, 1961, 8645
+
+
+peak-vram-usage,GPU 0 (NVIDIA RTX A6000): 8107.05MB peak; GPU 1 (NVIDIA RTX A6000): 0.00MB peak; GPU 2 (NVIDIA RTX A6000): 0.00MB peak
+training-time,8125.667238844559
+validation-time,74.63981826603413
+
+
+Epoch 1 loss,1.538694
+Epoch 2 loss,1.463359
+Epoch 3 loss,1.461163
+Epoch 4 loss,1.713322
+Epoch 5 loss,1.909148
+Epoch 6 loss,1.834469
+Epoch 7 loss,1.764004
+Epoch 8 loss,1.840758

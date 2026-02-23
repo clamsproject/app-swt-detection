@@ -1,0 +1,46 @@
+Model_Name,Label,Accuracy,Precision,Recall,F1-Score
+convnextv2_tiny,Overall,0.21272411942481995,0.21272411942481995,0.21272411942481995,0.21272411942481995
+convnextv2_tiny,GLOTW,0.0,0.0,0.0,0.0
+convnextv2_tiny,CR,0.0,0.0,0.0,0.0
+convnextv2_tiny,IN,0.0,0.0,0.0,0.0
+convnextv2_tiny,KU,0.0,0.0,0.0,0.0
+convnextv2_tiny,B,0.0,0.0,0.0,0.0
+convnextv2_tiny,S,0.0,0.0,0.0,0.0
+convnextv2_tiny,M,0.0,0.0,0.0,0.0
+convnextv2_tiny,Y,0.0,0.0,0.0,0.0
+convnextv2_tiny,F,0.0,0.0,0.0,0.0
+convnextv2_tiny,E,0.0,0.0,0.0,0.0
+convnextv2_tiny,P,1.0,0.21272411942481995,1.0,0.35082030296325684
+convnextv2_tiny,-,0.0,0.0,0.0,0.0
+
+
+Confusion Matrix (cols = preds, rows = golds)
+     ,GLOTW,   CR,   IN,   KU,    B,    S,    M,    Y,    F,    E,    P,    -,    +
+GLOTW,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 1029,    0, 1029
+   CR,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  888,    0,  888
+   IN,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 1922,    0, 1922
+   KU,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   55,    0,   55
+    B,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   68,    0,   68
+    S,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  204,    0,  204
+    M,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  162,    0,  162
+    Y,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  104,    0,  104
+    F,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  840,    0,  840
+    E,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  756,    0,  756
+    P,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 1839,    0, 1839
+    -,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,  778,    0,  778
+    +,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0, 8645,    0, 8645
+
+
+peak-vram-usage,GPU 0 (NVIDIA RTX A6000): 0.00MB peak; GPU 1 (NVIDIA RTX A6000): 0.00MB peak; GPU 2 (NVIDIA RTX A6000): 3567.52MB peak
+training-time,5409.317901095375
+validation-time,58.295445607975125
+
+
+Epoch 1 loss,1.372666
+Epoch 2 loss,1.321434
+Epoch 3 loss,1.411898
+Epoch 4 loss,1.424103
+Epoch 5 loss,1.608732
+Epoch 6 loss,2.110610
+Epoch 7 loss,1.948416
+Epoch 8 loss,1.947337
