@@ -313,7 +313,8 @@ def train_model(model, loss_fn, device, train_loader, configs):
     model.to(device)
     torch.cuda.reset_peak_memory_stats(device)
     since = time.perf_counter()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=configs.get('learning_rate', 0.001))
 
     epoch_losses = []  # List to store epoch losses
 
