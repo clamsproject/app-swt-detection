@@ -100,11 +100,14 @@ class ConvnextV2LargeExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
 class _ViTExtractorInitBase:
     name: str = ""
+    hf_name: str = ""
 
     def _init_hf_vit_components(self):
-        full_model_name = f"google/{self.name.replace('_', '-')}-224"
+        full_model_name = (self.hf_name if self.hf_name
+                           else f"google/{self.name.replace('_', '-')}-224")
         self.model = ViTModel.from_pretrained(
-            full_model_name, use_safetensors=True)
+            full_model_name, use_safetensors=True,
+            add_pooling_layer=False)
         self.preprocessor = AutoImageProcessor.from_pretrained(
             full_model_name, use_fast=True, use_safetensors=True)
         self.preprocess = lambda image_input: self.preprocessor(
@@ -129,6 +132,7 @@ class ViTLargeExtractor(ExtractorModel, _ViTExtractorInitBase):
 
 class ViTHugeExtractor(ExtractorModel, _ViTExtractorInitBase):
     name = "vit_huge_patch14"
+    hf_name = "google/vit-huge-patch14-224-in21k"
     dim = 1280
 
     def __init__(self):
