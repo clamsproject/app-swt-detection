@@ -371,19 +371,21 @@ def normalize_config_and_get_train_id_suffix_from_config(config):
 
 def check_results_exist(outdir, train_id_prefix, config):
     """Check if results already exist for a given configuration."""
-    # Find all .yml config files that match the timestamp pattern
-    suffix = normalize_config_and_get_train_id_suffix_from_config(config.copy())  # just to normalize the config
+    # Normalize a copy so prebin string becomes the full dict,
+    # matching the format stored in YML files
+    normalized = config.copy()
+    suffix = normalize_config_and_get_train_id_suffix_from_config(normalized)
     existing_config_files = list(Path(outdir).glob(f"{train_id_prefix}.*.{suffix}.yml"))
-    
+
     # Compare each existing config with the current one
     for existing_config_file in existing_config_files:
         print(f'Checking existing config: {existing_config_file}')
         try:
             with open(existing_config_file, 'r') as f:
                 existing_config = yaml.safe_load(f)
-            
+
             # Compare configurations
-            if configs_match(config, existing_config):
+            if configs_match(normalized, existing_config):
                 # Check if the corresponding CSV results file exists
                 csv_file = existing_config_file.with_suffix('.csv')
                 if csv_file.exists():
