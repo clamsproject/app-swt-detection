@@ -13,8 +13,8 @@ num_epochs = {8}  # Analysis shows 8 epochs is optimal (vs 16 which overfits)
 num_layers = {2, 5, 8}
 pos_unit = {60000}
 dropouts = {0.3}  # Keep existing optimal dropout
-hidden_dim = {128, 256}
-# Focus on convnextv2 models, compare large vs tiny performance
+hidden_dim = {128, 512, 768, 1024}
+learning_rate = {0.0001, 0.001, 0.01}
 img_enc_name = {
     'convnextv2_large',    # Best performer (0.517 avg F1)
     'convnextv2_tiny',     # Compare tiny model performance
@@ -56,7 +56,7 @@ prebin = [
 ]
 
 clss_param_keys = ['num_epochs', 'num_layers', 'pos_length', 'pos_unit',
-                   'dropouts', 'hidden_dim',
+                   'dropouts', 'hidden_dim', 'learning_rate',
                    'img_enc_name', 'resize_strategy',
                    'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
                    'block_guids_train', 'block_guids_valid', 
