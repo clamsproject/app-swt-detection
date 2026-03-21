@@ -10,11 +10,11 @@ from modeling.config import batches
 # Best overall config: convnextv2_large, 8 epochs, 4 layers, cropped224, no posenc
 # Key findings: 8 epochs optimal, moderate depth (2-4 layers) better than deep (8 layers)
 num_epochs = {8}  # Analysis shows 8 epochs is optimal (vs 16 which overfits)
-num_layers = {2, 5, 8}
+num_layers = {5}
 pos_unit = {60000}
 dropouts = {0.3}  # Keep existing optimal dropout
-hidden_dim = {128, 512, 768, 1024}
-learning_rate = {0.0001, 0.001, 0.01}
+hidden_dim = {512}
+learning_rate = {0.0001}
 img_enc_name = {
     'convnextv2_large',    # Best performer (0.517 avg F1)
     'convnextv2_tiny',     # Compare tiny model performance
