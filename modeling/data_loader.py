@@ -12,6 +12,8 @@ from PIL import Image
 from torch import Tensor
 from torchvision.transforms import Resize, CenterCrop, ToTensor, Normalize, Compose
 
+from transformers import ViTModel
+
 from modeling import backbones
 
 logging.basicConfig(
@@ -134,11 +136,15 @@ class FeatureExtractor(object):
         if torch.cuda.is_available():
             img_vec = img_vec.to('cuda')
         with torch.no_grad():
-            # for huggingface models, forward() will return
-            # BaseModelOutputWithPoolingAndNoAttention with pooler_output
-            # which is the global average pool values we need
             output = self.img_encoder.model(img_vec)
-            feature_vec = output.pooler_output
+            if isinstance(self.img_encoder.model, ViTModel):
+                # ViT: use raw CLS token (Google's checkpoints don't
+                # include HF's pooler weights, so pooler_output is
+                # a random projection)
+                feature_vec = output.last_hidden_state[:, 0]
+            else:
+                # ConvNeXt: pooler_output is global avg pool
+                feature_vec = output.pooler_output
         if as_numpy:
             return feature_vec.cpu().numpy()
         else:

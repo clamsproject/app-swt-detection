@@ -3,7 +3,8 @@
 import sys
 from typing import Callable
 
-from transformers import AutoImageProcessor, ConvNextV2Model, ConvNextModel
+from transformers import (AutoImageProcessor, ConvNextV2Model, ConvNextModel,
+                          ViTModel)
 
 
 # ===========================================================================|
@@ -89,6 +90,54 @@ class ConvnextV2LargeExtractor(ExtractorModel, _ConvnextExtractorInitBase):
 
     def __init__(self):
         self._init_hf_convnext_components()
+
+
+# ==========================================|
+# ViT Models
+# Using pretrained models from huggingface (google official) models
+## all these backbones are expecting 224x224 input images
+# size variances: B/16 L/16 H/14
+
+class _ViTExtractorInitBase:
+    name: str = ""
+    hf_name: str = ""
+
+    def _init_hf_vit_components(self):
+        full_model_name = (self.hf_name if self.hf_name
+                           else f"google/{self.name.replace('_', '-')}-224")
+        self.model = ViTModel.from_pretrained(
+            full_model_name, use_safetensors=True,
+            add_pooling_layer=False)
+        self.preprocessor = AutoImageProcessor.from_pretrained(
+            full_model_name, use_fast=True, use_safetensors=True)
+        self.preprocess = lambda image_input: self.preprocessor(
+            image_input, return_tensors="pt")["pixel_values"]
+
+
+class ViTBaseExtractor(ExtractorModel, _ViTExtractorInitBase):
+    name = "vit_base_patch16"
+    dim = 768
+
+    def __init__(self):
+        self._init_hf_vit_components()
+
+
+class ViTLargeExtractor(ExtractorModel, _ViTExtractorInitBase):
+    name = "vit_large_patch16"
+    dim = 1024
+
+    def __init__(self):
+        self._init_hf_vit_components()
+
+
+class ViTHugeExtractor(ExtractorModel, _ViTExtractorInitBase):
+    name = "vit_huge_patch14"
+    hf_name = "google/vit-huge-patch14-224-in21k"
+    dim = 1280
+
+    def __init__(self):
+        self._init_hf_vit_components()
+
 
 model_map = {
     model.name: model for model

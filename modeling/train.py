@@ -179,18 +179,20 @@ def int_encode(label):
         return len(FRAME_TYPES)
 
 
-def get_net(in_dim, n_labels, num_layers, dropout=0.0):
-    dropouts = [dropout] * (num_layers - 1) if isinstance(dropout, (int, float)) else dropout
+def get_net(in_dim, n_labels, num_layers, dropout=0.0,
+            hidden_dim=128):
+    dropouts = ([dropout] * (num_layers - 1)
+                if isinstance(dropout, (int, float)) else dropout)
     if len(dropouts) + 1 != num_layers:
-        raise ValueError("length of dropout must be equal to num_layers - 1")
+        raise ValueError(
+            "length of dropout must be equal to num_layers - 1")
     net = nn.Sequential()
     for i in range(1, num_layers):
-        neurons = max(128 // i, n_labels)
         net.add_module(f"dropout{i}", nn.Dropout(p=dropouts[i - 1]))
-        net.add_module(f"fc{i}", nn.Linear(in_dim, neurons))
+        net.add_module(f"fc{i}", nn.Linear(in_dim, hidden_dim))
         net.add_module(f"relu{i}", nn.ReLU())
-        in_dim = neurons
-    net.add_module("fc_out", nn.Linear(neurons, n_labels))
+        in_dim = hidden_dim
+    net.add_module("fc_out", nn.Linear(in_dim, n_labels))
     # no softmax here since we're using CE loss which includes it
     # net.add_module(Softmax(dim=1))
     return net
@@ -235,7 +237,8 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     export_model_file = f"{base_fname}.pt"
     t = time.perf_counter()
     model, epoch_losses = train_model(
-        get_net(train.feat_dim, num_labels, configs['num_layers'], configs['dropouts']),
+        get_net(train.feat_dim, num_labels, configs['num_layers'],
+                configs['dropouts'], configs.get('hidden_dim', 128)),
         loss, device, train_loader, configs)
     model.to('cpu')  # move to cpu before saving to make device-agnostic when loading later
     torch.save(model.state_dict(), export_model_file)
@@ -310,7 +313,8 @@ def train_model(model, loss_fn, device, train_loader, configs):
     model.to(device)
     torch.cuda.reset_peak_memory_stats(device)
     since = time.perf_counter()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=configs.get('learning_rate', 0.001))
 
     epoch_losses = []  # List to store epoch losses
 
@@ -367,19 +371,21 @@ def normalize_config_and_get_train_id_suffix_from_config(config):
 
 def check_results_exist(outdir, train_id_prefix, config):
     """Check if results already exist for a given configuration."""
-    # Find all .yml config files that match the timestamp pattern
-    suffix = normalize_config_and_get_train_id_suffix_from_config(config.copy())  # just to normalize the config
+    # Normalize a copy so prebin string becomes the full dict,
+    # matching the format stored in YML files
+    normalized = config.copy()
+    suffix = normalize_config_and_get_train_id_suffix_from_config(normalized)
     existing_config_files = list(Path(outdir).glob(f"{train_id_prefix}.*.{suffix}.yml"))
-    
+
     # Compare each existing config with the current one
     for existing_config_file in existing_config_files:
         print(f'Checking existing config: {existing_config_file}')
         try:
             with open(existing_config_file, 'r') as f:
                 existing_config = yaml.safe_load(f)
-            
+
             # Compare configurations
-            if configs_match(config, existing_config):
+            if configs_match(normalized, existing_config):
                 # Check if the corresponding CSV results file exists
                 csv_file = existing_config_file.with_suffix('.csv')
                 if csv_file.exists():
