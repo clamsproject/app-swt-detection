@@ -6,19 +6,24 @@ from typing import List, Dict
 
 nobinning = {}
 
+# These bins are for "postbin" at stitching time and should use
+# collapse-close label names, which is the only classification label set
+# used from v8.0 onward.
 label_bins = {
     "Bars": ["B"],
-    "Chyron-other": ["Y", "KU"],  #"U", "K"],
-    "Chyron-person": ["IN"],  # ["I", "N"],
-    "Credits": ["CR"],  # ["C", "R"],
+    "Chyron-other": ["Y", "KU"],
+    "Chyron-person": ["IN"],
+    "Credits": ["CR"],
     "Main": ["M"],
-    "Opening": ["O", "W"],
-    "Slate": ["S"],  # "S:H", "S:C", "S:D", "S:B", "S:G"],
-    "Other-text-sm": ["L", "G", "F", "E", "T"],
-    "Other-text-md": ["M", "F", "E", "GLOTW"],  #"W", "T", "O", "L", "G"],
+    "Slate": ["S"],
+    "Other-text": ["GLOTW", "F", "E"],
     "Neg": ["P", "-"],
+    # legacy (pre-v8.0, used raw labels) -- not referenced by any preset
+    "Opening": ["O", "W"],
+    "Other-text-sm": ["L", "G", "F", "E", "T"],
+    "Other-text-md": ["M", "F", "E", "GLOTW"],
 }
-label_bins["Other-text-lg"] = label_bins["Chyron-other"] + label_bins["Other-text-md"]
+label_bins["Other-text-all"] = label_bins["Chyron-other"] + label_bins["Other-text"] + label_bins["Main"]
 
 binning_schemes: Dict[str, Dict[str, List[str]]] = {
     "noprebin": nobinning,
@@ -30,9 +35,8 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Chyron-person": label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
         "Main": label_bins["Main"],
-        "Opening": label_bins["Opening"],
         "Chyron-other": label_bins["Chyron-other"],
-        "Other-text": label_bins["Other-text-sm"],
+        "Other-text": label_bins["Other-text"],
         "-": label_bins["Neg"],
     },
 
@@ -49,7 +53,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Slate": label_bins["Slate"],
         "Chyron-person": label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
-        "Other-text": label_bins["Other-text-lg"],
+        "Other-text": label_bins["Other-text-all"],
         "Neg": label_bins["Neg"],
     },
 
@@ -58,7 +62,7 @@ binning_schemes: Dict[str, Dict[str, List[str]]] = {
         "Slate": label_bins["Slate"],
         "Chyron": label_bins["Chyron-other"] + label_bins["Chyron-person"],
         "Credits": label_bins["Credits"],
-        "Other-text": label_bins["Other-text-md"],
+        "Other-text": label_bins["Other-text"] + label_bins["Main"],
         "Neg": label_bins["Neg"],
     },
 
