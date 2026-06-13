@@ -29,7 +29,7 @@ import argparse
 from datetime import datetime
 from operator import attrgetter
 
-import cv2
+import av
 from mmif import Mmif, DocumentTypes, Annotation
 
 
@@ -70,12 +70,28 @@ td.popup:hover span { margin-left: 550px; left: 2%; z-index:6; }
 
 
 def create_frames(video_file: str, positions: list, frames_dir: str):
-    vidcap = cv2.VideoCapture(video_file)
-    for milliseconds in positions:
-        vidcap.set(cv2.CAP_PROP_POS_MSEC, milliseconds)
-        success, image = vidcap.read()
-        cv2.imwrite(f"{frames_dir}/frame-{milliseconds:06d}.jpg", image)
-        print(milliseconds, success)
+    """Extract frames at given millisecond positions, saving each as JPG.
+
+    Uses PyAV (libav backend) for accurate PTS-based frame retrieval;
+    ``cv2.CAP_PROP_POS_MSEC`` had documented reliability problems and an
+    off-by-one PTS-offset bug for containers whose first frame's PTS is
+    not zero (see clamsproject/mmif-python#379).
+    """
+    with av.open(video_file) as container:
+        video_stream = container.streams.video[0]
+        time_base = float(video_stream.time_base)
+        for milliseconds in positions:
+            target_pts = int((milliseconds / 1000) / time_base)
+            container.seek(target_pts, stream=video_stream,
+                           any_frame=False, backward=True)
+            saved = False
+            for frame in container.decode(video_stream):
+                if frame.time * 1000 >= milliseconds:
+                    frame.to_image().save(
+                        f"{frames_dir}/frame-{milliseconds:06d}.jpg")
+                    saved = True
+                    break
+            print(milliseconds, saved)
 
 
 def load_annotations(mmif_obj: Mmif):
