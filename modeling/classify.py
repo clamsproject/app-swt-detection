@@ -42,12 +42,12 @@ class Classifier:
 
     def classify_images(self, images, positions: List[int], final_pos: int) -> torch.Tensor:
         """
-        Image classification for a set of extract images (in PIL.Image format). 
-        Useful with using ``mmif.utils.video_document_handler.extract_frames_as_images()``
-        
+        Image classification for a set of extract images (in PIL.Image format).
+        Useful with using ``mmif.utils.video_document_helper.extract_images_from_timepoints()``
+
         :param images: A tensor of PIL.Image images to classify
-        :param positions: A list of starting positions (in frames) corresponding to each image
-        :param final_pos: The final position (in frames) for all images
+        :param positions: A list of positions (in milliseconds) corresponding to each image
+        :param final_pos: The final position (in milliseconds) for all images
         :return: A tensor of shape of (num_images x softmax vectors)
         """
         featurizing_time = 0

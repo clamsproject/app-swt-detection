@@ -1,5 +1,5 @@
 # Make sure clams-python version is explicitly specified, at least the lower bound
-clams-python==1.7.1
+clams-python==1.7.2
 # mmif-python[cv] transitively provides PyAV, Pillow, ffmpeg-python, wurlitzer
 # (the modern post-cv2 vdh stack). The visualize/ scripts use PyAV directly.
 mmif-python[cv]

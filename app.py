@@ -17,7 +17,6 @@ from typing import Union
 from clams import ClamsApp, Restifier
 from mmif import Mmif, AnnotationTypes, DocumentTypes, Document
 from mmif.utils import video_document_helper as vdh
-from mmif.utils import timeunit_helper as tuh
 from mmif.utils import sequence_helper as sqh
 
 from metadata import default_model_storage
@@ -89,16 +88,18 @@ class SwtDetection(ClamsApp):
         else:
             seek_batch_size = math.floor(2000 / model_batch_size) * model_batch_size
         model_batches_in_seek_batch = seek_batch_size // model_batch_size
-        vdh.capture(video)
-        fps = vdh.get_framerate(video)
-        total_ms = tuh.convert(video.get_property(vdh.FRAMECOUNT_DOCPROP_KEY), 'f', 'ms', fps)
+        # populate fps/frameCount/duration on the doc via PyAV; only the side
+        # effect on the document is needed, so close the returned container.
+        vdh.open_container(video).close()
+        total_ms = video.get_property(vdh.DURATION_DOCPROP_KEY)
         start_ms = max(0, parameters['tpStartAt'])
         final_ms = min(total_ms, parameters['tpStopAt'])
         seek_time = 0
         clss_time = 0
-        sframe, eframe = [vdh.millisecond_to_framenum(video, p) for p in [start_ms, final_ms]]
-        sampled = vdh.sample_frames(sframe, eframe, parameters['tpSampleRate'] / 1000 * video.get_property('fps'))
-        self.logger.info(f'Sampled {len(sampled)} frames ' +
+        # sample and extract entirely in milliseconds (PTS-based), so frame
+        # selection no longer depends on cv2's frame-index seeking.
+        sampled = vdh.sample_timepoints(start_ms, final_ms, parameters['tpSampleRate'])
+        self.logger.info(f'Sampled {len(sampled)} timepoints ' +
                          f'btw {start_ms} - {final_ms} ms (every {parameters["tpSampleRate"]} ms)')
         all_preds = None
         all_positions = []
@@ -120,13 +121,8 @@ class SwtDetection(ClamsApp):
             seek_batch_end = min(seek_batch_start + seek_batch_size, len(sampled))
             self.logger.info(f"Loading more images from {seek_batch_start} to {seek_batch_end}")
             t = time.perf_counter()
-            # Extract only the current batch of frames, not all sampled frames
-            extracted = vdh.extract_frames_as_images(video, sampled[seek_batch_start:seek_batch_end], as_PIL=True)
-            if not extracted:
-                # used when the extraction is done in batches, for the last batch; 
-                # in a rare case, where the difference between 29.97 and 29.97002997002997 actually matters, we might 
-                # get 1+final_frame as the last sample, which will result in an empty list
-                continue
+            # extract the current batch of images by millisecond timepoint
+            extracted = vdh.extract_images_from_timepoints(video, sampled[seek_batch_start:seek_batch_end], as_PIL=True)
             seek_time += time.perf_counter() - t
             for j, model_batch_start in enumerate(range(0, len(extracted), model_batch_size)):
                 model_batch_end = min(model_batch_start + model_batch_size, len(extracted))
@@ -134,7 +130,7 @@ class SwtDetection(ClamsApp):
                 # Extract batches correctly using combined indices
                 batched_sampled = sampled[seek_batch_start + model_batch_start:seek_batch_start + model_batch_end]
                 batched_extracted = extracted[model_batch_start:model_batch_end]
-                positions = [tuh.convert(sample, 'f', 'ms', fps) for sample in batched_sampled]
+                positions = batched_sampled
                 # classify images
                 t = time.perf_counter()
                 predictions = classifier.classify_images(batched_extracted, positions, total_ms)
