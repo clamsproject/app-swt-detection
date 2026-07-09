@@ -1,7 +1,8 @@
 # Make sure clams-python version is explicitly specified, at least the lower bound
-clams-python==1.7.2
-# mmif-python[cv] transitively provides PyAV, Pillow, ffmpeg-python, wurlitzer
-# (the modern post-cv2 vdh stack). The visualize/ scripts use PyAV directly.
+clams-python==1.7.3
+# mmif-python[cv] pulls the video I/O deps: PyAV, Pillow, ffmpeg-python,
+# wurlitzer, and opencv-python. This app uses only the PyAV/PTS-based vdh
+# path, but the [cv] extra still bundles opencv-python regardless.
 mmif-python[cv]
 torch==2.*
 torchvision
