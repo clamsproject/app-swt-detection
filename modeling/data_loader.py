@@ -97,8 +97,14 @@ class FeatureExtractor(object):
         :param pos_length: "width" of positional encoding matrix, actual number of matrix columns is calculated by 
                              pos_length / pos_unit (with default values, that is 100 minutes)
         :param pos_unit: unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
-        :param pos_abs_th_front: the number of "units" to perform absolute lookup at the front of the video
-        :param pos_abs_th_end: the number of "units" to perform absolute lookup at the end of the video
+        :param pos_abs_th_front: intended as the number of "units" reserved for
+                             absolute lookup at the front of the video. NOTE (v8.9):
+                             currently INACTIVE -- compared against raw ms, so the
+                             front absolute region never engages (see
+                             convert_position); encoding is relative-only until v9.0.
+        :param pos_abs_th_end: intended as the number of "units" reserved for
+                             absolute lookup at the end of the video. NOTE (v8.9):
+                             currently INACTIVE (same units bug as pos_abs_th_front).
         :param pos_vec_coeff: a value used to regularize the impact of positional encoding
         """
         if img_enc_name is None:
@@ -152,11 +158,22 @@ class FeatureExtractor(object):
             return feature_vec
 
     def convert_position(self, cur, tot):
+        """Map a timepoint (ms) to a row index in ``pos_vec_lookup``.
+
+        NOTE (v8.9): the near-front / near-end branches are effectively
+        inactive. ``pos_abs_th_front`` / ``pos_abs_th_end`` are compared
+        against raw milliseconds instead of ``pos_unit``-scaled values, so the
+        intended absolute front/rear indexing never engages and the encoding
+        is relative-position only. The final clamp keeps the index in bounds
+        regardless (the near-end branch would otherwise return raw ms and
+        assert on the GPU gather). The units fix + model retrain is deferred
+        to v9.0.
+        """
         if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:
             pos = cur
         else:
             pos = cur * self.pos_vec_lookup.shape[0] // tot
-        return int(pos)
+        return max(0, min(self.pos_vec_lookup.shape[0] - 1, int(pos)))
 
     def encode_position(self, position: Tensor, img_vec):
         if isinstance(img_vec, np.ndarray):

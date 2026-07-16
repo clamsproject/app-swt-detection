@@ -50,9 +50,24 @@ class TestPosAbsTh(unittest.TestCase):
         cur_time = 5
         tot_time = 200
         self.assertEqual(extractor.convert_position(cur_time, tot_time), cur_time)
+        # near-end branch returns raw `cur` (195), which is out of the 100-row
+        # table; the v8.9 clamp caps it at the last valid row (dim - 1 = 99)
+        # rather than returning an OOB index that would assert on the GPU gather.
         cur_time = 195
         tot_time = 200
-        self.assertEqual(extractor.convert_position(cur_time, tot_time), cur_time)
+        self.assertEqual(extractor.convert_position(cur_time, tot_time), 99)
+
+    def test_convert_position_always_in_bounds(self):
+        # Regression for the v8.8 CUDA OOB crash: the near-end branch returned
+        # raw ms, which the downstream `pos_vec_lookup[...]` gather asserted on.
+        # The clamp must keep the index in [0, dim) for any (cur, tot).
+        # 1_957_003 is the Jack_Taylor duration that first triggered it.
+        extractor = self.prep_extractor(10, 10, 100)
+        dim = extractor.pos_vec_lookup.shape[0]
+        for tot in (1, 60_000, 1_800_000, 1_957_003):
+            for cur in (0, 1, 500, tot - 1, tot):
+                p = extractor.convert_position(cur, tot)
+                self.assertTrue(0 <= p < dim, (cur, tot, p, dim))
 
     @unittest.skip("Some extreme edge cases")
     def test_convert_position_edgecases(self):
