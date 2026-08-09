@@ -24,7 +24,7 @@ resize_strategy = {'distorted'}  # Top 2 strategies from analysis
 pos_length = {6000000}
 pos_abs_th_front = {5}
 pos_abs_th_end = {10}
-pos_vec_coeff = {0, 0.3}  # 0=disabled, reduced positional weight from .5 to .3
+pos_vec_coeff = {0.5}  # 0=disabled, ran 0.25, 0.5, 0.75 and found 0.5 to be best
 
 # RNG seed(s). A single value makes every cell reproducible; list several
 # (e.g. {1, 2, 3, 4, 5}) to run independent repeats for seed-averaging. Each
