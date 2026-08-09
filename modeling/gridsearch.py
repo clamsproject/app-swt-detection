@@ -26,6 +26,11 @@ pos_abs_th_front = {5}
 pos_abs_th_end = {10}
 pos_vec_coeff = {0, 0.3}  # 0=disabled, reduced positional weight from .5 to .3
 
+# RNG seed(s). A single value makes every cell reproducible; list several
+# (e.g. {1, 2, 3, 4, 5}) to run independent repeats for seed-averaging. Each
+# seed is a distinct config, so seeds are not dedup-skipped against each other.
+seed = {4}
+
 # to see effect of training data size
 block_guids_train = [
     batches.excluded_guids,  # full training set
@@ -58,9 +63,9 @@ prebin = [
 clss_param_keys = ['num_epochs', 'num_layers', 'pos_length', 'pos_unit',
                    'dropouts', 'hidden_dim', 'learning_rate',
                    'img_enc_name', 'resize_strategy',
-                   'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff', 
-                   'block_guids_train', 'block_guids_valid', 
-                   'prebin']
+                   'pos_abs_th_front', 'pos_abs_th_end', 'pos_vec_coeff',
+                   'block_guids_train', 'block_guids_valid',
+                   'prebin', 'seed']
 
 ## TF stitching grid search (for future)
 tfMinTPScores = set()

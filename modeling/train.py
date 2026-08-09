@@ -5,11 +5,13 @@ import hashlib
 import logging
 import os
 import platform
+import random
 import shutil
 import time
 from pathlib import Path
 from typing import Union, List, Dict
 
+import numpy as np
 import torch
 import torch.nn as nn
 import yaml
@@ -38,6 +40,28 @@ BATCH_SIZE = 200
     #     batch_size = 1600
     # elif 'large' in img_enc_name:
     #     batch_size = 800
+
+# default RNG seed; override per-run via the ``seed`` config key. A fixed seed
+# makes a run reproducible (weight init, dropout, and data-loader shuffling);
+# varying it across runs is how to get independent samples for seed-averaging.
+DEFAULT_SEED = 4
+
+
+def set_seed(seed):
+    """Seed every RNG that affects training and pin deterministic kernels.
+
+    Covers Python ``random``, NumPy, and torch (CPU + all CUDA devices), and
+    disables cudnn autotuning so convolutions and backprop are reproducible on
+    fixed hardware. For strict bitwise determinism one could also call
+    ``torch.use_deterministic_algorithms(True)`` with ``CUBLAS_WORKSPACE_CONFIG``
+    set, but that raises on ops lacking a deterministic kernel, so it is left off.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 class SWTH5Dataset(Dataset):
@@ -142,12 +166,23 @@ class SWTH5Dataset(Dataset):
 
 def get_guids(data_dir):
     guids = set()
-    # iterate through *.json or *.csv 
+    # iterate through *.json or *.csv
     for suffix in 'json csv zip h5'.split():
         for j in Path(data_dir).glob(f'*.{suffix}'):
             guid = j.with_suffix("").name
             guids.add(guid)
     return sorted(list(guids))
+
+
+def resolve_train_guids(all_guids, blocked_guids, valid_guids):
+    """Return the training guid list in deterministic (sorted) order.
+
+    Bare ``list(set(...))`` order follows the per-interpreter hash seed,
+    which made same-seed runs diverge across launches (different guid
+    order --> different batch composition); sorting keeps launches
+    comparable.
+    """
+    return sorted(set(all_guids) - set(blocked_guids) - set(valid_guids))
 
 
 def pretraining_bin(label, specs):
@@ -204,12 +239,13 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     # need to implement "whitelist"?
     guids = get_guids(indir)
     configs = load_config(configs) if not isinstance(configs, dict) else configs
+    seed = configs.get('seed', DEFAULT_SEED)
+    set_seed(seed)
     for k, v in configs.items():
         if isinstance(v, list):
             logger.info(f'Using config: {k}=({len(v)}) {v[:5]}...')
         else:
             logger.info(f'Using config: {k}={v}')
-    train_all_guids = set(guids) - set(configs['block_guids_train'])
     loss = nn.CrossEntropyLoss(reduction="none")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -222,7 +258,8 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     logger.info(f'Labels for training: ({num_labels}) {labelset}')
 
     valid_guids = guids_for_fixed_validation_set
-    train_all_guids = list(train_all_guids - set(valid_guids))
+    train_all_guids = resolve_train_guids(
+        guids, configs['block_guids_train'], valid_guids)
     img_enc_name = configs['img_enc_name']
     resize_strategy = configs['resize_strategy']
     prebin = configs.get('prebin', None)
@@ -231,7 +268,10 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     logger.info(f'Instances for training: {str(len(train))}')
     logger.info(f'Instances for validation: {str(len(valid))}')
     
-    train_loader = DataLoader(train, batch_size=BATCH_SIZE, shuffle=True)
+    loader_generator = torch.Generator()
+    loader_generator.manual_seed(seed)
+    train_loader = DataLoader(train, batch_size=BATCH_SIZE, shuffle=True,
+                              generator=loader_generator)
     valid_loader = DataLoader(valid, batch_size=BATCH_SIZE, shuffle=False)
     base_fname = f"{outdir}/{train_id}"
     export_model_file = f"{base_fname}.pt"

@@ -205,6 +205,9 @@ class TrainingDataPreprocessor(object):
         """
         Initializes basic paths and read csv that has annotations.
         """
+        # preprocessing-only dependency, imported here to keep it out of
+        # the app runtime (this module is imported by classify/app)
+        import pandas as pd
         self.image_zip = image_zip_path
         self.output_dir = output_dir
         self.guid = Path(annotation_csv_path).stem
@@ -222,6 +225,7 @@ class TrainingDataPreprocessor(object):
     @staticmethod
     def _ensure_group(h5file, group_name):
         """Ensure that the given group_name in h5 file is a Group, not a Dataset or Datatype."""
+        import h5py
         if group_name in h5file:
             if not isinstance(h5file[group_name], h5py.Group):
                 del h5file[group_name]
@@ -241,6 +245,9 @@ class TrainingDataPreprocessor(object):
         guid. Each image will get an identifier that encodes all the 
         necessary metadata (timing info, manual label).
         """
+        import h5py
+        import pandas as pd
+
         hdf5_path = Path(self.output_dir) / f"{self.guid}.h5"
 
         # Check if the HDF5 file already exists
@@ -291,15 +298,14 @@ class TrainingDataPreprocessor(object):
 
 
 def main():
-    import pandas as pd
     import h5py
     # read csv directory and zip directory from .env file or os.environ
-    try:
-        csv_dir = os.getenv('ANNDIR')
-        zip_dir = os.getenv('ZIPDIR')
-        out_dir = os.getenv('H5_DIR')
-    except KeyError as e:
-        raise KeyError(f"Environment variable not set, ensure `ANNDIR`, `ZIPDIR`, and `H5_DIR` are defined.")
+    csv_dir = os.getenv('ANNDIR')
+    zip_dir = os.getenv('ZIPDIR')
+    out_dir = os.getenv('H5_DIR')
+    if not all((csv_dir, zip_dir, out_dir)):
+        raise KeyError("Environment variable not set, ensure `ANNDIR`, "
+                       "`ZIPDIR`, and `H5_DIR` are defined.")
 
     import argparse
 

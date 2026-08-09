@@ -183,16 +183,16 @@ class SwtDetection(ClamsApp):
         tolerance = 1000 / mmif.get_document_by_id(tps[0].get_property('document')).get_property('fps')
         self.logger.debug(f"TimePoint sampling rate 0-1: {tp_sampling_rate}")
         self.logger.debug(f"TimePoint sampling rate 1-2: {testsamples[2] - testsamples[1]}")
-        if tp_sampling_rate - (testsamples[2] - testsamples[1]) > tolerance:
+        if abs(tp_sampling_rate - (testsamples[2] - testsamples[1])) > tolerance:
             raise ValueError("TimePoint annotations are not uniformly sampled.")
 
         # next, validate labels in the input annotations
         src_labels = sqh.validate_labelset(tps)
+        src_label_set = set(src_labels)
 
         # validate user-provided tfLabelMap keys against actual TimePoint labels
         if parameters['tfLabelMap']:
             user_map_keys = set(parameters['tfLabelMap'].keys())
-            src_label_set = set(src_labels)
             invalid_keys = user_map_keys - src_label_set
             unmapped_keys = src_label_set - user_map_keys
             if invalid_keys or unmapped_keys:
