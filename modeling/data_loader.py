@@ -97,16 +97,25 @@ class FeatureExtractor(object):
         :param pos_length: "width" of positional encoding matrix, actual number of matrix columns is calculated by 
                              pos_length / pos_unit (with default values, that is 100 minutes)
         :param pos_unit: unit of positional encoding in milliseconds (e.g., 60000 for minutes, 1000 for seconds)
-        :param pos_abs_th_front: intended as the number of "units" reserved for
-                             absolute lookup at the front of the video. NOTE (v8.9):
-                             currently INACTIVE -- compared against raw ms, so the
-                             front absolute region never engages (see
-                             convert_position); encoding is relative-only until v9.0.
-        :param pos_abs_th_end: intended as the number of "units" reserved for
-                             absolute lookup at the end of the video. NOTE (v8.9):
-                             currently INACTIVE (same units bug as pos_abs_th_front).
+        :param pos_abs_th_front: number of ``pos_unit``-sized steps at the start
+                             of the video that use absolute (distance-from-start)
+                             position encoding; 0 disables the front region.
+        :param pos_abs_th_end: number of ``pos_unit``-sized steps at the end of
+                             the video that use absolute (distance-from-end)
+                             position encoding; 0 disables the rear region.
         :param pos_vec_coeff: a value used to regularize the impact of positional encoding
         """
+        if kwargs:
+            # `**model_config`-style construction (see classify.Classifier)
+            # passes the full training config, so unrelated keys are routine;
+            # an unknown pos* key, however, is almost certainly a misspelled
+            # positional-encoding parameter and would otherwise silently
+            # fall back to the default
+            suspicious = sorted(k for k in kwargs if k.startswith('pos'))
+            if suspicious:
+                logger.warning('ignoring unknown positional-encoding '
+                               f'arguments (misspelled?): {suspicious}')
+            logger.debug(f'ignoring unexpected arguments: {sorted(kwargs)}')
         if img_enc_name is None:
             raise ValueError("A image vector model must be specified")
         else:
@@ -160,20 +169,31 @@ class FeatureExtractor(object):
     def convert_position(self, cur, tot):
         """Map a timepoint (ms) to a row index in ``pos_vec_lookup``.
 
-        NOTE (v8.9): the near-front / near-end branches are effectively
-        inactive. ``pos_abs_th_front`` / ``pos_abs_th_end`` are compared
-        against raw milliseconds instead of ``pos_unit``-scaled values, so the
-        intended absolute front/rear indexing never engages and the encoding
-        is relative-position only. The final clamp keeps the index in bounds
-        regardless (the near-end branch would otherwise return raw ms and
-        assert on the GPU gather). The units fix + model retrain is deferred
-        to v9.0.
+        The lookup table holds one row per ``pos_unit`` (one row per minute with
+        the default 60000 ms unit). A timepoint is encoded in one of three
+        regions:
+
+        - front: within the first ``pos_abs_th_front`` units, by its absolute
+          distance from the start (``cur // pos_unit``), so the same wall-clock
+          offset maps to the same row regardless of total duration.
+        - rear: within the last ``pos_abs_th_end`` units, by its absolute
+          distance from the end, counting back from the last row
+          (``dim - 1 - (tot - cur) // pos_unit``); also duration-invariant.
+        - middle: everywhere else, by its relative position (``cur * dim // tot``).
+
+        The thresholds are unit counts, so they are scaled by ``pos_unit`` before
+        being compared against the millisecond timepoints; a threshold of 0
+        disables that region. The final clamp keeps the index in ``[0, dim)`` for
+        degenerate inputs (durations longer than the table, ``cur`` at a boundary).
         """
-        if cur < self.pos_abs_th_front or tot - cur < self.pos_abs_th_end:
-            pos = cur
+        dim = self.pos_vec_lookup.shape[0]
+        if cur < self.pos_abs_th_front * self.pos_unit:
+            pos = cur // self.pos_unit
+        elif tot - cur < self.pos_abs_th_end * self.pos_unit:
+            pos = dim - 1 - (tot - cur) // self.pos_unit
         else:
-            pos = cur * self.pos_vec_lookup.shape[0] // tot
-        return max(0, min(self.pos_vec_lookup.shape[0] - 1, int(pos)))
+            pos = cur * dim // tot
+        return max(0, min(dim - 1, int(pos)))
 
     def encode_position(self, position: Tensor, img_vec):
         if isinstance(img_vec, np.ndarray):

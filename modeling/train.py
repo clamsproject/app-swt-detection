@@ -73,21 +73,29 @@ class SWTH5Dataset(Dataset):
     into groups based on a resizing strategy.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  h5_dir: str,
-                 guids: List[str], 
+                 guids: List[str],
                  backbone_model_name: str,
-                 resize_strategy: str, 
-                 prebin: Dict = None, 
-                 evalmode=False):
+                 resize_strategy: str,
+                 prebin: Dict = None,
+                 evalmode=False,
+                 model_config: Dict = None):
         """
-        Initializes the dataset. 
+        Initializes the dataset.
 
         :param guids: A list of paths to the HDF5 files.
         :param resize_strategy: The resizing strategy to use (e.g., 'distorted',
                                 'cropped256', 'cropped224'). This corresponds to
                                 the group name in the HDF5 files.
-        :param prebin: prebin strategy to use. 
+        :param prebin: prebin strategy to use.
+        :param model_config: the full training config, forwarded verbatim to the
+                             FeatureExtractor (same ``**model_config`` pattern as
+                             inference in ``classify.py``). This is what carries
+                             the positional-encoding settings (pos_length,
+                             pos_unit, pos_abs_th_front, pos_abs_th_end,
+                             pos_vec_coeff); without it the extractor falls back
+                             to defaults and any grid sweep over them is inert.
         """
         self.guids = guids
         self.image_group_name = f'images_{resize_strategy}'
@@ -96,7 +104,9 @@ class SWTH5Dataset(Dataset):
         self.total_images = 0
         self.prebin = prebin
         self.img_enc_name = backbone_model_name
-        self.feat_extr = data_loader.FeatureExtractor(img_enc_name=self.img_enc_name)
+        if model_config is None:
+            model_config = {'img_enc_name': backbone_model_name}
+        self.feat_extr = data_loader.FeatureExtractor(**model_config)
         self.feat_dim = self.feat_extr.feature_vector_dim()
         if evalmode:
             self.feat_extr.img_encoder.model.eval()
@@ -263,8 +273,16 @@ def train(indir, outdir, config_file, configs, train_id=time.strftime("%Y%m%d-%H
     img_enc_name = configs['img_enc_name']
     resize_strategy = configs['resize_strategy']
     prebin = configs.get('prebin', None)
-    train = SWTH5Dataset(indir, train_all_guids, img_enc_name, resize_strategy, prebin)
-    valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin, evalmode=True)
+    train = SWTH5Dataset(indir, train_all_guids, img_enc_name, resize_strategy, prebin,
+                         model_config=configs)
+    valid = SWTH5Dataset(indir, valid_guids, img_enc_name, resize_strategy, prebin,
+                         evalmode=True, model_config=configs)
+    # read the values back off the constructed extractor so a silent fallback to
+    # defaults (the threading bug) is visible in the logs, not hidden.
+    fe = train.feat_extr
+    logger.info(f'positional encoding in use: unit={fe.pos_unit} '
+                f'front={fe.pos_abs_th_front} end={fe.pos_abs_th_end} '
+                f'coeff={fe.pos_vec_coeff}')
     logger.info(f'Instances for training: {str(len(train))}')
     logger.info(f'Instances for validation: {str(len(valid))}')
     
