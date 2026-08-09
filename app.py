@@ -159,8 +159,11 @@ class SwtDetection(ClamsApp):
             timepoint_annotation.add_property('classification', classification)
 
     def _annotate_timeframes(self, mmif: Mmif, **parameters) -> Mmif:
-        
-        TimeFrameTuple = namedtuple('TimeFrame', 
+
+        if parameters['tfDynamicSceneRepGap'] < 1:
+            raise ValueError("tfDynamicSceneRepGap must be a positive integer, "
+                             f"given {parameters['tfDynamicSceneRepGap']}")
+        TimeFrameTuple = namedtuple('TimeFrame',
                                     ['label', 'tf_score', 'targets', 'representatives'])
         tp_view = mmif.get_view_contains(AnnotationTypes.TimePoint)
         if not tp_view:
@@ -251,12 +254,13 @@ class SwtDetection(ClamsApp):
                     if label not in parameters['tfDynamicSceneLabels']:
                         reps = [tps[rep_idx].id]
                     else:
-                        # TODO (krim @ 10/28/24): before this was done by picking every third TP regardless of the 
-                        # sampling rate, this new impl is sill very arbitrary and should be improved in the future
-                        
-                        # we pick every TP from 2 * minTFDuration time window
-                        rep_gap = 2 * math.ceil(parameters['tfMinTFDuration'] / tp_sampling_rate)
-                        reps = list(map(lambda x: x.id, tps[positive_interval[0]:positive_interval[1]:rep_gap]))
+                        # a rep at the start of the TF, then at least one every
+                        # tfDynamicSceneRepGap ms; flooring to the sampling
+                        # grid keeps that promise (the stride can only
+                        # shrink), and gaps below the sampling rate degrade
+                        # to every sampled TP
+                        rep_gap = max(1, parameters['tfDynamicSceneRepGap'] // tp_sampling_rate)
+                        reps = [tp.id for tp in tps[positive_interval[0]:positive_interval[1]:rep_gap]]
                     all_tf.append(TimeFrameTuple(label=label, tf_score=tf_score, targets=target_list,
                                                  representatives=reps))
         if not parameters['tfAllowOverlap']:

@@ -143,6 +143,16 @@ def appmetadata() -> AppMetadata:
                     'multiple representative points to follow any changes in the scene. '
                     'Only applies when `useStitcher=true`')
     metadata.add_parameter(
+        name='tfDynamicSceneRepGap', type='integer', default=2000,
+        description='(only applies to labels listed in `tfDynamicSceneLabels`, when `useStitcher=true`) '
+                    'Must be a positive integer. In a dynamic scene, a representative frame is picked at the start '
+                    'of the TimeFrame, and then at least once every this many milliseconds. Note that '
+                    'representatives can only fall on sampled TimePoints (see `tpSampleRate`), so the effective '
+                    'interval is this value rounded down to a multiple of the sampling rate: e.g. with '
+                    '`tpSampleRate=1000`, `tfDynamicSceneRepGap=2500` yields a representative every 2000 ms. '
+                    'Hence this value works as an upper bound of the gaps between representatives; values at or '
+                    'below the sampling rate (e.g. `1`) make every sampled TimePoint a representative.')
+    metadata.add_parameter(
         name='tfLabelMap', type='map', default=[],
         description=(
             '(See also `tfLabelMapPreset`, set `tfLabelMapPreset=nopreset` to make sure that a preset does not '
