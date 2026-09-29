@@ -12,6 +12,8 @@ from mmif import DocumentTypes, AnnotationTypes
 import modeling.config.bins
 
 default_model_storage = Path(__file__).parent / 'modeling/models'
+# allowed `tfLabelPoolingOp` values, the only callables a user can select by name
+label_pooling_ops = {'max': max, 'sum': sum}
 # read yml files and find prebin options in the default_model_storage
 label_set_dict = {}
 for yml_file in default_model_storage.glob('*.yml'):
@@ -176,6 +178,12 @@ def appmetadata() -> AppMetadata:
         description=f'(See also `tfLabelMap`) Preset alias of a label mapping. If not `nopreset`, this parameter will '
                     f'override the `tfLabelMap` parameter. Available presets are:\n{labelMapPresetsMarkdown}\n\n '
                     f'Only applies when `useStitcher=true`.')
+    metadata.add_parameter(
+        name='tfLabelPoolingOp', type='string', default='max',
+        choices=list(label_pooling_ops.keys()),
+        description='(See also `tfLabelMap`) Operator that pools the scores of TP labels mapped to the same TF label, '
+                    'at each TimePoint. `max` takes the highest score, `sum` takes the total. Has no effect on TF '
+                    'labels mapped from a single TP label. Only applies when `useStitcher=true`.')
 
     return metadata
 
