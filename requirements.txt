@@ -1,5 +1,5 @@
 # Make sure clams-python version is explicitly specified, at least the lower bound
-clams-python==1.7.3
+clams-python==1.8.0
 # mmif-python[cv] pulls the video I/O deps: PyAV, Pillow, ffmpeg-python,
 # wurlitzer, and opencv-python. This app uses only the PyAV/PTS-based vdh
 # path, but the [cv] extra still bundles opencv-python regardless.

@@ -122,15 +122,17 @@ class SwtDetection(ClamsApp):
             self.logger.info(f"Loading more images from {seek_batch_start} to {seek_batch_end}")
             t = time.perf_counter()
             # extract the current batch of images by millisecond timepoint
-            extracted = vdh.extract_images_from_timepoints(video, sampled[seek_batch_start:seek_batch_end], as_PIL=True)
+            batch_timepoints = sampled[seek_batch_start:seek_batch_end]
+            extracted = vdh.extract_images_from_timepoints(video, batch_timepoints, as_PIL=True)
             seek_time += time.perf_counter() - t
-            for j, model_batch_start in enumerate(range(0, len(extracted), model_batch_size)):
-                model_batch_end = min(model_batch_start + model_batch_size, len(extracted))
+            # `None` marks a timepoint with no image, as in a truncated or
+            # corrupted video past its last decodable frame; classify the rest
+            available = [(ms, img) for ms, img in zip(batch_timepoints, extracted) if img is not None]
+            for j, model_batch_start in enumerate(range(0, len(available), model_batch_size)):
+                model_batch_end = min(model_batch_start + model_batch_size, len(available))
                 self.logger.info(f"Classifying batch {i * model_batches_in_seek_batch + j} of size {model_batch_end - model_batch_start} from index {seek_batch_start + model_batch_start}")
-                # Extract batches correctly using combined indices
-                batched_sampled = sampled[seek_batch_start + model_batch_start:seek_batch_start + model_batch_end]
-                batched_extracted = extracted[model_batch_start:model_batch_end]
-                positions = batched_sampled
+                positions = [ms for ms, _ in available[model_batch_start:model_batch_end]]
+                batched_extracted = [img for _, img in available[model_batch_start:model_batch_end]]
                 # classify images
                 t = time.perf_counter()
                 predictions = classifier.classify_images(batched_extracted, positions, total_ms)
@@ -140,6 +142,17 @@ class SwtDetection(ClamsApp):
                     all_preds = torch.cat((all_preds, predictions), dim=0)
                 all_positions.extend(positions)
                 clss_time += time.perf_counter() - t
+            # The stitcher reads TimePoints as a uniform series, so the scan
+            # ends at the first image gap after a classified TimePoint (images
+            # missing only at the very start are skipped over)
+            if extracted[-1] is None and all_positions:
+                msg = (f'No image could be extracted after {all_positions[-1]} ms from video {video.id} '
+                       f'(its duration is {total_ms} ms); the TimePoints cover only the part before that.')
+                warnings.warn(msg, UserWarning)
+                self.logger.warning(msg)
+                break
+        if all_preds is None:
+            raise ValueError(f'No image could be extracted from video {video.id} between {start_ms} and {final_ms} ms.')
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug(f"Image extraction took: {seek_time:.2f} seconds\n")
             self.logger.debug(f"Classification took {clss_time:.2f} seconds")
