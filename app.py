@@ -19,7 +19,7 @@ from mmif import Mmif, AnnotationTypes, DocumentTypes, Document
 from mmif.utils import video_document_helper as vdh
 from mmif.utils import sequence_helper as sqh
 
-from metadata import default_model_storage
+from metadata import default_model_storage, label_pooling_ops
 from modeling.config import bins
 from modeling.data_loader import ImageResizeStrategy
 
@@ -230,7 +230,8 @@ class SwtDetection(ClamsApp):
 
         # then, build the score lists
         label_idx, scores = sqh.build_score_lists([tp.get_property('classification') for tp in tps],
-                                                  label_remapper=label_remapper, score_remap_op=max)
+                                                  label_remapper=label_remapper,
+                                                  score_remap_op=label_pooling_ops[parameters['tfLabelPoolingOp']])
 
         # keep track of the timepoints that have been included as TF targets
         used_timepoints = set()
